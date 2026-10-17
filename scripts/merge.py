@@ -407,6 +407,47 @@ def count_uris(path: str) -> int:
     return sum(1 for line in decoded.splitlines() if "://" in line)
 
 
+def publish_commit(out_dir: str) -> None:
+    """Persist the freshly built docs/ back to the repository (CI only).
+
+    Two runners of the same workflow can overlap. Committing here, before the
+    workflow's own "commit" step, means the later run re-applies the index onto
+    the current remote tip instead of colliding with a fast-forward error.
+    Failures are reported but never abort the build: publishing the site matters
+    more than persisting the file, and the workflow step is still a fallback.
+    """
+    import subprocess
+
+    def git(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", *args], capture_output=True, text=True)
+
+    if git("rev-parse", "--is-inside-work-tree").returncode != 0:
+        print("[publish] not a git work tree -> skipped")
+        return
+    if git("config", "user.email").stdout.strip() == "":
+        git("config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com")
+        git("config", "user.name", "github-actions[bot]")
+
+    branch = os.getenv("GITHUB_REF_NAME") or "main"
+    for attempt in range(1, 4):
+        git("fetch", "--quiet", "origin", branch)
+        if git("reset", "--quiet", f"origin/{branch}").returncode != 0:
+            print("[publish] reset onto origin failed -> left to the workflow step")
+            return
+        git("add", out_dir)
+        if git("diff", "--staged", "--quiet").returncode == 0:
+            print("[publish] no changes to commit")
+            return
+        git("commit", "--quiet", "-m", "chore: refresh subscription [skip ci]")
+        push = git("push", "--quiet", "origin", f"HEAD:{branch}")
+        if push.returncode == 0:
+            print(f"[publish] committed on attempt {attempt}")
+            return
+        print(f"[publish] push attempt {attempt} rejected, retrying")
+        time.sleep(6)
+    print("[publish] WARNING: could not push; the workflow step will try again")
+
+
 def write_atomic(path: str, content: str) -> None:
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
@@ -472,6 +513,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--no-probe", action="store_true", help="skip reachability probe")
     ap.add_argument("--force", action="store_true", help="publish even if the result shrank")
     ap.add_argument("--dry-run", action="store_true", help="print stats, write nothing")
+    ap.add_argument("--no-publish-commit", action="store_true",
+                    help="do not commit docs/ to git even when running in CI")
     return ap.parse_args(argv)
 
 
@@ -664,6 +707,10 @@ def main(argv: list[str]) -> int:
                               meta["built_at"], status, degraded))
     print(f"[done] published {len(selected)} probed configs + {len(everything)} total, "
           f"{len(payload)} bytes -> {args.out}")
+
+    if os.getenv("GITHUB_ACTIONS") == "true" and not args.no_publish_commit:
+        publish_commit(args.out)
+    return 0
     return 0
 
 
