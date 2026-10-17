@@ -1,8 +1,8 @@
 {
-  "built_at": "2026-10-17T19:33:49+00:00",
+  "built_at": "2026-10-17T19:34:33+00:00",
   "configs": 800,
-  "reachable_total": 1173,
-  "configs_all": 1459,
+  "reachable_total": 1190,
+  "configs_all": 1473,
   "probe_degraded": false,
   "duplicates_removed": 13,
   "protocols": {
@@ -34,6 +34,13 @@
       "ok": true,
       "seen": 2001,
       "kept": 1135,
+      "error": ""
+    },
+    {
+      "name": "<private>",
+      "ok": true,
+      "seen": 14,
+      "kept": 14,
       "error": ""
     }
   ]
