@@ -1,26 +1,26 @@
 {
-  "built_at": "2026-10-17T20:07:57+00:00",
-  "configs": 204,
-  "working_total": 204,
-  "reachable_total": 1202,
+  "built_at": "2026-10-17T20:13:24+00:00",
+  "configs": 247,
+  "working_total": 247,
+  "reachable_total": 1196,
   "configs_all": 1479,
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 900,
-    "passed": 204,
-    "seconds": 96.3,
+    "checked": 1196,
+    "passed": 247,
+    "seconds": 132.0,
     "version": "v26.3.27"
   },
   "duplicates_removed": 13,
   "protocols": {
-    "vless": 204
+    "vless": 247
   },
   "allowed_protocols": [
     "vless"
   ],
   "max_configs": 800,
-  "previous_configs": 800,
+  "previous_configs": 204,
   "probe": "tcp/tls handshake",
   "sources": [
     {
