@@ -1,12 +1,20 @@
 {
-  "built_at": "2026-10-17T19:34:33+00:00",
-  "configs": 800,
-  "reachable_total": 1190,
-  "configs_all": 1473,
+  "built_at": "2026-10-17T20:07:57+00:00",
+  "configs": 204,
+  "working_total": 204,
+  "reachable_total": 1202,
+  "configs_all": 1479,
   "probe_degraded": false,
+  "deep_test": {
+    "available": true,
+    "checked": 900,
+    "passed": 204,
+    "seconds": 96.3,
+    "version": "v26.3.27"
+  },
   "duplicates_removed": 13,
   "protocols": {
-    "vless": 800
+    "vless": 204
   },
   "allowed_protocols": [
     "vless"
@@ -19,7 +27,7 @@
       "name": "raw.githubusercontent.com/mehrtat/vless-collector/main/vless.txt",
       "ok": true,
       "seen": 314,
-      "kept": 305,
+      "kept": 309,
       "error": ""
     },
     {
@@ -37,10 +45,17 @@
       "error": ""
     },
     {
-      "name": "<private>",
+      "name": "<private-1>",
       "ok": true,
       "seen": 14,
       "kept": 14,
+      "error": ""
+    },
+    {
+      "name": "<private-2>",
+      "ok": true,
+      "seen": 1,
+      "kept": 0,
       "error": ""
     }
   ]
