@@ -1,20 +1,20 @@
 {
-  "built_at": "2026-10-17T20:17:48+00:00",
-  "configs": 269,
-  "working_total": 269,
-  "reachable_total": 1205,
+  "built_at": "2026-10-17T20:20:51+00:00",
+  "configs": 264,
+  "working_total": 264,
+  "reachable_total": 1195,
   "configs_all": 1479,
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 1205,
-    "passed": 269,
-    "seconds": 131.7,
+    "checked": 1195,
+    "passed": 264,
+    "seconds": 131.6,
     "version": "v26.3.27"
   },
   "duplicates_removed": 13,
   "protocols": {
-    "vless": 269
+    "vless": 264
   },
   "allowed_protocols": [
     "vless"
