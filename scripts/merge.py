@@ -460,7 +460,7 @@ def write_atomic(path: str, content: str) -> None:
 
 
 def     render_index(total: int, all_total: int, built: str, sources: list[dict],
-                 degraded: bool, deep: dict) -> str:
+                 degraded: bool, deep: dict, ru_present: bool = False) -> str:
     rows = "\n".join(
         f"<tr><td>{'ok' if s['ok'] else 'fail'}</td>"
         f"<td>{(s['name'] if s['ok'] else (s['name'] + ' — ' + str(s.get('error',''))[:80]))}</td>"
@@ -476,6 +476,9 @@ def     render_index(total: int, all_total: int, built: str, sources: list[dict]
                      f"список основан только на TCP/TLS-ответе.")
     note = ("<p style='color:#b00'><b>Внимание:</b> список получился коротким.</p>"
             if degraded else "")
+    ru_line = ("<li><b>sub-ru.txt</b> — <a href=\"sub-ru.txt\">список, проверенный из сети "
+               "автора</a> (обновляется локальной сборкой, обычно заметно точнее "
+               "для российских операторов)</li>" if ru_present else "")
     return f"""<!doctype html>
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -495,6 +498,7 @@ td,th{{border-bottom:1px solid #e5e5e5;padding:6px 8px;text-align:left}}
 <li><b>sub.txt</b> — рабочие конфиги, {total}</li>
 <li><b>sub-plain.txt</b> — тот же список текстом</li>
 <li><b>sub-all.txt</b> — все валидные конфиги, включая непроверенные, {all_total}</li>
+{ru_line}
 <li><b>status.json</b> — состояние источников</li>
 </ul>
 <p class="muted">Сборка: {built}. {deep_line} Конфиги принадлежат третьим лицам,
@@ -526,7 +530,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                     help="skip the Xray traffic test (nothing is proven to work then)")
     ap.add_argument("--deep-workers", type=int, default=int(os.getenv("DEEP_WORKERS", "16")))
     ap.add_argument("--deep-timeout", type=float, default=float(os.getenv("DEEP_TIMEOUT", "5")))
-    ap.add_argument("--deep-limit", type=int, default=int(os.getenv("DEEP_LIMIT", "900")),
+    ap.add_argument("--deep-limit", type=int, default=int(os.getenv("DEEP_LIMIT", "0")),
                     help="cap how many configs get the traffic test (0 = all reachable)")
     ap.add_argument("--force", action="store_true", help="publish even if the result shrank")
     ap.add_argument("--dry-run", action="store_true", help="print stats, write nothing")
@@ -802,7 +806,8 @@ def main(argv: list[str]) -> int:
                  json.dumps(meta, ensure_ascii=False, indent=2) + "\n")
     write_atomic(os.path.join(args.out, "index.html"),
                  render_index(len(selected), len(everything),
-                              meta["built_at"], status, degraded, deep))
+                              meta["built_at"], status, degraded, deep,
+                              os.path.exists(os.path.join(args.out, "sub-ru.txt"))))
     verdict = (f"{len(working)} verified working" if deep["available"]
                else "not traffic-tested")
     print(f"[done] published {len(selected)} configs ({verdict}) "
