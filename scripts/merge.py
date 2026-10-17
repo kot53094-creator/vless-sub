@@ -711,7 +711,6 @@ def main(argv: list[str]) -> int:
     if os.getenv("GITHUB_ACTIONS") == "true" and not args.no_publish_commit:
         publish_commit(args.out)
     return 0
-    return 0
 
 
 if __name__ == "__main__":
