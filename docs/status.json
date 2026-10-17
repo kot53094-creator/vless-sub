@@ -1,0 +1,40 @@
+{
+  "built_at": "2026-10-17T19:07:11+00:00",
+  "configs": 800,
+  "reachable_total": 877,
+  "configs_all": 1459,
+  "probe_degraded": false,
+  "duplicates_removed": 13,
+  "protocols": {
+    "vless": 800
+  },
+  "allowed_protocols": [
+    "vless"
+  ],
+  "max_configs": 800,
+  "previous_configs": 800,
+  "probe": "tcp/tls handshake",
+  "sources": [
+    {
+      "name": "raw.githubusercontent.com/mehrtat/vless-collector/main/vless.txt",
+      "ok": true,
+      "seen": 314,
+      "kept": 305,
+      "error": ""
+    },
+    {
+      "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
+      "ok": true,
+      "seen": 50,
+      "kept": 47,
+      "error": ""
+    },
+    {
+      "name": "raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/",
+      "ok": true,
+      "seen": 2001,
+      "kept": 1135,
+      "error": ""
+    }
+  ]
+}

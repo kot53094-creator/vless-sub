@@ -1,0 +1,18 @@
+# Источники публичных конфигураций. Один URL на строку, строки с "#" игнорируются.
+# Формат файла-источника определяется автоматически: plain text, base64 или JSON (Xray).
+# Сборщик только скачивает данные. Код и скрипты из этих репозиториев не выполняются.
+
+# Проверено 2026-10-18.
+# mehrtat/vless-collector — обновление ежечасно, каждый узел прогоняется через xray
+# (generate_204), публикуется только то, что реально пропустило трафик.
+https://raw.githubusercontent.com/mehrtat/vless-collector/main/vless.txt
+
+# trikiman/vlessfilter — top-3 на страну, двухступенчатый тест (alive + speedtest),
+# отдельно стабильные и «плавающие» выходы. Здесь только VLESS.
+https://raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt
+
+# morpheusadam/v2ray-config — курированный бандл (2000 конфигов, смешанные протоколы),
+# отфильтрован по score источников. VLESS внутри отбирается валидатором.
+# ВНИМАНИЕ: proxies/all.txt в этом репозитории сейчас содержит только socks/http — не VLESS,
+# поэтому он сознательно не используется.
+https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/best.txt
