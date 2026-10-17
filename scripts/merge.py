@@ -39,6 +39,8 @@ from collections import Counter
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, unquote, urlsplit
 
+import xray_check
+
 UA = "v2rayNG/1.9.16"
 MAX_SOURCE_BYTES = 16 * 1024 * 1024
 UUID_RE = re.compile(
@@ -265,6 +267,7 @@ def validate_uri(uri: str, allowed: set[str]) -> dict | None:
     params = _query(parts)
     record: dict = {
         "uri": uri,
+        "auth": userinfo,          # never printed; needed to run the config
         "proto": scheme,
         "host": host.lower(),
         "port": port,
@@ -329,6 +332,7 @@ def validate_uri(uri: str, allowed: set[str]) -> dict | None:
         if not isinstance(blob, dict) or not blob.get("id") or not blob.get("add"):
             raise Bad("incomplete vmess")
         record.update(host=str(blob["add"]).lower(), port=int(blob.get("port") or 0),
+                      auth=str(blob["id"]),
                       security=str(blob.get("tls") or "none").lower(),
                       network=str(blob.get("net") or "tcp").lower(),
                       sni=str(blob.get("sni") or blob.get("host") or "").lower(),
@@ -455,15 +459,22 @@ def write_atomic(path: str, content: str) -> None:
     os.replace(tmp, path)
 
 
-def     render_index(total: int, all_total: int, built: str, sources: list[dict], degraded: bool) -> str:
+def     render_index(total: int, all_total: int, built: str, sources: list[dict],
+                 degraded: bool, deep: dict) -> str:
     rows = "\n".join(
         f"<tr><td>{'ok' if s['ok'] else 'fail'}</td>"
         f"<td>{(s['name'] if s['ok'] else (s['name'] + ' — ' + str(s.get('error',''))[:80]))}</td>"
         f"<td>{s['kept']}</td><td>{s['seen']}</td></tr>"
         for s in sources
     )
-    note = ("<p style='color:#b00'><b>Внимание:</b> проверка доступности не дала результата "
-            "(возможно, сеть сборщика ограничена). Опубликован непроверенный список.</p>"
+    if deep.get("available"):
+        deep_line = (f"Проверено прогоном трафика через Xray {deep.get('version', '')}: "
+                     f"{deep.get('passed', 0)} из {deep.get('checked', 0)} конфигов реально "
+                     f"пропустили HTTP-запрос.")
+    else:
+        deep_line = (f"Прогон трафика недоступен ({deep.get('reason', 'n/a')}) — "
+                     f"список основан только на TCP/TLS-ответе.")
+    note = ("<p style='color:#b00'><b>Внимание:</b> список получился коротким.</p>"
             if degraded else "")
     return f"""<!doctype html>
 <html lang="ru"><head><meta charset="utf-8">
@@ -481,13 +492,13 @@ td,th{{border-bottom:1px solid #e5e5e5;padding:6px 8px;text-align:left}}
 <p>Ссылка для v2rayNG:</p>
 <p><code>sub.txt</code> — <a href="sub.txt">скачать / вставить в клиент</a></p>
 <ul>
-<li><b>sub.txt</b> — конфиги, ответившие на проверку TCP/TLS, {total}</li>
+<li><b>sub.txt</b> — рабочие конфиги, {total}</li>
 <li><b>sub-plain.txt</b> — тот же список текстом</li>
 <li><b>sub-all.txt</b> — все валидные конфиги, включая непроверенные, {all_total}</li>
 <li><b>status.json</b> — состояние источников</li>
 </ul>
-<p class="muted">Сборка: {built}. Проверка доступности = TCP/TLS-ответ узла, это не гарантия,
-что прокси пропускает трафик. Конфиги принадлежат третьим лицам.</p>
+<p class="muted">Сборка: {built}. {deep_line} Конфиги принадлежат третьим лицам,
+их работа из вашей сети не гарантируется.</p>
 <table><tr><th>источник</th><th>в подписке</th><th>получено</th></tr>{rows}</table>
 </body></html>
 """
@@ -511,6 +522,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--max-per-host", type=int, default=int(os.getenv("MAX_PER_HOST", "4")))
     ap.add_argument("--allow-protocols", default=os.getenv("ALLOW_PROTOCOLS", "vless"))
     ap.add_argument("--no-probe", action="store_true", help="skip reachability probe")
+    ap.add_argument("--no-deep", action="store_true",
+                    help="skip the Xray traffic test (nothing is proven to work then)")
+    ap.add_argument("--deep-workers", type=int, default=int(os.getenv("DEEP_WORKERS", "16")))
+    ap.add_argument("--deep-timeout", type=float, default=float(os.getenv("DEEP_TIMEOUT", "5")))
+    ap.add_argument("--deep-limit", type=int, default=int(os.getenv("DEEP_LIMIT", "900")),
+                    help="cap how many configs get the traffic test (0 = all reachable)")
     ap.add_argument("--force", action="store_true", help="publish even if the result shrank")
     ap.add_argument("--dry-run", action="store_true", help="print stats, write nothing")
     ap.add_argument("--no-publish-commit", action="store_true",
@@ -552,18 +569,25 @@ def main(argv: list[str]) -> int:
           f"protocols={sorted(allowed)}")
 
     sources = load_sources(args.sources)
-    private_url = (os.getenv("PRIVATE_SUB_URL") or "").strip()
+    private_raw = (os.getenv("PRIVATE_SUB_URL") or "").strip()
     include_private = (os.getenv("INCLUDE_PRIVATE") or "").strip().lower() in {"1", "true", "yes"}
-    if private_url and include_private:
-        sources.append({"url": private_url, "name": "private-subscription", "private": True})
-        print("[build] private source: enabled (content will be PUBLIC in the result)")
-    elif private_url:
-        print("[build] private source: present but INCLUDE_PRIVATE is not set -> skipped")
+    # Several private subscriptions may be listed in one secret, separated by
+    # comma, space or newline.
+    private_urls = [u for u in re.split(r"[,\s]+", private_raw) if u]
+    if private_urls and include_private:
+        for index, url in enumerate(private_urls, 1):
+            sources.append({"url": url, "name": f"private-{index}", "private": True,
+                            "label": f"<private-{index}>"})
+        print(f"[build] private sources: {len(private_urls)} enabled "
+              f"(their content will be PUBLIC in the result)")
+    elif private_urls:
+        print(f"[build] private sources: {len(private_urls)} configured but "
+              f"INCLUDE_PRIVATE is not set -> skipped")
 
     all_records: list[dict] = []
     status: list[dict] = []
     for src in sources:
-        entry = {"name": ("<private>" if src["private"] else src["name"]),
+        entry = {"name": (src.get("label") or "<private>") if src["private"] else src["name"],
                  "ok": False, "seen": 0, "kept": 0, "error": ""}
         try:
             text = fetch_text(src["url"], timeout=args.timeout)
@@ -650,18 +674,63 @@ def main(argv: list[str]) -> int:
         print(f"[probe] reachable {alive}/{len(records)} "
               f"in {time.perf_counter() - t0:.1f}s")
 
+    # ---- deep check: push real HTTP traffic through every candidate ---------
+    deep = {"available": False, "reason": "disabled", "checked": 0, "passed": 0}
+    deep_enabled = (not args.no_deep) and (
+        os.getenv("DEEP_TEST", "1").strip().lower() not in {"0", "false", "no"}
+    )
+    if deep_enabled and not args.no_probe:
+        subset = [r for r in records if r["reachable"]]
+        # Fair order: own nodes first, then a stable shuffle. Sorting by TCP latency
+        # would spend the whole budget on CDN edges that answer the handshake and
+        # then drop the tunnel -- exactly the configs this stage must get rid of.
+        subset.sort(key=lambda r: (0 if r.get("from_private") else 1,
+                                   hashlib.sha1(r["fingerprint"].encode()).hexdigest()))
+        if args.deep_limit:
+            subset = subset[: args.deep_limit]
+        print(f"[deep] traffic test for {len(subset)} configs "
+              f"(xray {xray_check.XRAY_VERSION}, {args.deep_workers} workers)")
+        deep = xray_check.run_deep_check(
+            subset, workers=args.deep_workers, timeout=args.deep_timeout
+        )
+        if deep["available"]:
+            print(f"[deep] passed {deep['passed']}/{deep['checked']} "
+                  f"in {deep.get('seconds', 0)}s")
+        else:
+            print(f"[deep] UNAVAILABLE ({deep['reason']}) -> falling back to TCP results")
+    elif not deep_enabled:
+        print("[deep] disabled by request")
+
+    for rec in records:
+        rec.setdefault("deep_ok", None)
+        rec.setdefault("deep_latency_ms", None)
+
     # ---- ordering ----------------------------------------------------------
+    def tier(rec: dict) -> int:
+        if rec.get("deep_ok") is True:
+            return 0          # traffic actually passed through the node
+        if rec["reachable"]:
+            return 1          # answered the handshake, not proven to work
+        if rec.get("deep_ok") is False:
+            return 3          # tested and failed -> keep them last
+        return 2              # never answered the handshake
+
     def rank(rec: dict) -> tuple:
-        reach = 0 if rec["reachable"] else 1
         # own subscription first: it must never be pushed out by the 800-item cap
         prio = 0 if rec.get("from_private") else 1
+        dlat = rec["deep_latency_ms"] if rec.get("deep_latency_ms") is not None else 9e9
         lat = rec["latency_ms"] if rec["latency_ms"] is not None else 9e9
-        return (reach, prio, lat, rec["host"])
+        return (tier(rec), prio, dlat, lat, rec["host"])
 
     records.sort(key=rank)
+    working = [r for r in records if r.get("deep_ok") is True]
     reachable = [r for r in records if r["reachable"]]
     degraded = False
-    if len(reachable) >= args.min_configs:
+    if deep["available"]:
+        # Only nodes that carried traffic are published; a small list is fine.
+        selected = working[: args.max_configs]
+        degraded = len(selected) < args.min_configs
+    elif len(reachable) >= args.min_configs:
         selected = reachable[: args.max_configs]
     else:
         # Probe gave nothing usable (network blocked in CI?) -> publish everything,
@@ -673,7 +742,12 @@ def main(argv: list[str]) -> int:
     # ---- safety gate -------------------------------------------------------
     prev_count = count_uris(args.prev) if os.path.exists(args.prev) else 0
     reason = ""
-    if len(selected) < args.min_configs:
+    if deep["available"]:
+        # A large drop is the whole point here: dead nodes were removed on purpose,
+        # so the 50% rule would block every successful cleanup.
+        if len(selected) < 5:
+            reason = f"traffic test left {len(selected)} working config(s)"
+    elif len(selected) < args.min_configs:
         reason = f"only {len(selected)} configs (min {args.min_configs})"
     elif prev_count and len(selected) < prev_count * 0.5:
         reason = f"count dropped {prev_count} -> {len(selected)} (<50%)"
@@ -683,7 +757,9 @@ def main(argv: list[str]) -> int:
     if reason:
         print(f"[guard] WARNING: {reason}; --force given, publishing anyway")
 
-    if degraded and not args.no_probe:
+    if degraded and deep["available"]:
+        print(f"[deep] WARNING: only {len(selected)} configs passed; list is short")
+    elif degraded and not args.no_probe:
         print("[probe] WARNING: nothing answered the probe; publishing the full list")
 
     payload = "\n".join(r["uri"] for r in selected) + "\n"
@@ -709,9 +785,11 @@ def main(argv: list[str]) -> int:
     meta = {
         "built_at": started_wall.isoformat(timespec="seconds"),
         "configs": len(selected),
+        "working_total": len(working),
         "reachable_total": len(reachable),
         "configs_all": len(everything),
         "probe_degraded": degraded,
+        "deep_test": deep,
         "duplicates_removed": dups,
         "protocols": dict(by_proto),
         "allowed_protocols": sorted(allowed),
@@ -724,9 +802,11 @@ def main(argv: list[str]) -> int:
                  json.dumps(meta, ensure_ascii=False, indent=2) + "\n")
     write_atomic(os.path.join(args.out, "index.html"),
                  render_index(len(selected), len(everything),
-                              meta["built_at"], status, degraded))
-    print(f"[done] published {len(selected)} probed configs + {len(everything)} total, "
-          f"{len(payload)} bytes -> {args.out}")
+                              meta["built_at"], status, degraded, deep))
+    verdict = (f"{len(working)} verified working" if deep["available"]
+               else "not traffic-tested")
+    print(f"[done] published {len(selected)} configs ({verdict}) "
+          f"+ {len(everything)} total, {len(payload)} bytes -> {args.out}")
 
     if os.getenv("GITHUB_ACTIONS") == "true" and not args.no_publish_commit:
         publish_commit(args.out)
