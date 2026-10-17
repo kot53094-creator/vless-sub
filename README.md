@@ -114,12 +114,12 @@ TCP/TLS-ответ означает «порт открыт и, для TLS, от
 
 ## Ваша личная подписка: почему она не в общей ссылке
 
-Проверено 2026-10-18. `sub.kavkazvpn.ru` отдаёт по вашему токену:
+Проверено 2026-10-18 на личной подписке автора репозитория:
 
 * `User-Agent: v2rayNG` (и `v2raytun`, `sing-box`) → JSON-массив Xray-конфигов;
 * `User-Agent: Happ` → base64-подписка;
-* заголовки: `subscription-userinfo: upload=0; download=21586676811; total=107374182400; expire=1792455564`
-  (≈20,1 ГБ из 100 ГБ, срок до 2026-10-20), `profile-title: 🔒KavkazVPN.ru`.
+* заголовки: `subscription-userinfo` (израсходовано ≈20 ГБ из 100 ГБ, срок до 2026-10-20)
+  и `profile-title` с названием сервиса.
 
 **Во всех вариантах конфиг один и тот же и он нерабочий:** VLESS-аутбаунд указывает
 на приватный адрес и порт `1` — это заглушка, а не сервер. TCP-подключение к нему,
@@ -158,7 +158,7 @@ GitHub Pages на бесплатном тарифе работает тольк�
   конвертируйте локально:
 
 ```bash
-python scripts/private_uri.py --url "https://sub.kavkazvpn.ru/TOKEN" --out local_private.txt
+python scripts/private_uri.py --url "https://<ваш-провайдер>/<TOKEN>" --out local_private.txt
 ```
 
 Файл `local_private.txt` в `.gitignore`, никуда не отправляется; импортируйте его
