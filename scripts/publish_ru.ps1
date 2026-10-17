@@ -1,4 +1,4 @@
-# Builds the subscription from THIS computer's network, keeps only configs that
+﻿# Builds the subscription from THIS computer's network, keeps only configs that
 # actually carried traffic, publishes the result as docs/sub-ru.txt and asks
 # GitHub Actions to redeploy the site.
 #
@@ -37,17 +37,22 @@ $status = Get-Content build_ru\status.json -Raw | ConvertFrom-Json
 Write-Host ("Рабочих узлов: {0} (проверено {1})" -f $status.configs, $status.deep_test.checked) -ForegroundColor Green
 
 Write-Host "== 3/4 Коммит ==" -ForegroundColor Cyan
-git add docs\sub-ru.txt docs\sub-ru-plain.txt docs\status-ru.json
-git -c user.name="local-build" -c user.email="local-build@users.noreply.github.com" commit -m "chore: refresh RU-verified list"
-$committed = ($LASTEXITCODE -eq 0)
+$committed = $false
+for ($attempt = 1; $attempt -le 3; $attempt++) {
+    git fetch --quiet origin main
+    git reset --quiet origin/main
+    git add docs\sub-ru.txt docs\sub-ru-plain.txt docs\status-ru.json
+    git diff --staged --quiet
+    if ($LASTEXITCODE -eq 0) { break }   # изменений нет
+    git -c user.name="local-build" -c user.email="local-build@users.noreply.github.com" commit --quiet -m "chore: refresh RU-verified list"
+    git push --quiet
+    if ($LASTEXITCODE -eq 0) { $committed = $true; break }
+    Write-Host "push не прошёл (попытка $attempt), повторяю" -ForegroundColor Yellow
+    Start-Sleep -Seconds 5
+}
 
 if ($committed) {
     Write-Host "== 4/4 Публикация ==" -ForegroundColor Cyan
-    git push
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "git push не прошёл. Выполните один раз: gh auth setup-git" -ForegroundColor Yellow
-        exit 1
-    }
     # Pages публикуется только из workflow, поэтому просим его пересобрать сайт.
     gh workflow run update.yml
     Write-Host "Готово. Сайт обновится через несколько минут: подписка sub-ru.txt" -ForegroundColor Green
