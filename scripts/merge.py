@@ -518,6 +518,20 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return ap.parse_args(argv)
 
 
+def scrub(text: str, src: dict) -> str:
+    """Remove the private URL and its token from an error message before logging."""
+    text = str(text)
+    if not src.get("private"):
+        return text[:160]
+    url = src["url"]
+    token = url.rstrip("/").rsplit("/", 1)[-1]
+    host = url.split("://", 1)[-1].split("/", 1)[0]
+    for part in (url, token, host):
+        if part:
+            text = text.replace(part, "<private>")
+    return text[:160]
+
+
 def load_sources(path: str) -> list[dict]:
     items: list[dict] = []
     with open(path, "r", encoding="utf-8-sig") as fh:
@@ -573,6 +587,7 @@ def main(argv: list[str]) -> int:
                     reasons["other protocol"] += 1
                     continue
                 rec["origin"] = entry["name"]
+                rec["from_private"] = bool(src["private"])
                 all_records.append(rec)
                 kept += 1
             entry.update(ok=True, seen=seen, kept=kept)
@@ -580,10 +595,10 @@ def main(argv: list[str]) -> int:
             print(f"[source] ok kept={kept}/{seen} {entry['name'][:60]}"
                   + (f" (dropped {top})" if top else ""))
         except FetchError as exc:
-            entry["error"] = str(exc)[:160]
+            entry["error"] = scrub(str(exc), src)
             print(f"[source] FAIL {entry['name'][:60]} -> {entry['error'][:90]}")
         except Exception as exc:                          # noqa: BLE001
-            entry["error"] = f"{type(exc).__name__}: {exc}"[:160]
+            entry["error"] = scrub(f"{type(exc).__name__}: {exc}", src)
             print(f"[source] FAIL {entry['name'][:60]} -> {entry['error'][:90]}")
         status.append(entry)
 
@@ -603,6 +618,9 @@ def main(argv: list[str]) -> int:
         exact.add(rec["uri"])
         if rec["fingerprint"] in uniq:
             dups += 1
+            # a node that is also in the private subscription keeps its priority
+            if rec.get("from_private"):
+                uniq[rec["fingerprint"]]["from_private"] = True
             continue
         uniq[rec["fingerprint"]] = rec
     records = list(uniq.values())
@@ -635,8 +653,10 @@ def main(argv: list[str]) -> int:
     # ---- ordering ----------------------------------------------------------
     def rank(rec: dict) -> tuple:
         reach = 0 if rec["reachable"] else 1
+        # own subscription first: it must never be pushed out by the 800-item cap
+        prio = 0 if rec.get("from_private") else 1
         lat = rec["latency_ms"] if rec["latency_ms"] is not None else 9e9
-        return (reach, lat, rec["host"])
+        return (reach, prio, lat, rec["host"])
 
     records.sort(key=rank)
     reachable = [r for r in records if r["reachable"]]
