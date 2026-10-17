@@ -1,7 +1,7 @@
 {
-  "built_at": "2026-10-17T19:21:03+00:00",
+  "built_at": "2026-10-17T19:33:49+00:00",
   "configs": 800,
-  "reachable_total": 1179,
+  "reachable_total": 1173,
   "configs_all": 1459,
   "probe_degraded": false,
   "duplicates_removed": 13,
