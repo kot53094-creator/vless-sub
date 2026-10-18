@@ -238,8 +238,13 @@ def _query(parts) -> dict[str, str]:
     return {k.lower(): (v[-1] if v else "").strip() for k, v in q.items()}
 
 
-def validate_uri(uri: str, allowed: set[str]) -> dict | None:
-    """Return a normalised record, or None when the scheme is not wanted."""
+def validate_uri(uri: str, allowed: set[str], allow_private: bool = False) -> dict | None:
+    """Return a normalised record, or None when the scheme is not wanted.
+
+    `allow_private` is used for keys the owner wants copied verbatim: providers
+    answer a block/limit with placeholder entries on a loopback address, and
+    those must survive so the owner sees the same rows the official app shows.
+    """
     if len(uri) < 12 or len(uri) > 4096:
         raise Bad("bad length")
     if any(ord(c) < 32 for c in uri):
@@ -259,7 +264,7 @@ def validate_uri(uri: str, allowed: set[str]) -> dict | None:
         raise Bad("no host")
     if port is None or not (0 < port < 65536):
         raise Bad("bad port")
-    if is_private_host(host):
+    if is_private_host(host) and not allow_private:
         raise Bad("private/loopback host")
 
     userinfo = unquote(parts.username or "")
@@ -620,8 +625,10 @@ def parse_private(raw: str) -> list[dict]:
         url = url.strip()
         if "://" not in url:
             continue
+        # `Label!|url` copies the key verbatim: no checks, no renaming.
+        raw = label.strip().endswith("!")
         label = re.sub(r"[^A-Za-z0-9 ]", "", label).strip().upper()[:8] or label_from(url)
-        out.append({"url": url, "label": label})
+        out.append({"url": url, "label": label, "raw": raw})
     return out
 
 
@@ -658,7 +665,7 @@ def main(argv: list[str]) -> int:
     if private_urls and include_private:
         for index, item in enumerate(private_urls, 1):
             sources.append({"url": item["url"], "name": f"private-{index}", "private": True,
-                            "index": index, "label": item["label"],
+                            "index": index, "label": item["label"], "raw": item["raw"],
                             "title": f"<private-{index} {item['label']}>"})
         print(f"[build] private sources: {len(private_urls)} enabled "
               f"({', '.join(i['label'] for i in private_urls)}; "
@@ -683,7 +690,7 @@ def main(argv: list[str]) -> int:
                     continue
                 seen += 1
                 try:
-                    rec = validate_uri(line, allowed)
+                    rec = validate_uri(line, allowed, allow_private=bool(src.get("raw")))
                 except Bad as exc:
                     reasons[str(exc)] += 1
                     # Providers answer a limit / client block with placeholder
@@ -704,6 +711,7 @@ def main(argv: list[str]) -> int:
                 rec["from_private"] = bool(src["private"])
                 rec["group"] = src.get("index", 999)
                 rec["label"] = src.get("label", "FREE")
+                rec["no_prefix"] = bool(src.get("raw"))   # copy the provider's own remark
                 all_records.append(rec)
                 kept += 1
             entry.update(ok=True, seen=seen, kept=kept)
@@ -746,6 +754,9 @@ def main(argv: list[str]) -> int:
     per_host: Counter = Counter()
     capped: list[dict] = []
     for rec in records:
+        if rec["host"] in {"0.0.0.0", "::"} or rec.get("no_prefix"):
+            capped.append(rec)             # placeholders and verbatim keys are never capped
+            continue
         per_host[rec["host"]] += 1
         if per_host[rec["host"]] > args.max_per_host:
             continue
@@ -817,6 +828,9 @@ def main(argv: list[str]) -> int:
     # Brand the remark only: the #fragment is a label, every connection
     # parameter of the key stays byte-identical.
     for rec in records:
+        if rec.get("no_prefix"):
+            rec["out_uri"] = rec["uri"]        # verbatim, exactly as the provider sent it
+            continue
         prefix = f"K{rec['group']} {rec['label']}" if rec.get("from_private") else "FREE"
         old = unquote(rec["uri"].split("#", 1)[1]) if "#" in rec["uri"] else ""
         rec["out_uri"] = with_remark(rec["uri"], f"{prefix} · {old or rec['host']}")
@@ -846,7 +860,7 @@ def main(argv: list[str]) -> int:
                                 "out_uri": notice_uri(remark), "uri": remark, "host": ""})
             print(f"[notice] {src['label']}: no configs -> "
                   f"{len(stubs) or 1} placeholder(s) from the provider")
-        elif not args.no_dividers:
+        elif not args.no_dividers and not src.get("raw"):
             dividers.append({"group": src["index"], "proto": "vless", "host": "",
                              "out_uri": notice_uri(f"——— {tag} · {entry['kept']} узлов ———"),
                              "uri": "", "notice": True})
