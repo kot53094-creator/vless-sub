@@ -1,30 +1,64 @@
 <!doctype html>
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VLESS subscription</title>
+<title>Апельсинка VPN — подписка</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
-body{font:16px/1.5 system-ui,sans-serif;max-width:760px;margin:40px auto;padding:0 16px;color:#111}
-code{background:#f2f2f2;padding:2px 6px;border-radius:4px;word-break:break-all}
-table{border-collapse:collapse;width:100%;margin-top:16px;font-size:14px}
-td,th{border-bottom:1px solid #e5e5e5;padding:6px 8px;text-align:left}
-.muted{color:#666;font-size:14px}
-</style></head><body>
-<h1>VLESS subscription</h1>
+:root{--orange:#f97316;--deep:#7c2d12;--cream:#fff7ed}
+*{box-sizing:border-box}
+body{font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;margin:0;
+background:radial-gradient(1200px 600px at 10% -10%,#ffedd5 0%,#fff 55%);color:#1c1917}
+.wrap{max-width:760px;margin:0 auto;padding:56px 20px 72px}
+h1{font-weight:800;font-size:clamp(30px,6vw,46px);letter-spacing:-.02em;margin:0 0 8px}
+h1 span{color:var(--orange)}
+p.lead{color:#57534e;margin:0 0 28px;font-size:17px}
+.card{background:#fff;border:1px solid #fed7aa;border-radius:18px;padding:22px 24px;
+box-shadow:0 10px 30px rgba(249,115,22,.08);margin-bottom:18px}
+a{color:var(--orange);font-weight:600}
+code{background:var(--cream);padding:3px 8px;border-radius:7px;word-break:break-all;
+font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px}
+table{border-collapse:collapse;width:100%;margin-top:6px;font-size:14px}
+th{text-align:left;font-weight:600;color:#78716c;text-transform:uppercase;font-size:11px;
+letter-spacing:.08em;padding:6px 8px;border-bottom:2px solid #fed7aa}
+td{border-bottom:1px solid #f5f5f4;padding:7px 8px}
+.muted{color:#78716c;font-size:13px;line-height:1.6}
+.warn{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px 16px;
+border-radius:12px;font-size:14px}
+.pill{display:inline-block;background:var(--cream);border:1px solid #fed7aa;border-radius:999px;
+padding:5px 14px;font-size:13px;font-weight:600;color:var(--deep);margin:0 8px 8px 0}
+</style></head><body><div class="wrap">
+<h1>Апельсинка <span>VPN</span></h1>
+<p class="lead">Одна подписка для v2rayNG: твои ключи сверху, публичные узлы — в конце.</p>
 
-<p>Ссылка для v2rayNG:</p>
-<p><code>sub.txt</code> — <a href="sub.txt">скачать / вставить в клиент</a></p>
-<ul>
-<li><b>sub.txt</b> — рабочие конфиги, 316</li>
-<li><b>sub-plain.txt</b> — тот же список текстом</li>
-<li><b>sub-all.txt</b> — все валидные конфиги, включая непроверенные, 1580</li>
-<li><b>sub-ru.txt</b> — <a href="sub-ru.txt">список, проверенный из сети автора</a> (обновляется локальной сборкой, обычно заметно точнее для российских операторов)</li>
-<li><b>status.json</b> — состояние источников</li>
+<div class="card">
+<p style="margin:0 0 10px"><b>Ссылка для клиента</b></p>
+<p style="margin:0 0 14px"><code><a href="sub.txt">sub.txt</a></code></p>
+<ul style="margin:0;padding-left:20px;line-height:1.9">
+<li><b>sub.txt</b> — всё, что прошло проверку синтаксиса, 1200</li>
+<li><b>sub-plain.txt</b> — тот же список построчно</li>
+<li><b>sub-ru.txt</b> — <a href="sub-ru.txt">список, проверенный из сети автора</a> (обновляется локальной сборкой, точнее для российских операторов)</li>
+<li><b>status.json</b> — три уровня диагностики и состояние источников</li>
 </ul>
-<p class="muted">Сборка: 2026-10-18T04:41:53+00:00. Проверено прогоном трафика через Xray v26.3.27: 316 из 1305 конфигов реально пропустили HTTP-запрос. Конфиги принадлежат третьим лицам,
-их работа из вашей сети не гарантируется.</p>
-<table><tr><th>источник</th><th>в подписке</th><th>получено</th></tr><tr><td>ok</td><td>raw.githubusercontent.com/mehrtat/vless-collector/main/vless.txt</td><td>423</td><td>432</td></tr>
+</div>
+<div class="card">
+<p style="margin:0 0 10px"><b>Как проверялись узлы</b></p>
+<span class="pill">конфигурация корректна: 1532</span>
+<span class="pill">порт доступен: 1230</span>
+<span class="pill">VPN-соединение проверено: 252</span>
+<p class="muted" style="margin:12px 0 0">Соединение проверено прогоном трафика через Xray v26.3.27: 252 из 1230 конфигов реально пропустили HTTP-запрос. Узлы без пометки проверки стоят ниже:
+их никто не назвал мёртвыми, просто соединение не подтверждено.</p>
+</div>
+<div class="card">
+<p style="margin:0 0 6px"><b>Источники</b></p>
+<table><tr><th>источник</th><th>в подписке</th><th>получено</th></tr><tr><td>ok</td><td>raw.githubusercontent.com/mehrtat/vless-collector/main/vless.txt</td><td>366</td><td>374</td></tr>
 <tr><td>ok</td><td>raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt</td><td>47</td><td>50</td></tr>
 <tr><td>ok</td><td>raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/</td><td>1135</td><td>2001</td></tr>
-<tr><td>ok</td><td><private-1></td><td>0</td><td>4</td></tr>
-<tr><td>ok</td><td><private-2></td><td>0</td><td>1</td></tr></table>
-</body></html>
+<tr><td>ok</td><td><private-1 AIDEN></td><td>0</td><td>4</td></tr>
+<tr><td>ok</td><td><private-2 KAVKA></td><td>0</td><td>1</td></tr>
+<tr><td>ok</td><td><private-3 VLESS></td><td>7</td><td>7</td></tr></table>
+</div>
+<p class="muted">Сборка: 2026-10-18T10:31:21+00:00. Конфиги публичных источников принадлежат третьим лицам,
+их работа из вашей сети не гарантируется.</p>
+</div></body></html>

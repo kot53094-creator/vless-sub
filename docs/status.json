@@ -1,33 +1,40 @@
 {
-  "built_at": "2026-10-18T04:41:53+00:00",
-  "configs": 316,
-  "working_total": 316,
-  "reachable_total": 1305,
-  "configs_all": 1580,
+  "built_at": "2026-10-18T10:31:21+00:00",
+  "brand": "Апельсинка VPN",
+  "configs": 1200,
+  "working_total": 252,
+  "reachable_total": 1230,
+  "valid_total": 1532,
+  "tiers": {
+    "verified": 252,
+    "port_only": 978,
+    "syntax_only": 302,
+    "notices": 2
+  },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 1305,
-    "passed": 316,
-    "seconds": 135.8,
+    "checked": 1230,
+    "passed": 252,
+    "seconds": 132.6,
     "version": "v26.3.27"
   },
-  "duplicates_removed": 13,
+  "duplicates_removed": 11,
   "protocols": {
-    "vless": 316
+    "vless": 1200
   },
   "allowed_protocols": [
     "vless"
   ],
-  "max_configs": 800,
-  "previous_configs": 264,
+  "max_configs": 1200,
+  "previous_configs": 316,
   "probe": "tcp/tls handshake",
   "sources": [
     {
       "name": "raw.githubusercontent.com/mehrtat/vless-collector/main/vless.txt",
       "ok": true,
-      "seen": 432,
-      "kept": 423,
+      "seen": 374,
+      "kept": 366,
       "error": ""
     },
     {
@@ -45,17 +52,24 @@
       "error": ""
     },
     {
-      "name": "<private-1>",
+      "name": "<private-1 AIDEN>",
       "ok": true,
       "seen": 4,
       "kept": 0,
       "error": ""
     },
     {
-      "name": "<private-2>",
+      "name": "<private-2 KAVKA>",
       "ok": true,
       "seen": 1,
       "kept": 0,
+      "error": ""
+    },
+    {
+      "name": "<private-3 VLESS>",
+      "ok": true,
+      "seen": 7,
+      "kept": 7,
       "error": ""
     }
   ]
