@@ -1,13 +1,13 @@
 {
-  "built_at": "2026-10-18T12:22:44+00:00",
+  "built_at": "2026-10-18T12:26:37+00:00",
   "brand": "Апельсинка VPN",
   "configs": 1200,
-  "working_total": 341,
+  "working_total": 338,
   "reachable_total": 1370,
   "valid_total": 1670,
   "tiers": {
-    "verified": 341,
-    "port_only": 1029,
+    "verified": 338,
+    "port_only": 1032,
     "syntax_only": 300,
     "notices": 5
   },
@@ -15,8 +15,8 @@
   "deep_test": {
     "available": true,
     "checked": 1370,
-    "passed": 341,
-    "seconds": 140.3,
+    "passed": 338,
+    "seconds": 133.6,
     "version": "v26.3.27"
   },
   "duplicates_removed": 20,
@@ -41,7 +41,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 229
+      "verified": 232
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -54,7 +54,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 27
+      "verified": 26
     },
     {
       "name": "raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/",
@@ -67,7 +67,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 7
+      "verified": 6
     },
     {
       "name": "<kavkaz>",
@@ -80,7 +80,7 @@
       "order": 4,
       "quota": {},
       "provider": "",
-      "verified": 60
+      "verified": 57
     },
     {
       "name": "<private-1 AIDEN>",
@@ -111,12 +111,12 @@
       "order": 2,
       "quota": {
         "upload": 0,
-        "download": 13019851,
+        "download": 13044362,
         "total": 32212254720,
         "expire": 1792925166
       },
       "provider": "Aiden VPN",
-      "verified": 13
+      "verified": 12
     },
     {
       "name": "<private-3 VLESS>",
@@ -128,8 +128,8 @@
       "note": "",
       "order": 3,
       "quota": {
-        "upload": 5447870,
-        "download": 34724819,
+        "upload": 5905443,
+        "download": 38300618,
         "total": 0,
         "expire": 0
       },
