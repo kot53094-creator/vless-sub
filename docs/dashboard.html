@@ -19,13 +19,17 @@ padding:4px 10px;color:#9a3412}
 .bar{height:9px;background:#ffedd5;border-radius:6px;overflow:hidden;margin-bottom:8px}
 .bar span{display:block;height:100%;background:linear-gradient(90deg,#fb923c,#f97316)}
 .row{display:flex;justify-content:space-between;font-size:14px;color:#44403c;margin-top:4px}
+table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}
+th{text-align:left;color:#78716c;font-size:11px;text-transform:uppercase;
+letter-spacing:.07em;padding:6px 6px;border-bottom:2px solid #fed7aa}
+td{padding:7px 6px;border-bottom:1px solid #f5f5f4}
 .muted{color:#78716c;font-size:13px}
 .note{background:#fff7ed;border:1px dashed #fdba74;border-radius:14px;padding:16px 18px;
 font-size:14px;color:#7c2d12;margin-top:22px}
 a{color:#f97316}
 </style></head><body><div class="wrap">
 <h1>Апельсинка <span>VPN</span></h1>
-<p class="lead">Состояние подписок и ключей. Собрано: 2026-10-18T12:26:37+00:00.</p>
+<p class="lead">Состояние подписок и ключей. Собрано: 2026-10-18T12:34:23+00:00.</p>
 <p class="lead">Всего в подписке 1200 конфигов, проверено соединением 338.
 Обновление автоматически каждые 6 часов, вручную — кнопкой Run workflow.</p>
 
@@ -37,8 +41,8 @@ a{color:#f97316}
           <div class="bar"><span style="width:100%"></span></div><div class="row"><span>31,3 из 30,0 ГБ</span><span>лимит исчерпан</span></div>
           <div class="row"><span>до 23.10.2026 (5 дн.)</span></div>
           <div class="row"><span>узлов: 0, из них проверено: 0</span></div>
-          <div class="row muted">Aiden VPN</div>
-        </div>
+           <div class="row muted">Aiden VPN</div>
+         </div>
         <div class="card">
           <div class="card-head">
             <span class="tag">K2 AIDEN2</span>
@@ -46,9 +50,9 @@ a{color:#f97316}
           </div>
           <div class="bar"><span style="width:0%"></span></div><div class="row"><span>0,0 из 30,0 ГБ</span><span>0%</span></div>
           <div class="row"><span>до 25.10.2026 (6 дн.)</span></div>
-          <div class="row"><span>узлов: 14, из них проверено: 12</span></div>
-          <div class="row muted">Aiden VPN</div>
-        </div>
+          <div class="row"><span>узлов: 14, из них проверено: 13</span></div>
+           <div class="row muted">Aiden VPN</div>
+         </div>
         <div class="card">
           <div class="card-head">
             <span class="tag">K3 VLESS</span>
@@ -56,9 +60,9 @@ a{color:#f97316}
           </div>
           <div class="row"><span>трафик не измеряется</span></div>
           <div class="row"><span>срок не указан</span></div>
-          <div class="row"><span>узлов: 7, из них проверено: 5</span></div>
-          <div class="row muted"></div>
-        </div>
+          <div class="row"><span>узлов: 7, из них проверено: 4</span></div>
+           <div class="row muted"></div>
+         </div>
         <div class="card">
           <div class="card-head">
             <span class="tag">K4 KAVKAZ</span>
@@ -66,9 +70,9 @@ a{color:#f97316}
           </div>
           <div class="row"><span>трафик не измеряется</span></div>
           <div class="row"><span>срок не указан</span></div>
-          <div class="row"><span>узлов: 155, из них проверено: 57</span></div>
-          <div class="row muted"></div>
-        </div>
+          <div class="row"><span>узлов: 77, из них проверено: 61</span></div>
+           <div class="row muted"></div>
+         </div>
         <div class="card">
           <div class="card-head">
             <span class="tag">K5 MEDUSA</span>
@@ -77,13 +81,14 @@ a{color:#f97316}
           <div class="bar"><span style="width:0%"></span></div><div class="row"><span>0,0 из 250,0 ГБ</span><span>0%</span></div>
           <div class="row" style='color:#b91c1c'><span>до 21.10.2026 (2 дн.)</span></div>
           <div class="row"><span>узлов: 0, из них проверено: 0</span></div>
-          <div class="row muted">макс 3 устройства</div>
-        </div>
+           <div class="row muted">макс 3 устройства</div>
+         </div>
+<div class='note'><b>Учёт устройств не подключён.</b> Чтобы видеть, какое устройство и когда забирало подписку, разверните посредник: запустите <code>deploy_worker.cmd</code> (бесплатный Cloudflare Workers), он запишет адрес в <code>configs/worker.txt</code>, и здесь появится таблица.</div>
 <div class="note">
-<b>Про устройства.</b> Подписка — это обычный файл на GitHub Pages, у него нет сервера,
-который видел бы подключения, поэтому «какое устройство и когда» показать нельзя.
-Здесь видно то, что реально сообщают провайдеры: остаток трафика и срок действия каждого
-ключа, а также когда мы последний раз успешно его проверяли.
+<b>Про устройства.</b> Сам по себе файл подписки не логирует обращения — GitHub Pages
+не отдаёт журналы. Учёт появляется только если устройство забирает подписку через
+посредника <code>/s/&lt;имя&gt;</code>: тогда видны метка устройства, время и страна,
+без IP-адреса. Остаток трафика и сроки выше — из заголовков самих провайдеров.
 </div>
 <p class="muted" style="margin-top:18px">
 <a href="./">На главную</a> · <a href="sub.txt">sub.txt</a> ·

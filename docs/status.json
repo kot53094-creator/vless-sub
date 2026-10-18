@@ -1,25 +1,25 @@
 {
-  "built_at": "2026-10-18T12:26:37+00:00",
+  "built_at": "2026-10-18T12:34:23+00:00",
   "brand": "Апельсинка VPN",
   "configs": 1200,
   "working_total": 338,
-  "reachable_total": 1370,
-  "valid_total": 1670,
+  "reachable_total": 1312,
+  "valid_total": 1602,
   "tiers": {
     "verified": 338,
-    "port_only": 1032,
-    "syntax_only": 300,
+    "port_only": 974,
+    "syntax_only": 290,
     "notices": 5
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 1370,
+    "checked": 1312,
     "passed": 338,
-    "seconds": 133.6,
+    "seconds": 129.0,
     "version": "v26.3.27"
   },
-  "duplicates_removed": 20,
+  "duplicates_removed": 10,
   "protocols": {
     "vless": 1200
   },
@@ -41,7 +41,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 232
+      "verified": 228
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -54,7 +54,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 26
+      "verified": 27
     },
     {
       "name": "raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/",
@@ -67,20 +67,20 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 6
+      "verified": 5
     },
     {
       "name": "<kavkaz>",
       "ok": true,
-      "seen": 155,
-      "kept": 155,
+      "seen": 77,
+      "kept": 77,
       "error": "",
       "label": "KAVKAZ",
       "note": "",
       "order": 4,
       "quota": {},
       "provider": "",
-      "verified": 57
+      "verified": 61
     },
     {
       "name": "<private-1 AIDEN>",
@@ -111,12 +111,12 @@
       "order": 2,
       "quota": {
         "upload": 0,
-        "download": 13044362,
+        "download": 13067084,
         "total": 32212254720,
         "expire": 1792925166
       },
       "provider": "Aiden VPN",
-      "verified": 12
+      "verified": 13
     },
     {
       "name": "<private-3 VLESS>",
@@ -128,13 +128,13 @@
       "note": "",
       "order": 3,
       "quota": {
-        "upload": 5905443,
-        "download": 38300618,
+        "upload": 6531422,
+        "download": 42772779,
         "total": 0,
         "expire": 0
       },
       "provider": "",
-      "verified": 5
+      "verified": 4
     },
     {
       "name": "<private-4 MEDUSA>",
