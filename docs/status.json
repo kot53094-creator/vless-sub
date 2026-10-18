@@ -1,22 +1,22 @@
 {
-  "built_at": "2026-10-18T13:40:45+00:00",
+  "built_at": "2026-10-18T13:51:21+00:00",
   "brand": "Апельсинка VPN",
   "configs": 1200,
-  "working_total": 334,
-  "reachable_total": 1312,
+  "working_total": 333,
+  "reachable_total": 1303,
   "valid_total": 1602,
   "tiers": {
-    "verified": 334,
-    "port_only": 978,
-    "syntax_only": 290,
+    "verified": 333,
+    "port_only": 970,
+    "syntax_only": 299,
     "notices": 5
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 1312,
-    "passed": 334,
-    "seconds": 135.9,
+    "checked": 1303,
+    "passed": 333,
+    "seconds": 128.5,
     "version": "v26.3.27"
   },
   "duplicates_removed": 10,
@@ -41,7 +41,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 224
+      "verified": 220
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -54,7 +54,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 28
+      "verified": 26
     },
     {
       "name": "raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/",
@@ -67,7 +67,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 6
+      "verified": 7
     },
     {
       "name": "<kavkaz>",
@@ -80,7 +80,7 @@
       "order": 4,
       "quota": {},
       "provider": "",
-      "verified": 58
+      "verified": 62
     },
     {
       "name": "<private-1 AIDEN>",
@@ -111,7 +111,7 @@
       "order": 2,
       "quota": {
         "upload": 0,
-        "download": 253403142,
+        "download": 521601596,
         "total": 32212254720,
         "expire": 1792925166
       },
@@ -128,8 +128,8 @@
       "note": "ещё 5 дней",
       "order": 3,
       "quota": {
-        "upload": 14164640,
-        "download": 88485555,
+        "upload": 14585611,
+        "download": 90783635,
         "total": 0,
         "expire": 0
       },
@@ -152,6 +152,78 @@
         "expire": 1792585615
       },
       "provider": "MedusaVPN",
+      "verified": 0
+    },
+    {
+      "name": "<private-5 KAVKAZ1>",
+      "ok": true,
+      "seen": 1,
+      "kept": 0,
+      "error": "",
+      "label": "KAVKAZ1",
+      "note": "",
+      "order": 6,
+      "quota": {
+        "upload": 0,
+        "download": 25753852945,
+        "total": 107374182400,
+        "expire": 1792455564
+      },
+      "provider": "🔐KavkazVPN.ru",
+      "verified": 0
+    },
+    {
+      "name": "<private-6 KAVKAZ2>",
+      "ok": true,
+      "seen": 1,
+      "kept": 0,
+      "error": "",
+      "label": "KAVKAZ2",
+      "note": "",
+      "order": 7,
+      "quota": {
+        "upload": 0,
+        "download": 0,
+        "total": 107374182400,
+        "expire": 1792698344
+      },
+      "provider": "🔐KavkazVPN.ru",
+      "verified": 0
+    },
+    {
+      "name": "<private-7 KAVKAZ3>",
+      "ok": true,
+      "seen": 1,
+      "kept": 0,
+      "error": "",
+      "label": "KAVKAZ3",
+      "note": "",
+      "order": 8,
+      "quota": {
+        "upload": 0,
+        "download": 0,
+        "total": 10737418240,
+        "expire": 1792753787
+      },
+      "provider": "🔐KavkazVPN.ru",
+      "verified": 0
+    },
+    {
+      "name": "<private-8 HAPP>",
+      "ok": true,
+      "seen": 1,
+      "kept": 0,
+      "error": "",
+      "label": "HAPP",
+      "note": "",
+      "order": 9,
+      "quota": {
+        "upload": 0,
+        "download": 0,
+        "total": 107374182400,
+        "expire": 1792698344
+      },
+      "provider": "🔐KavkazVPN.ru",
       "verified": 0
     }
   ]
