@@ -48,6 +48,9 @@ padding:6px 9px}
 .dot{width:9px;height:9px;border-radius:50%}
 .dot.on{background:#22c55e;box-shadow:0 0 0 4px #dcfce7}
 .dot.off{background:#d6d3d1}
+.dot.ban{background:#ef4444;box-shadow:0 0 0 4px #fee2e2}
+.dev.off{opacity:.72}
+.dev-row.blocked{color:#b91c1c;font-weight:600}
 .dev-row{font-size:13px;color:#44403c;margin-top:4px}
 .chip{display:inline-block;background:#fff7ed;border:1px solid var(--line);border-radius:999px;
 font-size:11.5px;padding:2px 8px;margin-right:6px}
@@ -63,14 +66,14 @@ font:inherit;font-size:12px;padding:3px 9px;cursor:pointer}
 <div class="top"><div class="wrap">
   <div class="brand"><span class="mark">●</span>Апельсинка VPN</div>
   <h1>Панель подписки</h1>
-  <div class="sub">Обновлено 2026-10-18T12:57:45+00:00 · пересборка каждые 6 часов</div>
+  <div class="sub">Обновлено 2026-10-18T13:11:56+00:00 · пересборка каждые 6 часов</div>
 </div></div>
 
 <div class="wrap">
   <div class="tiles">
     <div class="tile"><div class="n" id="dev-count">—</div><div class="l">устройств</div></div>
     <div class="tile"><div class="n">3</div><div class="l">ключей активно</div></div>
-    <div class="tile"><div class="n">335</div><div class="l">узлов проверено</div></div>
+    <div class="tile"><div class="n">330</div><div class="l">узлов проверено</div></div>
     <div class="tile"><div class="n">1200</div><div class="l">конфигов в подписке</div></div>
   </div>
 
@@ -82,6 +85,7 @@ font:inherit;font-size:12px;padding:3px 9px;cursor:pointer}
     <div class="hint">Подписка для устройства:
       <code id="dev-url">https://apelsinka-vpn.twistx-launcher.workers.dev/s/&lt;имя&gt;</code>
       <button class="copy" onclick="copyText('https://apelsinka-vpn.twistx-launcher.workers.dev/s/phone')">скопировать</button>
+      · <a href="https://apelsinka-vpn.twistx-launcher.workers.dev/admin" target="_blank">отвязать устройство</a>
     </div>
     <script>
     const WORKER = 'https://apelsinka-vpn.twistx-launcher.workers.dev';
@@ -114,10 +118,11 @@ font:inherit;font-size:12px;padding:3px 9px;cursor:pointer}
           return;
         }
         grid.innerHTML = list.map(d => {
-          const online = Date.now() - new Date(d.last_seen).getTime() < 15 * 60000;
-          return '<div class="dev">' +
+          const online = !d.blocked && Date.now() - new Date(d.last_seen).getTime() < 15 * 60000;
+          return '<div class="dev' + (d.blocked ? ' off' : '') + '">' +
             '<div class="dev-top"><span class="dev-name">' + esc(d.device) + '</span>' +
-            '<span class="dot ' + (online ? 'on' : 'off') + '"></span></div>' +
+            '<span class="dot ' + (d.blocked ? 'ban' : online ? 'on' : 'off') + '"></span></div>' +
+            (d.blocked ? '<div class="dev-row blocked">отвязано — подписка не выдаётся</div>' : '') +
             '<div class="dev-row">последний раз: ' + fmt(d.last_seen) + '</div>' +
             '<div class="dev-row muted">первый раз: ' + fmt(d.first_seen) + '</div>' +
             '<div class="dev-row"><span class="chip">' + (d.country || "—") + '</span>' +
@@ -152,7 +157,7 @@ font:inherit;font-size:12px;padding:3px 9px;cursor:pointer}
           <span class="tag">K2<span class="sep">·</span>AIDEN2</span>
           <span class="badge ok">работает</span>
         </div>
-        <div class="bar"><span style="width:0%"></span></div><div class="row"><span>0,0 из 30,0 ГБ</span><span>0%</span></div>
+        <div class="bar"><span style="width:0%"></span></div><div class="row"><span>0,1 из 30,0 ГБ</span><span>0%</span></div>
         <div class="row"><span>до 25.10.2026 · 6 дн.</span></div>
         <div class="row"><span>узлов <b>14</b></span>
           <span class="muted">проверено 13</span></div>
@@ -166,8 +171,8 @@ font:inherit;font-size:12px;padding:3px 9px;cursor:pointer}
         <div class="row"><span>трафик не измеряется</span></div>
         <div class="row"><span>бессрочно</span></div>
         <div class="row"><span>узлов <b>7</b></span>
-          <span class="muted">проверено 4</span></div>
-        
+          <span class="muted">проверено 5</span></div>
+        <div class="note">ещё 5 дней</div>
       </div>
       <div class="card">
         <div class="card-head">
@@ -177,8 +182,8 @@ font:inherit;font-size:12px;padding:3px 9px;cursor:pointer}
         <div class="row"><span>трафик не измеряется</span></div>
         <div class="row"><span>бессрочно</span></div>
         <div class="row"><span>узлов <b>77</b></span>
-          <span class="muted">проверено 57</span></div>
-        
+          <span class="muted">проверено 58</span></div>
+        <div class="note">до 23.10</div>
       </div>
       <div class="card">
         <div class="card-head">
