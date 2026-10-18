@@ -36,12 +36,15 @@ import urllib.error
 import urllib.request
 from collections import Counter
 from datetime import datetime, timezone
-from urllib.parse import parse_qs, unquote, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 import xray_check
 
 UA = "v2rayNG/1.9.16"
 MAX_SOURCE_BYTES = 16 * 1024 * 1024
+# One colour per key so blocks stay readable in the client list.
+KEY_COLORS = ("🟠", "🔵", "🟣", "🟢", "🟡", "🔴", "🟤", "⚫")
+FREE_COLOR = "⚪"
 UUID_RE = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
     r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
@@ -464,7 +467,8 @@ def write_atomic(path: str, content: str) -> None:
 
 
 def render_index(total: int, tiers: dict, built: str, sources: list[dict],
-                 degraded: bool, deep: dict, ru_present: bool = False) -> str:
+                 degraded: bool, deep: dict, ru_present: bool = False,
+                 site_url: str = "") -> str:
     rows = "\n".join(
         f"<tr><td>{'ok' if s['ok'] else 'fail'}</td>"
         f"<td>{(s['name'] if s['ok'] else (s['name'] + ' — ' + str(s.get('error', ''))[:80]))}</td>"
@@ -483,6 +487,18 @@ def render_index(total: int, tiers: dict, built: str, sources: list[dict],
     ru_line = ("<li><b>sub-ru.txt</b> — <a href=\"sub-ru.txt\">список, проверенный из сети "
                "автора</a> (обновляется локальной сборкой, точнее для российских операторов)</li>"
                if ru_present else "")
+
+    def install_link(file_name: str, title: str) -> str:
+        target = quote(site_url + file_name, safe="")
+        return f"v2rayng://install-sub?url={target}#{quote(title, safe='')}"
+
+    if site_url:
+        ru_btn = (f'<a class="btn" href="{install_link("sub-ru.txt", "Апельсинка VPN")}">'
+                  f'Добавить в v2rayNG</a>' if ru_present else "")
+        cloud_btn = (f'<a class="btn ghost" href="{install_link("sub.txt", "Апельсинка VPN (облако)")}">'
+                     f'Облачный список</a>')
+    else:
+        ru_btn = cloud_btn = ""
     return f"""<!doctype html>
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -511,6 +527,10 @@ td{{border-bottom:1px solid #f5f5f4;padding:7px 8px}}
 .muted{{color:#78716c;font-size:13px;line-height:1.6}}
 .warn{{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px 16px;
 border-radius:12px;font-size:14px}}
+.btns{{margin:0 0 16px}}
+.btn{{display:inline-block;background:var(--orange);color:#fff;text-decoration:none;
+padding:12px 22px;border-radius:12px;font-weight:700;margin:0 10px 10px 0}}
+.btn.ghost{{background:#fff;color:var(--orange);border:1px solid #fdba74}}
 .pill{{display:inline-block;background:var(--cream);border:1px solid #fed7aa;border-radius:999px;
 padding:5px 14px;font-size:13px;font-weight:600;color:var(--deep);margin:0 8px 8px 0}}
 </style></head><body><div class="wrap">
@@ -519,6 +539,7 @@ padding:5px 14px;font-size:13px;font-weight:600;color:var(--deep);margin:0 8px 8
 {note}
 <div class="card">
 <p style="margin:0 0 10px"><b>Ссылка для клиента</b></p>
+<p class="btns">{ru_btn}{cloud_btn}</p>
 <p style="margin:0 0 14px"><code><a href="sub.txt">sub.txt</a></code></p>
 <ul style="margin:0;padding-left:20px;line-height:1.9">
 <li><b>sub.txt</b> — всё, что прошло проверку синтаксиса, {total}</li>
@@ -562,6 +583,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--max-per-host", type=int, default=int(os.getenv("MAX_PER_HOST", "4")))
     ap.add_argument("--allow-protocols", default=os.getenv("ALLOW_PROTOCOLS", "vless"))
     ap.add_argument("--no-probe", action="store_true", help="skip reachability probe")
+    ap.add_argument("--site-url", default=os.getenv("SITE_URL",
+                    "https://kot53094-creator.github.io/vless-sub/"),
+                    help="public base URL, used to build v2rayNG install links")
     ap.add_argument("--no-dividers", action="store_true",
                     help="do not add the '--- K1 ... ---' separator entries")
     ap.add_argument("--no-deep", action="store_true",
@@ -636,6 +660,14 @@ def with_remark(uri: str, remark: str) -> str:
     """Replace only the #fragment: connection parameters stay byte-identical."""
     base = uri.split("#", 1)[0]
     return f"{base}#{remark}"
+
+
+def plural(n: int, one: str, few: str, many: str) -> str:
+    if n % 10 == 1 and n % 100 != 11:
+        return one
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return few
+    return many
 
 
 def notice_uri(remark: str) -> str:
@@ -847,6 +879,13 @@ def main(argv: list[str]) -> int:
         if not entry or not entry["ok"]:
             continue
         tag = f"K{src['index']} {src['label']}"
+        if not args.no_dividers:
+            color = KEY_COLORS[(src["index"] - 1) % len(KEY_COLORS)]
+            tail = (f"{entry['kept']} {plural(entry['kept'], 'узел', 'узла', 'узлов')}"
+                    if entry["kept"] else "нет доступа")
+            dividers.append({"group": src["index"], "proto": "vless", "host": "",
+                             "out_uri": notice_uri(f"{color} ━━━ {tag} · {tail} ━━━"),
+                             "uri": "", "notice": True})
         if entry["kept"] == 0:
             stubs = entry.get("stubs") or []
             for line in stubs:
@@ -860,10 +899,6 @@ def main(argv: list[str]) -> int:
                                 "out_uri": notice_uri(remark), "uri": remark, "host": ""})
             print(f"[notice] {src['label']}: no configs -> "
                   f"{len(stubs) or 1} placeholder(s) from the provider")
-        elif not args.no_dividers and not src.get("raw"):
-            dividers.append({"group": src["index"], "proto": "vless", "host": "",
-                             "out_uri": notice_uri(f"——— {tag} · {entry['kept']} узлов ———"),
-                             "uri": "", "notice": True})
         entry.pop("stubs", None)          # raw placeholders stay out of status.json
 
     for div in dividers:
@@ -881,7 +916,7 @@ def main(argv: list[str]) -> int:
     if free and dividers:
         ordered.append({"group": 999, "proto": "vless", "host": "", "uri": "",
                         "out_uri": notice_uri(
-                            f"——— FREE · {len(free)} публичных узлов ———")})
+                            f"{FREE_COLOR} ━━━ FREE · {len(free)} публичных узлов ━━━")})
     ordered += free
 
     working = [r for r in records if r.get("deep_ok") is True]
@@ -958,7 +993,8 @@ def main(argv: list[str]) -> int:
     write_atomic(os.path.join(args.out, "index.html"),
                  render_index(len(selected), tiers, meta["built_at"], status,
                               degraded, deep,
-                              os.path.exists(os.path.join(args.out, "sub-ru.txt"))))
+                              os.path.exists(os.path.join(args.out, "sub-ru.txt")),
+                              args.site_url))
     print(f"[done] published {len(selected)} configs "
           f"(verified {tiers['verified']}, port-only {tiers['port_only']}, "
           f"unreachable {tiers['syntax_only']}) -> {args.out}")
