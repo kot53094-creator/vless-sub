@@ -1,22 +1,22 @@
 {
-  "built_at": "2026-10-18T12:45:33+00:00",
+  "built_at": "2026-10-18T12:57:45+00:00",
   "brand": "Апельсинка VPN",
   "configs": 1200,
-  "working_total": 346,
-  "reachable_total": 1313,
+  "working_total": 335,
+  "reachable_total": 1307,
   "valid_total": 1602,
   "tiers": {
-    "verified": 346,
-    "port_only": 967,
-    "syntax_only": 289,
+    "verified": 335,
+    "port_only": 972,
+    "syntax_only": 295,
     "notices": 5
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 1313,
-    "passed": 346,
-    "seconds": 127.7,
+    "checked": 1307,
+    "passed": 335,
+    "seconds": 136.7,
     "version": "v26.3.27"
   },
   "duplicates_removed": 10,
@@ -41,7 +41,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 231
+      "verified": 227
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -80,7 +80,7 @@
       "order": 4,
       "quota": {},
       "provider": "",
-      "verified": 63
+      "verified": 57
     },
     {
       "name": "<private-1 AIDEN>",
@@ -111,7 +111,7 @@
       "order": 2,
       "quota": {
         "upload": 0,
-        "download": 13541990,
+        "download": 15230068,
         "total": 32212254720,
         "expire": 1792925166
       },
@@ -128,13 +128,13 @@
       "note": "",
       "order": 3,
       "quota": {
-        "upload": 6710276,
-        "download": 43687694,
+        "upload": 7748187,
+        "download": 50216713,
         "total": 0,
         "expire": 0
       },
       "provider": "",
-      "verified": 5
+      "verified": 4
     },
     {
       "name": "<private-4 MEDUSA>",
