@@ -109,6 +109,10 @@ def mask_url(url: str, private: bool) -> str:
 # --------------------------------------------------------------------------- #
 
 def fetch_text(url: str, timeout: float = 30.0, retries: int = 2) -> str:
+    if url.startswith("file:"):
+        path = url[5:].lstrip("/\\")
+        with open(path, "r", encoding="utf-8-sig") as fh:
+            return fh.read(MAX_SOURCE_BYTES)
     last = None
     for attempt in range(retries + 1):
         try:
@@ -622,8 +626,17 @@ def load_sources(path: str) -> list[dict]:
             line = raw.strip().lstrip("\ufeff").strip()
             if not line or line.startswith("#"):
                 continue
-            items.append({"url": line, "name": line.split("://", 1)[-1][:70],
-                          "private": False})
+            label = ""
+            target = line
+            # `LABEL|url` turns the source into its own key block (K1, K2, ...)
+            is_raw = False
+            if "|" in line and "://" not in line.split("|", 1)[0]:
+                label_raw, target = (part.strip() for part in line.split("|", 1))
+                is_raw = label_raw.endswith("!")
+                label = re.sub(r"[^A-Za-z0-9 ]", "", label_raw).upper()[:8]
+            items.append({"url": target, "name": target.split("://", 1)[-1][:70],
+                          "private": bool(label), "label": label,
+                          "raw": is_raw, "title": f"<{label.lower()}>" if label else ""})
     return items
 
 
@@ -699,6 +712,16 @@ def main(argv: list[str]) -> int:
             sources.append({"url": item["url"], "name": f"private-{index}", "private": True,
                             "index": index, "label": item["label"], "raw": item["raw"],
                             "title": f"<private-{index} {item['label']}>"})
+
+    # Labelled entries in sources.txt (e.g. `KAVKAZ|file:configs/kavkaz.txt`) become
+    # their own key blocks after the secret-provided ones.
+    next_index = max([s.get("index", 0) for s in sources] + [0]) + 1
+    for src in sources:
+        if src.get("label") and "index" not in src:
+            src["index"] = next_index
+            next_index += 1
+
+    if private_urls and include_private:
         print(f"[build] private sources: {len(private_urls)} enabled "
               f"({', '.join(i['label'] for i in private_urls)}; "
               f"their content will be PUBLIC in the result)")

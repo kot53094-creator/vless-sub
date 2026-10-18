@@ -16,3 +16,8 @@ https://raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt
 # ВНИМАНИЕ: proxies/all.txt в этом репозитории сейчас содержит только socks/http — не VLESS,
 # поэтому он сознательно не используется.
 https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/best.txt
+
+# Собственный ключ с меткой: строка "МЕТКА|URL" становится отдельным блоком
+# подписки (K1, K2, …). Префикс file: — локальный файл в репозитории.
+# KavkazVPN отдаёт конфиги только своему приложению, поэтому список снят из клиента.
+KAVKAZ|file:configs/kavkaz.txt
