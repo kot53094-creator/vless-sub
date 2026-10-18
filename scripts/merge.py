@@ -108,6 +108,51 @@ def mask_url(url: str, private: bool) -> str:
 # fetching
 # --------------------------------------------------------------------------- #
 
+def decode_title(value: str) -> str:
+    """Panels send `profile-title` either plain or as `base64:<data>`."""
+    value = value or ""
+    if value.lower().startswith("base64:"):
+        try:
+            return base64.b64decode(value[7:] + "===").decode("utf-8", "replace").strip()
+        except Exception:  # noqa: BLE001
+            return ""
+    return value.strip()
+
+
+def parse_userinfo(value: str) -> dict:
+    """`upload=0; download=1; total=2; expire=1792455564` -> dict of ints."""
+    quota: dict = {}
+    for part in (value or "").split(";"):
+        key, _, raw = part.partition("=")
+        key = key.strip().lower()
+        raw = raw.strip()
+        if key and raw.lstrip("-").isdigit():
+            quota[key] = int(raw)
+    return quota
+
+
+def fetch_meta(url: str, timeout: float = 30.0, retries: int = 2) -> tuple[str, dict]:
+    """Fetch text plus the headers the panel uses to report quota and expiry."""
+    if url.startswith("file:"):
+        return fetch_text(url), {}
+    last = None
+    for attempt in range(retries + 1):
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": UA, "Accept": "*/*", "Accept-Encoding": "identity"},
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                raw = resp.read(MAX_SOURCE_BYTES + 1)
+                headers = {k.lower(): v for k, v in resp.headers.items()}
+            return raw.decode("utf-8", "replace"), headers
+        except Exception as exc:                      # noqa: BLE001
+            last = exc
+            if attempt < retries:
+                time.sleep(1.5 * (attempt + 1))
+    raise FetchError(f"{type(last).__name__}: {last}")
+
+
 def fetch_text(url: str, timeout: float = 30.0, retries: int = 2) -> str:
     if url.startswith("file:"):
         path = url[5:].lstrip("/\\")
@@ -470,6 +515,98 @@ def write_atomic(path: str, content: str) -> None:
     os.replace(tmp, path)
 
 
+def human_gb(value: int) -> str:
+    return f"{value / 1024 ** 3:.1f}".replace(".", ",")
+
+
+def days_left(expire: int) -> tuple[str, int]:
+    if not expire:
+        return "срок не указан", 9999
+    left = int((expire - time.time()) // 86400)
+    when = datetime.fromtimestamp(expire, timezone.utc).strftime("%d.%m.%Y")
+    if left < 0:
+        return f"истекла {when}", left
+    return f"до {when} ({left} дн.)", left
+
+
+def render_dashboard(status: list[dict], built: str, total: int,
+                     tiers: dict, site_url: str) -> str:
+    cards = []
+    for entry in sorted([e for e in status if e.get("label")],
+                        key=lambda e: e.get("order") or 999):
+        quota = entry.get("quota") or {}
+        used = quota.get("upload", 0) + quota.get("download", 0)
+        total_q = quota.get("total", 0)
+        if total_q:
+            percent = min(100, round(used * 100 / total_q))
+            label = f"{percent}%" if used < total_q else "лимит исчерпан"
+            bar = (f'<div class="bar"><span style="width:{percent}%"></span></div>'
+                   f'<div class="row"><span>{human_gb(used)} из {human_gb(total_q)} ГБ</span>'
+                   f'<span>{label}</span></div>')
+        else:
+            bar = '<div class="row"><span>трафик не измеряется</span></div>'
+        expiry, left = days_left(quota.get("expire", 0))
+        warn = " style='color:#b91c1c'" if left < 3 else ""
+        verified = entry.get("verified", 0)
+        kept = entry.get("kept", 0)
+        state = "работает" if kept else ("ограничение провайдера" if entry.get("ok") else "ошибка")
+        cards.append(f"""
+        <div class="card">
+          <div class="card-head">
+            <span class="tag">K{entry.get('order', '')} {entry['label']}</span>
+            <span class="state">{state}</span>
+          </div>
+          {bar}
+          <div class="row"{warn}><span>{expiry}</span></div>
+          <div class="row"><span>узлов: {kept}, из них проверено: {verified}</span></div>
+          <div class="row muted">{entry.get('note') or entry.get('provider', '')}</div>
+        </div>""")
+
+    return f"""<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Апельсинка VPN — состояние подписки</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+body{{font-family:'Manrope',system-ui,sans-serif;margin:0;color:#1c1917;
+background:radial-gradient(900px 500px at 90% -10%,#ffedd5 0%,#fff 60%)}}
+.wrap{{max-width:820px;margin:0 auto;padding:44px 20px 60px}}
+h1{{font-size:clamp(26px,5vw,38px);font-weight:800;margin:0 0 6px}}
+h1 span{{color:#f97316}}
+p.lead{{color:#57534e;margin:0 0 24px}}
+.card{{background:#fff;border:1px solid #fed7aa;border-radius:16px;padding:18px 20px;
+margin-bottom:14px;box-shadow:0 6px 20px rgba(249,115,22,.07)}}
+.card-head{{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}}
+.tag{{font-weight:800;color:#7c2d12}}
+.state{{font-size:12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:999px;
+padding:4px 10px;color:#9a3412}}
+.bar{{height:9px;background:#ffedd5;border-radius:6px;overflow:hidden;margin-bottom:8px}}
+.bar span{{display:block;height:100%;background:linear-gradient(90deg,#fb923c,#f97316)}}
+.row{{display:flex;justify-content:space-between;font-size:14px;color:#44403c;margin-top:4px}}
+.muted{{color:#78716c;font-size:13px}}
+.note{{background:#fff7ed;border:1px dashed #fdba74;border-radius:14px;padding:16px 18px;
+font-size:14px;color:#7c2d12;margin-top:22px}}
+a{{color:#f97316}}
+</style></head><body><div class="wrap">
+<h1>Апельсинка <span>VPN</span></h1>
+<p class="lead">Состояние подписок и ключей. Собрано: {built}.</p>
+<p class="lead">Всего в подписке {total} конфигов, проверено соединением {tiers.get('verified', 0)}.
+Обновление автоматически каждые 6 часов, вручную — кнопкой Run workflow.</p>
+{''.join(cards)}
+<div class="note">
+<b>Про устройства.</b> Подписка — это обычный файл на GitHub Pages, у него нет сервера,
+который видел бы подключения, поэтому «какое устройство и когда» показать нельзя.
+Здесь видно то, что реально сообщают провайдеры: остаток трафика и срок действия каждого
+ключа, а также когда мы последний раз успешно его проверяли.
+</div>
+<p class="muted" style="margin-top:18px">
+<a href="./">На главную</a> · <a href="sub.txt">sub.txt</a> ·
+<a href="sub-ru.txt">sub-ru.txt</a> · <a href="status.json">status.json</a>
+</p>
+</div></body></html>
+"""
+
+
 def render_index(total: int, tiers: dict, built: str, sources: list[dict],
                  degraded: bool, deep: dict, ru_present: bool = False,
                  site_url: str = "") -> str:
@@ -500,7 +637,8 @@ def render_index(total: int, tiers: dict, built: str, sources: list[dict],
         ru_btn = (f'<a class="btn" href="{install_link("sub-ru.txt", "Апельсинка впн")}">'
                   f'Добавить в v2rayNG</a>' if ru_present else "")
         cloud_btn = (f'<a class="btn ghost" href="{install_link("sub.txt", "Апельсинка впн (облако)")}">'
-                     f'Облачный список</a>')
+                     f'Облачный список</a>'
+                     f'<a class="btn ghost" href="dashboard.html">Состояние ключей</a>')
     else:
         ru_btn = cloud_btn = ""
     return f"""<!doctype html>
@@ -549,6 +687,7 @@ padding:5px 14px;font-size:13px;font-weight:600;color:var(--deep);margin:0 8px 8
 <li><b>sub.txt</b> — всё, что прошло проверку синтаксиса, {total}</li>
 <li><b>sub-plain.txt</b> — тот же список построчно</li>
 {ru_line}
+<li><b><a href="dashboard.html">dashboard.html</a></b> — трафик и срок действия каждого ключа</li>
 <li><b>status.json</b> — три уровня диагностики и состояние источников</li>
 </ul>
 </div>
@@ -676,7 +815,12 @@ def parse_private(raw: str) -> list[dict]:
         out.append({"url": url, "label": label, "raw": is_raw,
                     "note": note.strip()[:40], "order": order})
 
-    for token in re.split(r"[,\n]+", raw):
+    tokens: list[str] = []
+    for chunk in re.split(r"[,\n]+", raw):
+        # a whole list joined by spaces (old format) still has one "://" per entry
+        tokens.extend(chunk.split() if chunk.count("://") > 1 else [chunk])
+
+    for token in tokens:
         token = token.strip()
         if not token:
             continue
@@ -756,9 +900,13 @@ def main(argv: list[str]) -> int:
     status: list[dict] = []
     for src in sources:
         entry = {"name": (src.get("title") or "<private>") if src["private"] else src["name"],
-                 "ok": False, "seen": 0, "kept": 0, "error": ""}
+                 "ok": False, "seen": 0, "kept": 0, "error": "",
+                 "label": src.get("label") or "", "note": src.get("note") or "",
+                 "order": src.get("index") or 0, "quota": {}, "provider": ""}
         try:
-            text = fetch_text(src["url"], timeout=args.timeout)
+            text, headers = fetch_meta(src["url"], timeout=args.timeout)
+            entry["quota"] = parse_userinfo(headers.get("subscription-userinfo", ""))
+            entry["provider"] = decode_title(headers.get("profile-title", ""))
             lines = decode_payload(text)
             seen = 0
             kept = 0
@@ -972,6 +1120,9 @@ def main(argv: list[str]) -> int:
 
     working = [r for r in records if r.get("deep_ok") is True]
     reachable = [r for r in records if r["reachable"]]
+    verified_by_origin = Counter(r["origin"] for r in working)
+    for entry in status:
+        entry["verified"] = verified_by_origin.get(entry["name"], 0)
     degraded = not deep["available"] and not args.no_probe
 
     owned_all = [r for r in ordered if r.get("from_private") or r.get("notice")]
@@ -1054,6 +1205,9 @@ def main(argv: list[str]) -> int:
                               degraded, deep,
                               os.path.exists(os.path.join(args.out, "sub-ru.txt")),
                               args.site_url))
+    write_atomic(os.path.join(args.out, "dashboard.html"),
+                 render_dashboard(status, meta["built_at"], len(selected),
+                                  tiers, args.site_url))
     print(f"[done] published {len(selected)} configs "
           f"(verified {tiers['verified']}, port-only {tiers['port_only']}, "
           f"unreachable {tiers['syntax_only']}) -> {args.out}")
