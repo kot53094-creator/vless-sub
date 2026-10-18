@@ -1,22 +1,22 @@
 {
-  "built_at": "2026-10-18T10:41:43+00:00",
+  "built_at": "2026-10-18T10:50:08+00:00",
   "brand": "Апельсинка VPN",
   "configs": 1200,
-  "working_total": 266,
-  "reachable_total": 1242,
-  "valid_total": 1532,
+  "working_total": 268,
+  "reachable_total": 1248,
+  "valid_total": 1546,
   "tiers": {
-    "verified": 266,
-    "port_only": 976,
-    "syntax_only": 290,
-    "notices": 2
+    "verified": 268,
+    "port_only": 980,
+    "syntax_only": 298,
+    "notices": 5
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 1242,
-    "passed": 266,
-    "seconds": 138.0,
+    "checked": 1248,
+    "passed": 268,
+    "seconds": 133.2,
     "version": "v26.3.27"
   },
   "duplicates_removed": 11,
@@ -59,14 +59,21 @@
       "error": ""
     },
     {
-      "name": "<private-2 KAVKA>",
+      "name": "<private-2 AIDEN2>",
+      "ok": true,
+      "seen": 14,
+      "kept": 14,
+      "error": ""
+    },
+    {
+      "name": "<private-3 KAVKAZ>",
       "ok": true,
       "seen": 1,
       "kept": 0,
       "error": ""
     },
     {
-      "name": "<private-3 VLESS>",
+      "name": "<private-4 VLESS>",
       "ok": true,
       "seen": 7,
       "kept": 7,
