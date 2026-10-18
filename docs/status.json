@@ -1,25 +1,25 @@
 {
-  "built_at": "2026-10-18T12:11:55+00:00",
+  "built_at": "2026-10-18T12:22:44+00:00",
   "brand": "Апельсинка VPN",
   "configs": 1200,
-  "working_total": 332,
-  "reachable_total": 1387,
-  "valid_total": 1691,
+  "working_total": 341,
+  "reachable_total": 1370,
+  "valid_total": 1670,
   "tiers": {
-    "verified": 332,
-    "port_only": 1055,
-    "syntax_only": 304,
+    "verified": 341,
+    "port_only": 1029,
+    "syntax_only": 300,
     "notices": 5
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 1387,
-    "passed": 332,
-    "seconds": 141.9,
+    "checked": 1370,
+    "passed": 341,
+    "seconds": 140.3,
     "version": "v26.3.27"
   },
-  "duplicates_removed": 21,
+  "duplicates_removed": 20,
   "protocols": {
     "vless": 1200
   },
@@ -33,58 +33,126 @@
     {
       "name": "raw.githubusercontent.com/mehrtat/vless-collector/main/vless.txt",
       "ok": true,
-      "seen": 374,
-      "kept": 366,
-      "error": ""
+      "seen": 343,
+      "kept": 338,
+      "error": "",
+      "label": "",
+      "note": "",
+      "order": 0,
+      "quota": {},
+      "provider": "",
+      "verified": 229
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
       "ok": true,
       "seen": 50,
       "kept": 47,
-      "error": ""
+      "error": "",
+      "label": "",
+      "note": "",
+      "order": 0,
+      "quota": {},
+      "provider": "",
+      "verified": 27
     },
     {
       "name": "raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/",
       "ok": true,
       "seen": 2001,
       "kept": 1135,
-      "error": ""
+      "error": "",
+      "label": "",
+      "note": "",
+      "order": 0,
+      "quota": {},
+      "provider": "",
+      "verified": 7
     },
     {
       "name": "<kavkaz>",
       "ok": true,
       "seen": 155,
       "kept": 155,
-      "error": ""
+      "error": "",
+      "label": "KAVKAZ",
+      "note": "",
+      "order": 4,
+      "quota": {},
+      "provider": "",
+      "verified": 60
     },
     {
       "name": "<private-1 AIDEN>",
       "ok": true,
       "seen": 4,
       "kept": 0,
-      "error": ""
+      "error": "",
+      "label": "AIDEN",
+      "note": "",
+      "order": 1,
+      "quota": {
+        "upload": 0,
+        "download": 33652267547,
+        "total": 32212254720,
+        "expire": 1792772476
+      },
+      "provider": "Aiden VPN",
+      "verified": 0
     },
     {
       "name": "<private-2 AIDEN2>",
       "ok": true,
       "seen": 14,
       "kept": 14,
-      "error": ""
+      "error": "",
+      "label": "AIDEN2",
+      "note": "",
+      "order": 2,
+      "quota": {
+        "upload": 0,
+        "download": 13019851,
+        "total": 32212254720,
+        "expire": 1792925166
+      },
+      "provider": "Aiden VPN",
+      "verified": 13
     },
     {
       "name": "<private-3 VLESS>",
       "ok": true,
       "seen": 7,
       "kept": 7,
-      "error": ""
+      "error": "",
+      "label": "VLESS",
+      "note": "",
+      "order": 3,
+      "quota": {
+        "upload": 5447870,
+        "download": 34724819,
+        "total": 0,
+        "expire": 0
+      },
+      "provider": "",
+      "verified": 5
     },
     {
       "name": "<private-4 MEDUSA>",
       "ok": true,
       "seen": 1,
       "kept": 0,
-      "error": ""
+      "error": "",
+      "label": "MEDUSA",
+      "note": "макс 3 устройства",
+      "order": 5,
+      "quota": {
+        "upload": 0,
+        "download": 0,
+        "total": 268435456000,
+        "expire": 1792585615
+      },
+      "provider": "MedusaVPN",
+      "verified": 0
     }
   ]
 }
