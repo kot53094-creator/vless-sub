@@ -29,8 +29,8 @@ font-size:14px;color:#7c2d12;margin-top:22px}
 a{color:#f97316}
 </style></head><body><div class="wrap">
 <h1>Апельсинка <span>VPN</span></h1>
-<p class="lead">Состояние подписок и ключей. Собрано: 2026-10-18T12:34:23+00:00.</p>
-<p class="lead">Всего в подписке 1200 конфигов, проверено соединением 338.
+<p class="lead">Состояние подписок и ключей. Собрано: 2026-10-18T12:45:33+00:00.</p>
+<p class="lead">Всего в подписке 1200 конфигов, проверено соединением 346.
 Обновление автоматически каждые 6 часов, вручную — кнопкой Run workflow.</p>
 
         <div class="card">
@@ -60,7 +60,7 @@ a{color:#f97316}
           </div>
           <div class="row"><span>трафик не измеряется</span></div>
           <div class="row"><span>срок не указан</span></div>
-          <div class="row"><span>узлов: 7, из них проверено: 4</span></div>
+          <div class="row"><span>узлов: 7, из них проверено: 5</span></div>
            <div class="row muted"></div>
          </div>
         <div class="card">
@@ -70,7 +70,7 @@ a{color:#f97316}
           </div>
           <div class="row"><span>трафик не измеряется</span></div>
           <div class="row"><span>срок не указан</span></div>
-          <div class="row"><span>узлов: 77, из них проверено: 61</span></div>
+          <div class="row"><span>узлов: 77, из них проверено: 63</span></div>
            <div class="row muted"></div>
          </div>
         <div class="card">
@@ -83,7 +83,45 @@ a{color:#f97316}
           <div class="row"><span>узлов: 0, из них проверено: 0</span></div>
            <div class="row muted">макс 3 устройства</div>
          </div>
-<div class='note'><b>Учёт устройств не подключён.</b> Чтобы видеть, какое устройство и когда забирало подписку, разверните посредник: запустите <code>deploy_worker.cmd</code> (бесплатный Cloudflare Workers), он запишет адрес в <code>configs/worker.txt</code>, и здесь появится таблица.</div>
+
+<div class="card">
+  <div class="card-head"><span class="tag">Устройства</span>
+  <span class="state" id="dev-state">загрузка…</span></div>
+  <div id="dev-body" class="muted">Запрашиваю статистику у посредника…</div>
+  <div class="row muted" style="margin-top:10px">Подписка для устройств:
+    <code>https://apelsinka-vpn.twistx-launcher.workers.dev/s/&lt;имя&gt;</code> — имя после <code>/s/</code> и есть метка устройства.</div>
+</div>
+<script>
+const WORKER = 'https://apelsinka-vpn.twistx-launcher.workers.dev';
+function fmt(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleString("ru-RU", {day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"});
+}
+(async () => {
+  const state = document.getElementById("dev-state");
+  const body = document.getElementById("dev-body");
+  try {
+    const resp = await fetch(WORKER + "/api/stats", {cache: "no-store"});
+    const data = await resp.json();
+    const list = data.devices || [];
+    state.textContent = list.length ? list.length + " шт." : "нет данных";
+    if (!list.length) {
+      body.innerHTML = "Пока ни одно устройство не забирало подписку через посредника.";
+      return;
+    }
+    body.innerHTML = "<table><tr><th>устройство</th><th>последний раз</th>" +
+      "<th>первый раз</th><th>запросов</th><th>страна</th></tr>" +
+      list.map(d => "<tr><td><b>" + d.device + "</b></td><td>" + fmt(d.last_seen) +
+        "</td><td>" + fmt(d.first_seen) + "</td><td>" + d.hits + "</td><td>" +
+        (d.country || "—") + "</td></tr>").join("") + "</table>";
+  } catch (e) {
+    state.textContent = "нет связи";
+    body.innerHTML = "Посредник не отвечает. Проверьте адрес в configs/worker.txt.";
+  }
+})();
+</script>
+
 <div class="note">
 <b>Про устройства.</b> Сам по себе файл подписки не логирует обращения — GitHub Pages
 не отдаёт журналы. Учёт появляется только если устройство забирает подписку через

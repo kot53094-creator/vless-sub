@@ -1,22 +1,22 @@
 {
-  "built_at": "2026-10-18T12:34:23+00:00",
+  "built_at": "2026-10-18T12:45:33+00:00",
   "brand": "Апельсинка VPN",
   "configs": 1200,
-  "working_total": 338,
-  "reachable_total": 1312,
+  "working_total": 346,
+  "reachable_total": 1313,
   "valid_total": 1602,
   "tiers": {
-    "verified": 338,
-    "port_only": 974,
-    "syntax_only": 290,
+    "verified": 346,
+    "port_only": 967,
+    "syntax_only": 289,
     "notices": 5
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 1312,
-    "passed": 338,
-    "seconds": 129.0,
+    "checked": 1313,
+    "passed": 346,
+    "seconds": 127.7,
     "version": "v26.3.27"
   },
   "duplicates_removed": 10,
@@ -41,7 +41,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 228
+      "verified": 231
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -67,7 +67,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 5
+      "verified": 7
     },
     {
       "name": "<kavkaz>",
@@ -80,7 +80,7 @@
       "order": 4,
       "quota": {},
       "provider": "",
-      "verified": 61
+      "verified": 63
     },
     {
       "name": "<private-1 AIDEN>",
@@ -111,7 +111,7 @@
       "order": 2,
       "quota": {
         "upload": 0,
-        "download": 13067084,
+        "download": 13541990,
         "total": 32212254720,
         "expire": 1792925166
       },
@@ -128,13 +128,13 @@
       "note": "",
       "order": 3,
       "quota": {
-        "upload": 6531422,
-        "download": 42772779,
+        "upload": 6710276,
+        "download": 43687694,
         "total": 0,
         "expire": 0
       },
       "provider": "",
-      "verified": 4
+      "verified": 5
     },
     {
       "name": "<private-4 MEDUSA>",
