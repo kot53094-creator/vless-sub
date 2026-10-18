@@ -1,22 +1,22 @@
 {
-  "built_at": "2026-10-18T11:10:23+00:00",
+  "built_at": "2026-10-18T11:17:21+00:00",
   "brand": "Апельсинка VPN",
   "configs": 1200,
-  "working_total": 270,
-  "reachable_total": 1245,
+  "working_total": 273,
+  "reachable_total": 1252,
   "valid_total": 1547,
   "tiers": {
-    "verified": 270,
-    "port_only": 975,
-    "syntax_only": 302,
+    "verified": 273,
+    "port_only": 979,
+    "syntax_only": 295,
     "notices": 4
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 1245,
-    "passed": 270,
-    "seconds": 130.8,
+    "checked": 1252,
+    "passed": 273,
+    "seconds": 126.7,
     "version": "v26.3.27"
   },
   "duplicates_removed": 11,
