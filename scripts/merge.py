@@ -913,10 +913,11 @@ def main(argv: list[str]) -> int:
         ordered += [r for r in records if r.get("from_private") and r["group"] == idx]
 
     free = [r for r in records if not r.get("from_private")]
+    free_divider = None
     if free and dividers:
-        ordered.append({"group": 999, "proto": "vless", "host": "", "uri": "",
-                        "out_uri": notice_uri(
-                            f"{FREE_COLOR} ━━━ FREE · {len(free)} публичных узлов ━━━")})
+        free_divider = {"group": 999, "proto": "vless", "host": "", "uri": "",
+                        "out_uri": notice_uri(f"{FREE_COLOR} ━━━ FREE ━━━")}
+        ordered.append(free_divider)
     ordered += free
 
     working = [r for r in records if r.get("deep_ok") is True]
@@ -927,6 +928,14 @@ def main(argv: list[str]) -> int:
     free_all = [r for r in ordered if not (r.get("from_private") or r.get("notice"))]
     room = max(0, args.max_configs - len(owned_all))
     selected = owned_all + free_all[:room]
+
+    # The divider must show how many free nodes actually made it past the cap.
+    if free_divider is not None:
+        shown = sum(1 for r in selected
+                    if r.get("host") and not r.get("from_private") and r is not free_divider)
+        free_divider["out_uri"] = notice_uri(
+            f"{FREE_COLOR} ━━━ FREE · {shown} "
+            f"{plural(shown, 'публичный узел', 'публичных узла', 'публичных узлов')} ━━━")
 
     # ---- safety gate -------------------------------------------------------
     prev_count = count_uris(args.prev) if os.path.exists(args.prev) else 0
