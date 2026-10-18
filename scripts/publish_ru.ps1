@@ -34,7 +34,9 @@ Copy-Item build_ru\sub-plain.txt docs\sub-ru-plain.txt -Force
 Copy-Item build_ru\status.json   docs\status-ru.json   -Force
 
 $status = Get-Content build_ru\status.json -Raw | ConvertFrom-Json
-Write-Host ("Рабочих узлов: {0} (проверено {1})" -f $status.configs, $status.deep_test.checked) -ForegroundColor Green
+Write-Host ("Соединение проверено: {0}; порт отвечает: {1}; всего в подписке: {2}" -f `
+    $status.tiers.verified, ($status.tiers.verified + $status.tiers.port_only), `
+    $status.configs) -ForegroundColor Green
 
 Write-Host "== 3/4 Коммит ==" -ForegroundColor Cyan
 $committed = $false
