@@ -631,6 +631,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--probe-timeout", type=float, default=4.0)
     ap.add_argument("--probe-concurrency", type=int, default=48)
     ap.add_argument("--max-configs", type=int, default=int(os.getenv("MAX_CONFIGS", "1200")))
+    ap.add_argument("--max-per-key", type=int, default=int(os.getenv("MAX_PER_KEY", "15")),
+                    help="how many nodes to keep per key block (0 = all)")
     ap.add_argument("--min-configs", type=int, default=int(os.getenv("MIN_CONFIGS", "20")))
     ap.add_argument("--max-per-host", type=int, default=int(os.getenv("MAX_PER_HOST", "4")))
     ap.add_argument("--allow-protocols", default=os.getenv("ALLOW_PROTOCOLS", "vless"))
@@ -991,6 +993,7 @@ def main(argv: list[str]) -> int:
             else:
                 tail = note or "нет доступа"
             dividers.append({"group": src["index"], "proto": "vless", "host": "",
+                             "tag": tag, "color": color, "note": note,
                              "out_uri": notice_uri(f"{color} ━━━ {tag} · {tail} ━━━"),
                              "uri": "", "notice": True})
         if entry["kept"] == 0:
@@ -1034,10 +1037,38 @@ def main(argv: list[str]) -> int:
         entry["verified"] = verified_by_origin.get(entry["name"], 0)
     degraded = not deep["available"] and not args.no_probe
 
+    # Keep each key block short: the client list should look like a paid service,
+    # not like a dump of 77 entries. Nodes are already sorted best-first.
+    if args.max_per_key:
+        counted: dict = {}
+        trimmed: list[dict] = []
+        for rec in ordered:
+            if rec.get("from_private") and rec.get("host"):
+                used = counted.get(rec["group"], 0)
+                if used >= args.max_per_key:
+                    continue
+                counted[rec["group"]] = used + 1
+            trimmed.append(rec)
+        ordered = trimmed
+
     owned_all = [r for r in ordered if r.get("from_private") or r.get("notice")]
     free_all = [r for r in ordered if not (r.get("from_private") or r.get("notice"))]
     room = max(0, args.max_configs - len(owned_all))
     selected = owned_all + free_all[:room]
+
+    # Divider captions must match what was actually published, not what the
+    # provider returned: --max-per-key trims every block.
+    shown_by_group = Counter(r["group"] for r in selected
+                             if r.get("host") and r.get("from_private"))
+    for div in dividers:
+        count = shown_by_group.get(div["group"], 0)
+        if count:
+            tail = f"{count} {plural(count, 'узел', 'узла', 'узлов')}"
+            if div.get("note"):
+                tail = f"{div['note']} · {tail}"
+        else:
+            tail = div.get("note") or "нет доступа"
+        div["out_uri"] = notice_uri(f"{div['color']} ━━━ {div['tag']} · {tail} ━━━")
 
     # The divider must show how many free nodes actually made it past the cap.
     if free_divider is not None:
