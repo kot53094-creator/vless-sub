@@ -15,9 +15,14 @@ if ($LASTEXITCODE -ne 0) { Write-Host "Вход не выполнен." -Foregro
 Write-Host "== 2/4 Хранилище для статистики ==" -ForegroundColor Cyan
 $cfg = Get-Content wrangler.toml -Raw
 if ($cfg -match "PASTE_KV_ID") {
-    $json = npx --yes wrangler@latest kv namespace create STATS --json
-    $id = ($json | ConvertFrom-Json).id
-    if (-not $id) { Write-Host "Не удалось создать KV-пространство." -ForegroundColor Yellow; exit 1 }
+    $out = (npx --yes wrangler@latest kv namespace create STATS 2>&1 | Out-String)
+    $match = [regex]::Match($out, 'id\s*=\s*"([0-9a-f]{32})"')
+    if (-not $match.Success) {
+        Write-Host "Не удалось получить ID хранилища. Вывод wrangler:" -ForegroundColor Yellow
+        Write-Host $out
+        exit 1
+    }
+    $id = $match.Groups[1].Value
     $cfg = $cfg -replace "PASTE_KV_ID", $id
     Set-Content -Path wrangler.toml -Value $cfg -Encoding utf8
     Write-Host "KV создано: $id" -ForegroundColor Green
