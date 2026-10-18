@@ -1,0 +1,226 @@
+"""Rendering of the public status panel (dashboard.html).
+
+Kept in its own module: the page is big, and mixing this much markup with the
+build logic makes merge.py hard to read.
+"""
+
+import time
+from datetime import datetime, timezone
+
+
+def human_gb(value: int) -> str:
+    return f"{value / 1024 ** 3:.1f}".replace(".", ",")
+
+
+def days_left(expire: int) -> tuple[str, int]:
+    if not expire:
+        return "бессрочно", 9999
+    left = int((expire - time.time()) // 86400)
+    when = datetime.fromtimestamp(expire, timezone.utc).strftime("%d.%m.%Y")
+    if left < 0:
+        return f"истекла {when}", left
+    return f"до {when} · {left} дн.", left
+
+
+def _device_cards(worker_url: str) -> str:
+    if not worker_url:
+        return """<div class="empty">
+        <b>Учёт устройств не подключён.</b> Запустите <code>deploy_worker.cmd</code> —
+        он развернёт посредника на Cloudflare Workers (бесплатно) и запишет адрес
+        в <code>configs/worker.txt</code>.</div>"""
+    return f"""
+    <div class="grid" id="dev-grid">
+      <div class="empty">Запрашиваю статистику…</div>
+    </div>
+    <div class="hint">Подписка для устройства:
+      <code id="dev-url">{worker_url}/s/&lt;имя&gt;</code>
+      <button class="copy" onclick="copyText('{worker_url}/s/phone')">скопировать</button>
+    </div>
+    <script>
+    const WORKER = {worker_url!r};
+    function fmt(iso) {{
+      if (!iso) return "—";
+      const d = new Date(iso);
+      const mins = Math.round((Date.now() - d.getTime()) / 60000);
+      const rel = mins < 1 ? "только что" : mins < 60 ? mins + " мин назад"
+                : mins < 1440 ? Math.round(mins / 60) + " ч назад" : Math.round(mins / 1440) + " дн назад";
+      return d.toLocaleString("ru-RU", {{day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"}})
+             + " · " + rel;
+    }}
+    function esc(s) {{
+      return String(s || "").replace(/[&<>"]/g, c => ({{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}})[c]);
+    }}
+    function copyText(text) {{
+      navigator.clipboard && navigator.clipboard.writeText(text);
+      event.target.textContent = "скопировано";
+      setTimeout(() => event.target.textContent = "скопировать", 1500);
+    }}
+    (async () => {{
+      const grid = document.getElementById("dev-grid");
+      try {{
+        const resp = await fetch(WORKER + "/api/stats", {{cache: "no-store"}});
+        const data = await resp.json();
+        const list = data.devices || [];
+        if (!list.length) {{
+          grid.innerHTML = '<div class="empty">Пока ни одно устройство не обращалось. ' +
+            'Добавьте на телефоне подписку с адресом <code>' + WORKER + '/s/phone</code>.</div>';
+          return;
+        }}
+        grid.innerHTML = list.map(d => {{
+          const online = Date.now() - new Date(d.last_seen).getTime() < 15 * 60000;
+          return '<div class="dev">' +
+            '<div class="dev-top"><span class="dev-name">' + esc(d.device) + '</span>' +
+            '<span class="dot ' + (online ? 'on' : 'off') + '"></span></div>' +
+            '<div class="dev-row">последний раз: ' + fmt(d.last_seen) + '</div>' +
+            '<div class="dev-row muted">первый раз: ' + fmt(d.first_seen) + '</div>' +
+            '<div class="dev-row"><span class="chip">' + (d.country || "—") + '</span>' +
+            '<span class="chip">' + d.hits + ' запр.</span>' +
+            '<span class="chip muted">' + esc((d.client || "").split("/")[0]) + '</span></div>' +
+            '</div>';
+        }}).join("");
+        const badge = document.getElementById("dev-count");
+        if (badge) badge.textContent = list.length + " шт.";
+      }} catch (e) {{
+        grid.innerHTML = '<div class="empty">Посредник не отвечает. Проверьте адрес в configs/worker.txt.</div>';
+      }}
+    }})();
+    </script>
+    """
+
+
+def render(status: list[dict], built: str, total: int, tiers: dict,
+           site_url: str, worker_url: str = "") -> str:
+    keys = [e for e in status if e.get("label")]
+    keys.sort(key=lambda e: e.get("order") or 999)
+
+    cards = []
+    for entry in keys:
+        quota = entry.get("quota") or {}
+        used = quota.get("upload", 0) + quota.get("download", 0)
+        cap = quota.get("total", 0)
+        kept = entry.get("kept", 0)
+        verified = entry.get("verified", 0)
+
+        if cap:
+            percent = min(100, round(used * 100 / cap))
+            traffic = (f'<div class="bar"><span style="width:{percent}%"></span></div>'
+                       f'<div class="row"><span>{human_gb(used)} из {human_gb(cap)} ГБ</span>'
+                       f'<span>{percent}%</span></div>')
+        else:
+            traffic = '<div class="row"><span>трафик не измеряется</span></div>'
+
+        expiry, left = days_left(quota.get("expire", 0))
+        date_class = "row warn" if left < 3 else "row"
+
+        if kept:
+            badge, badge_class = "работает", "ok"
+        elif entry.get("ok"):
+            badge, badge_class = "ограничение", "warned"
+        else:
+            badge, badge_class = "ошибка", "bad"
+
+        note = entry.get("note") or entry.get("provider") or ""
+        cards.append(f"""
+      <div class="card">
+        <div class="card-head">
+          <span class="tag">K{entry.get('order', '')}<span class="sep">·</span>{entry['label']}</span>
+          <span class="badge {badge_class}">{badge}</span>
+        </div>
+        {traffic}
+        <div class="{date_class}"><span>{expiry}</span></div>
+        <div class="row"><span>узлов <b>{kept}</b></span>
+          <span class="muted">проверено {verified}</span></div>
+        {f'<div class="note">{note}</div>' if note else ''}
+      </div>""")
+
+    return f"""<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Апельсинка VPN — панель</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{{--o:#f97316;--o2:#fb923c;--ink:#1c1917;--mut:#78716c;--line:#fed7aa;--bg:#fff}}
+*{{box-sizing:border-box}}
+body{{margin:0;font-family:'Manrope',system-ui,sans-serif;color:var(--ink);
+background:#fdfaf7}}
+.top{{background:linear-gradient(135deg,#7c2d12 0%,#ea580c 55%,#fb923c 100%);color:#fff;
+padding:34px 0 46px}}
+.wrap{{max-width:900px;margin:0 auto;padding:0 20px}}
+.brand{{display:flex;align-items:center;gap:12px;font-weight:800;font-size:14px;
+letter-spacing:.14em;text-transform:uppercase;opacity:.9}}
+.brand .mark{{width:26px;height:26px;border-radius:9px;background:#fff;
+display:flex;align-items:center;justify-content:center;color:var(--o);font-size:15px}}
+h1{{font-size:clamp(26px,5vw,40px);font-weight:800;margin:18px 0 6px;letter-spacing:-.02em}}
+.sub{{opacity:.85;font-size:14px}}
+.tiles{{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;
+margin:-28px 0 26px}}
+.tile{{background:#fff;border:1px solid #ffedd5;border-radius:16px;padding:14px 16px;
+box-shadow:0 8px 24px rgba(124,45,18,.08)}}
+.tile .n{{font-size:24px;font-weight:800}}
+.tile .l{{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.07em}}
+h2{{font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:var(--mut);
+margin:26px 0 12px;font-weight:700}}
+.grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}}
+.card,.dev,.empty{{background:#fff;border:1px solid #ffedd5;border-radius:16px;padding:16px 18px;
+box-shadow:0 4px 16px rgba(124,45,18,.05)}}
+.card-head{{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px}}
+.tag{{font-weight:800;color:#7c2d12}}
+.sep{{opacity:.5;margin:0 6px}}
+.badge{{font-size:11px;font-weight:700;border-radius:999px;padding:4px 10px;white-space:nowrap}}
+.badge.ok{{background:#ecfdf5;color:#047857}}
+.badge.warned{{background:#fff7ed;color:#c2410c}}
+.badge.bad{{background:#fef2f2;color:#b91c1c}}
+.bar{{height:8px;background:#ffedd5;border-radius:6px;overflow:hidden;margin-bottom:8px}}
+.bar span{{display:block;height:100%;background:linear-gradient(90deg,var(--o2),var(--o))}}
+.row{{display:flex;justify-content:space-between;font-size:13.5px;color:#44403c;margin-top:5px}}
+.row.warn{{color:#b91c1c;font-weight:600}}
+.muted{{color:var(--mut)}}
+.note{{margin-top:10px;font-size:12.5px;color:#9a3412;background:#fff7ed;border-radius:8px;
+padding:6px 9px}}
+.dev-top{{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}}
+.dev-name{{font-weight:800}}
+.dot{{width:9px;height:9px;border-radius:50%}}
+.dot.on{{background:#22c55e;box-shadow:0 0 0 4px #dcfce7}}
+.dot.off{{background:#d6d3d1}}
+.dev-row{{font-size:13px;color:#44403c;margin-top:4px}}
+.chip{{display:inline-block;background:#fff7ed;border:1px solid var(--line);border-radius:999px;
+font-size:11.5px;padding:2px 8px;margin-right:6px}}
+.empty{{font-size:13.5px;color:var(--mut);line-height:1.6}}
+code{{background:#fff7ed;border:1px solid var(--line);border-radius:6px;padding:1px 6px;
+font-family:ui-monospace,Menlo,monospace;font-size:12.5px;word-break:break-all}}
+.copy{{border:1px solid var(--line);background:#fff;color:var(--o);border-radius:8px;
+font:inherit;font-size:12px;padding:3px 9px;cursor:pointer}}
+.hint{{font-size:12.5px;color:var(--mut);margin-top:10px}}
+.foot{{margin:30px 0 50px;font-size:12.5px;color:var(--mut)}}
+.foot a{{color:var(--o);text-decoration:none;font-weight:600}}
+</style></head><body>
+<div class="top"><div class="wrap">
+  <div class="brand"><span class="mark">●</span>Апельсинка VPN</div>
+  <h1>Панель подписки</h1>
+  <div class="sub">Обновлено {built} · пересборка каждые 6 часов</div>
+</div></div>
+
+<div class="wrap">
+  <div class="tiles">
+    <div class="tile"><div class="n" id="dev-count">—</div><div class="l">устройств</div></div>
+    <div class="tile"><div class="n">{len([k for k in keys if k.get('kept')])}</div><div class="l">ключей активно</div></div>
+    <div class="tile"><div class="n">{tiers.get('verified', 0)}</div><div class="l">узлов проверено</div></div>
+    <div class="tile"><div class="n">{total}</div><div class="l">конфигов в подписке</div></div>
+  </div>
+
+  <h2>Устройства</h2>
+  {_device_cards(worker_url)}
+
+  <h2>Ключи</h2>
+  <div class="grid">{''.join(cards)}</div>
+
+  <div class="foot">
+    <a href="./">Главная</a> · <a href="sub-ru.txt">sub-ru.txt</a> ·
+    <a href="sub.txt">sub.txt</a> · <a href="status.json">status.json</a><br><br>
+    Остаток трафика и сроки берутся из заголовков провайдеров при каждой сборке.
+    Устройства учитываются только через посредника — прямой файл на GitHub Pages
+    запросов не логирует. IP-адреса не сохраняются: только короткий хеш.
+  </div>
+</div></body></html>
+"""
