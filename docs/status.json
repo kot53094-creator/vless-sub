@@ -1,22 +1,22 @@
 {
-  "built_at": "2026-10-18T13:51:21+00:00",
+  "built_at": "2026-10-18T15:56:42+00:00",
   "brand": "Апельсинка VPN",
   "configs": 1200,
-  "working_total": 333,
-  "reachable_total": 1303,
-  "valid_total": 1602,
+  "working_total": 310,
+  "reachable_total": 1283,
+  "valid_total": 1588,
   "tiers": {
-    "verified": 333,
-    "port_only": 970,
-    "syntax_only": 299,
-    "notices": 5
+    "verified": 310,
+    "port_only": 973,
+    "syntax_only": 305,
+    "notices": 9
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 1303,
-    "passed": 333,
-    "seconds": 128.5,
+    "checked": 1283,
+    "passed": 310,
+    "seconds": 136.0,
     "version": "v26.3.27"
   },
   "duplicates_removed": 10,
@@ -41,7 +41,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 220
+      "verified": 211
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -54,7 +54,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 26
+      "verified": 27
     },
     {
       "name": "raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/",
@@ -80,7 +80,7 @@
       "order": 4,
       "quota": {},
       "provider": "",
-      "verified": 62
+      "verified": 61
     },
     {
       "name": "<private-1 AIDEN>",
@@ -103,20 +103,20 @@
     {
       "name": "<private-2 AIDEN2>",
       "ok": true,
-      "seen": 14,
-      "kept": 14,
+      "seen": 4,
+      "kept": 0,
       "error": "",
       "label": "AIDEN2",
       "note": "",
       "order": 2,
       "quota": {
         "upload": 0,
-        "download": 521601596,
+        "download": 38099363400,
         "total": 32212254720,
         "expire": 1792925166
       },
       "provider": "Aiden VPN",
-      "verified": 13
+      "verified": 0
     },
     {
       "name": "<private-3 VLESS>",
@@ -128,13 +128,13 @@
       "note": "ещё 5 дней",
       "order": 3,
       "quota": {
-        "upload": 14585611,
-        "download": 90783635,
+        "upload": 23233280,
+        "download": 239429256,
         "total": 0,
         "expire": 0
       },
       "provider": "",
-      "verified": 5
+      "verified": 4
     },
     {
       "name": "<private-4 MEDUSA>",
@@ -165,7 +165,7 @@
       "order": 6,
       "quota": {
         "upload": 0,
-        "download": 25753852945,
+        "download": 26434231964,
         "total": 107374182400,
         "expire": 1792455564
       },
