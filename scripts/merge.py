@@ -557,6 +557,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--max-per-host", type=int, default=int(os.getenv("MAX_PER_HOST", "4")))
     ap.add_argument("--allow-protocols", default=os.getenv("ALLOW_PROTOCOLS", "vless"))
     ap.add_argument("--no-probe", action="store_true", help="skip reachability probe")
+    ap.add_argument("--no-dividers", action="store_true",
+                    help="do not add the '--- K1 ... ---' separator entries")
     ap.add_argument("--no-deep", action="store_true",
                     help="skip the Xray traffic test (nothing is proven to work then)")
     ap.add_argument("--deep-workers", type=int, default=int(os.getenv("DEEP_WORKERS", "16")))
@@ -618,7 +620,7 @@ def parse_private(raw: str) -> list[dict]:
         url = url.strip()
         if "://" not in url:
             continue
-        label = re.sub(r"[^A-Za-z0-9 ]", "", label).strip().upper()[:5] or label_from(url)
+        label = re.sub(r"[^A-Za-z0-9 ]", "", label).strip().upper()[:8] or label_from(url)
         out.append({"url": url, "label": label})
     return out
 
@@ -684,6 +686,13 @@ def main(argv: list[str]) -> int:
                     rec = validate_uri(line, allowed)
                 except Bad as exc:
                     reasons[str(exc)] += 1
+                    # Providers answer a limit / client block with placeholder
+                    # entries on a loopback address. Keep them: their remark is
+                    # the provider's own explanation shown to the user.
+                    if src["private"] and "private/loopback" in str(exc):
+                        entry.setdefault("stubs", [])
+                        if len(entry["stubs"]) < 6:
+                            entry["stubs"].append(line)
                     continue
                 except Exception as exc:                  # noqa: BLE001
                     reasons[type(exc).__name__] += 1
@@ -815,25 +824,51 @@ def main(argv: list[str]) -> int:
     # A provider that hit a daily limit answers with an empty list; without a
     # placeholder the whole group vanishes from v2rayNG with no explanation.
     notices: list[dict] = []
+    dividers: list[dict] = []
     for src in sources:
         if not src["private"]:
             continue
         title = src.get("title") or "<private>"
         entry = next((s for s in status if s["name"] == title), None)
-        if entry and entry["ok"] and entry["kept"] == 0:
-            remark = (f"K{src['index']} {src['label']} · ⏳ серверы появятся позже "
-                      f"(дневной лимит или обновление подписки)")
-            notices.append({"group": src["index"], "notice": True, "proto": "vless",
-                            "out_uri": notice_uri(remark), "uri": remark, "host": ""})
-            print(f"[notice] {src['label']}: no configs returned -> placeholder added")
+        if not entry or not entry["ok"]:
+            continue
+        tag = f"K{src['index']} {src['label']}"
+        if entry["kept"] == 0:
+            stubs = entry.get("stubs") or []
+            for line in stubs:
+                name = unquote(line.split("#", 1)[1]) if "#" in line else "нет доступа"
+                notices.append({"group": src["index"], "notice": True, "proto": "vless",
+                                "out_uri": with_remark(line, f"{tag} · {name}"),
+                                "uri": name, "host": ""})
+            if not stubs:
+                remark = f"{tag} · ⏳ серверы появятся позже"
+                notices.append({"group": src["index"], "notice": True, "proto": "vless",
+                                "out_uri": notice_uri(remark), "uri": remark, "host": ""})
+            print(f"[notice] {src['label']}: no configs -> "
+                  f"{len(stubs) or 1} placeholder(s) from the provider")
+        elif not args.no_dividers:
+            dividers.append({"group": src["index"], "proto": "vless", "host": "",
+                             "out_uri": notice_uri(f"——— {tag} · {entry['kept']} узлов ———"),
+                             "uri": "", "notice": True})
+        entry.pop("stubs", None)          # raw placeholders stay out of status.json
 
+    for div in dividers:
+        div["from_private"] = True
     ordered: list[dict] = []
     groups = sorted({r["group"] for r in records if r.get("from_private")}
-                    | {n["group"] for n in notices})
+                    | {n["group"] for n in notices}
+                    | {d["group"] for d in dividers})
     for idx in groups:
+        ordered += [d for d in dividers if d["group"] == idx]
         ordered += [n for n in notices if n["group"] == idx]
         ordered += [r for r in records if r.get("from_private") and r["group"] == idx]
-    ordered += [r for r in records if not r.get("from_private")]
+
+    free = [r for r in records if not r.get("from_private")]
+    if free and dividers:
+        ordered.append({"group": 999, "proto": "vless", "host": "", "uri": "",
+                        "out_uri": notice_uri(
+                            f"——— FREE · {len(free)} публичных узлов ———")})
+    ordered += free
 
     working = [r for r in records if r.get("deep_ok") is True]
     reachable = [r for r in records if r["reachable"]]
