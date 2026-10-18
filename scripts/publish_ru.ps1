@@ -12,7 +12,7 @@ Set-Location $root
 # Он остаётся только на этом компьютере; в репозиторий попадает лишь результат.
 $privateFile = Join-Path $root "private_urls.txt"
 if (Test-Path $privateFile) {
-    $urls = (Get-Content $privateFile | Where-Object { $_.Trim() -and -not $_.StartsWith("#") }) -join " "
+    $urls = (Get-Content -Encoding UTF8 $privateFile | Where-Object { $_.Trim() -and -not $_.StartsWith("#") }) -join "`n"
     if ($urls) {
         $env:PRIVATE_SUB_URL = $urls
         $env:INCLUDE_PRIVATE = "true"

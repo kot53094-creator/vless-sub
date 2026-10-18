@@ -35,6 +35,7 @@ def _device_cards(worker_url: str) -> str:
     <div class="hint">Подписка для устройства:
       <code id="dev-url">{worker_url}/s/&lt;имя&gt;</code>
       <button class="copy" onclick="copyText('{worker_url}/s/phone')">скопировать</button>
+      · <a href="{worker_url}/admin" target="_blank">отвязать устройство</a>
     </div>
     <script>
     const WORKER = {worker_url!r};
@@ -67,10 +68,11 @@ def _device_cards(worker_url: str) -> str:
           return;
         }}
         grid.innerHTML = list.map(d => {{
-          const online = Date.now() - new Date(d.last_seen).getTime() < 15 * 60000;
-          return '<div class="dev">' +
+          const online = !d.blocked && Date.now() - new Date(d.last_seen).getTime() < 15 * 60000;
+          return '<div class="dev' + (d.blocked ? ' off' : '') + '">' +
             '<div class="dev-top"><span class="dev-name">' + esc(d.device) + '</span>' +
-            '<span class="dot ' + (online ? 'on' : 'off') + '"></span></div>' +
+            '<span class="dot ' + (d.blocked ? 'ban' : online ? 'on' : 'off') + '"></span></div>' +
+            (d.blocked ? '<div class="dev-row blocked">отвязано — подписка не выдаётся</div>' : '') +
             '<div class="dev-row">последний раз: ' + fmt(d.last_seen) + '</div>' +
             '<div class="dev-row muted">первый раз: ' + fmt(d.first_seen) + '</div>' +
             '<div class="dev-row"><span class="chip">' + (d.country || "—") + '</span>' +
@@ -183,6 +185,9 @@ padding:6px 9px}}
 .dot{{width:9px;height:9px;border-radius:50%}}
 .dot.on{{background:#22c55e;box-shadow:0 0 0 4px #dcfce7}}
 .dot.off{{background:#d6d3d1}}
+.dot.ban{{background:#ef4444;box-shadow:0 0 0 4px #fee2e2}}
+.dev.off{{opacity:.72}}
+.dev-row.blocked{{color:#b91c1c;font-weight:600}}
 .dev-row{{font-size:13px;color:#44403c;margin-top:4px}}
 .chip{{display:inline-block;background:#fff7ed;border:1px solid var(--line);border-radius:999px;
 font-size:11.5px;padding:2px 8px;margin-right:6px}}
