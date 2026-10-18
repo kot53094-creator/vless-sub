@@ -680,6 +680,7 @@ def load_sources(path: str) -> list[dict]:
             target = line
             # `LABEL|url` turns the source into its own key block (K1, K2, ...)
             is_raw = False
+            is_quiet = False
             note = ""
             order = 0
             if "|" in line and "://" not in line.split("|", 1)[0]:
@@ -691,11 +692,13 @@ def load_sources(path: str) -> list[dict]:
                 if match:
                     label_raw, order = match.group(1), int(match.group(2))
                 is_raw = label_raw.endswith("!")
+                # `~Label` = quiet: no placeholder row when the provider is silent
+                is_quiet = label_raw.strip().startswith("~")
                 label = re.sub(r"[^A-Za-z0-9 ]", "", label_raw).upper()[:8]
                 note = note[:40]
             items.append({"url": target, "name": target.split("://", 1)[-1][:70],
                           "private": bool(label), "label": label, "note": note,
-                          "order": order, "raw": is_raw,
+                          "order": order, "raw": is_raw, "quiet": is_quiet,
                           "title": f"<{label.lower()}>" if label else ""})
     return items
 
@@ -722,8 +725,10 @@ def parse_private(raw: str) -> list[dict]:
             label_raw, order = match.group(1), int(match.group(2))
         # `Label!|url` copies the key verbatim: no checks, no renaming.
         is_raw = label_raw.strip().endswith("!")
+        # `~Label|url` stays silent when the provider returns no configs
+        is_quiet = label_raw.strip().startswith("~")
         label = re.sub(r"[^A-Za-z0-9 ]", "", label_raw).strip().upper()[:8] or label_from(url)
-        out.append({"url": url, "label": label, "raw": is_raw,
+        out.append({"url": url, "label": label, "raw": is_raw, "quiet": is_quiet,
                     "note": note.strip()[:40], "order": order})
 
     tokens: list[str] = []
@@ -787,7 +792,8 @@ def main(argv: list[str]) -> int:
         for index, item in enumerate(private_urls, 1):
             sources.append({"url": item["url"], "name": f"private-{index}", "private": True,
                             "index": item.get("order") or index, "label": item["label"],
-                            "raw": item["raw"], "order": item.get("order", 0),
+                            "raw": item["raw"], "quiet": item.get("quiet", False),
+                            "order": item.get("order", 0),
                             "note": item.get("note", ""),
                             "title": f"<private-{index} {item['label']}>"})
 
@@ -984,7 +990,7 @@ def main(argv: list[str]) -> int:
         if not entry or not entry["ok"]:
             continue
         tag = f"K{src['index']} {src['label']}"
-        if not args.no_dividers:
+        if not args.no_dividers and not (src.get("quiet") and entry["kept"] == 0):
             color = KEY_COLORS[(src["index"] - 1) % len(KEY_COLORS)]
             note = (src.get("note") or "").strip()
             if entry["kept"]:
@@ -996,7 +1002,7 @@ def main(argv: list[str]) -> int:
                              "tag": tag, "color": color, "note": note,
                              "out_uri": notice_uri(f"{color} ━━━ {tag} · {tail} ━━━"),
                              "uri": "", "notice": True})
-        if entry["kept"] == 0:
+        if entry["kept"] == 0 and not src.get("quiet"):
             stubs = entry.get("stubs") or []
             for line in stubs:
                 name = unquote(line.split("#", 1)[1]) if "#" in line else "нет доступа"
