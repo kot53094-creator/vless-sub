@@ -1,0 +1,8 @@
+name = "apelsinka-vpn"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+# ID подставит scripts/deploy_worker.ps1 при первом запуске.
+[[kv_namespaces]]
+binding = "STATS"
+id = "PASTE_KV_ID"

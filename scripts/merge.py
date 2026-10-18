@@ -529,8 +529,55 @@ def days_left(expire: int) -> tuple[str, int]:
     return f"до {when} ({left} дн.)", left
 
 
+def render_devices_block(worker_url: str) -> str:
+    if not worker_url:
+        return ("<div class='note'><b>Учёт устройств не подключён.</b> Чтобы видеть, какое "
+                "устройство и когда забирало подписку, разверните посредник: запустите "
+                "<code>deploy_worker.cmd</code> (бесплатный Cloudflare Workers), он запишет "
+                "адрес в <code>configs/worker.txt</code>, и здесь появится таблица.</div>")
+    return f"""
+<div class="card">
+  <div class="card-head"><span class="tag">Устройства</span>
+  <span class="state" id="dev-state">загрузка…</span></div>
+  <div id="dev-body" class="muted">Запрашиваю статистику у посредника…</div>
+  <div class="row muted" style="margin-top:10px">Подписка для устройств:
+    <code>{worker_url}/s/&lt;имя&gt;</code> — имя после <code>/s/</code> и есть метка устройства.</div>
+</div>
+<script>
+const WORKER = {worker_url!r};
+function fmt(iso) {{
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleString("ru-RU", {{day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"}});
+}}
+(async () => {{
+  const state = document.getElementById("dev-state");
+  const body = document.getElementById("dev-body");
+  try {{
+    const resp = await fetch(WORKER + "/api/stats", {{cache: "no-store"}});
+    const data = await resp.json();
+    const list = data.devices || [];
+    state.textContent = list.length ? list.length + " шт." : "нет данных";
+    if (!list.length) {{
+      body.innerHTML = "Пока ни одно устройство не забирало подписку через посредника.";
+      return;
+    }}
+    body.innerHTML = "<table><tr><th>устройство</th><th>последний раз</th>" +
+      "<th>первый раз</th><th>запросов</th><th>страна</th></tr>" +
+      list.map(d => "<tr><td><b>" + d.device + "</b></td><td>" + fmt(d.last_seen) +
+        "</td><td>" + fmt(d.first_seen) + "</td><td>" + d.hits + "</td><td>" +
+        (d.country || "—") + "</td></tr>").join("") + "</table>";
+  }} catch (e) {{
+    state.textContent = "нет связи";
+    body.innerHTML = "Посредник не отвечает. Проверьте адрес в configs/worker.txt.";
+  }}
+}})();
+</script>
+"""
+
+
 def render_dashboard(status: list[dict], built: str, total: int,
-                     tiers: dict, site_url: str) -> str:
+                     tiers: dict, site_url: str, worker_url: str = "") -> str:
     cards = []
     for entry in sorted([e for e in status if e.get("label")],
                         key=lambda e: e.get("order") or 999):
@@ -559,8 +606,10 @@ def render_dashboard(status: list[dict], built: str, total: int,
           {bar}
           <div class="row"{warn}><span>{expiry}</span></div>
           <div class="row"><span>узлов: {kept}, из них проверено: {verified}</span></div>
-          <div class="row muted">{entry.get('note') or entry.get('provider', '')}</div>
-        </div>""")
+           <div class="row muted">{entry.get('note') or entry.get('provider', '')}</div>
+         </div>""")
+
+    devices = render_devices_block(worker_url)
 
     return f"""<!doctype html>
 <html lang="ru"><head><meta charset="utf-8">
@@ -583,6 +632,10 @@ padding:4px 10px;color:#9a3412}}
 .bar{{height:9px;background:#ffedd5;border-radius:6px;overflow:hidden;margin-bottom:8px}}
 .bar span{{display:block;height:100%;background:linear-gradient(90deg,#fb923c,#f97316)}}
 .row{{display:flex;justify-content:space-between;font-size:14px;color:#44403c;margin-top:4px}}
+table{{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}}
+th{{text-align:left;color:#78716c;font-size:11px;text-transform:uppercase;
+letter-spacing:.07em;padding:6px 6px;border-bottom:2px solid #fed7aa}}
+td{{padding:7px 6px;border-bottom:1px solid #f5f5f4}}
 .muted{{color:#78716c;font-size:13px}}
 .note{{background:#fff7ed;border:1px dashed #fdba74;border-radius:14px;padding:16px 18px;
 font-size:14px;color:#7c2d12;margin-top:22px}}
@@ -593,11 +646,12 @@ a{{color:#f97316}}
 <p class="lead">Всего в подписке {total} конфигов, проверено соединением {tiers.get('verified', 0)}.
 Обновление автоматически каждые 6 часов, вручную — кнопкой Run workflow.</p>
 {''.join(cards)}
+{devices}
 <div class="note">
-<b>Про устройства.</b> Подписка — это обычный файл на GitHub Pages, у него нет сервера,
-который видел бы подключения, поэтому «какое устройство и когда» показать нельзя.
-Здесь видно то, что реально сообщают провайдеры: остаток трафика и срок действия каждого
-ключа, а также когда мы последний раз успешно его проверяли.
+<b>Про устройства.</b> Сам по себе файл подписки не логирует обращения — GitHub Pages
+не отдаёт журналы. Учёт появляется только если устройство забирает подписку через
+посредника <code>/s/&lt;имя&gt;</code>: тогда видны метка устройства, время и страна,
+без IP-адреса. Остаток трафика и сроки выше — из заголовков самих провайдеров.
 </div>
 <p class="muted" style="margin-top:18px">
 <a href="./">На главную</a> · <a href="sub.txt">sub.txt</a> ·
@@ -1205,9 +1259,13 @@ def main(argv: list[str]) -> int:
                               degraded, deep,
                               os.path.exists(os.path.join(args.out, "sub-ru.txt")),
                               args.site_url))
+    worker_url = ""
+    worker_file = os.path.join("configs", "worker.txt")
+    if os.path.exists(worker_file):
+        worker_url = open(worker_file, encoding="utf-8-sig").read().strip().rstrip("/")
     write_atomic(os.path.join(args.out, "dashboard.html"),
                  render_dashboard(status, meta["built_at"], len(selected),
-                                  tiers, args.site_url))
+                                  tiers, args.site_url, worker_url))
     print(f"[done] published {len(selected)} configs "
           f"(verified {tiers['verified']}, port-only {tiers['port_only']}, "
           f"unreachable {tiers['syntax_only']}) -> {args.out}")
