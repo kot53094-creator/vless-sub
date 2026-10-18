@@ -20,4 +20,4 @@ https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/be
 # Собственный ключ с меткой: строка "МЕТКА|URL" становится отдельным блоком
 # подписки (K1, K2, …). Префикс file: — локальный файл в репозитории.
 # KavkazVPN отдаёт конфиги только своему приложению, поэтому список снят из клиента.
-KAVKAZ|file:configs/kavkaz.txt
+KAVKAZ:4|file:configs/kavkaz.txt
