@@ -1,25 +1,25 @@
 {
-  "built_at": "2026-10-18T15:56:42+00:00",
+  "built_at": "2026-10-18T20:51:19+00:00",
   "brand": "Апельсинка VPN",
   "configs": 1200,
-  "working_total": 310,
-  "reachable_total": 1283,
-  "valid_total": 1588,
+  "working_total": 252,
+  "reachable_total": 1135,
+  "valid_total": 1397,
   "tiers": {
-    "verified": 310,
-    "port_only": 973,
-    "syntax_only": 305,
+    "verified": 252,
+    "port_only": 883,
+    "syntax_only": 262,
     "notices": 9
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 1283,
-    "passed": 310,
-    "seconds": 136.0,
+    "checked": 1135,
+    "passed": 252,
+    "seconds": 111.1,
     "version": "v26.3.27"
   },
-  "duplicates_removed": 10,
+  "duplicates_removed": 11,
   "protocols": {
     "vless": 1200
   },
@@ -33,15 +33,15 @@
     {
       "name": "raw.githubusercontent.com/mehrtat/vless-collector/main/vless.txt",
       "ok": true,
-      "seen": 343,
-      "kept": 338,
+      "seen": 318,
+      "kept": 312,
       "error": "",
       "label": "",
       "note": "",
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 211
+      "verified": 214
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -60,7 +60,7 @@
       "name": "raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/",
       "ok": true,
       "seen": 2001,
-      "kept": 1135,
+      "kept": 977,
       "error": "",
       "label": "",
       "note": "",
@@ -80,7 +80,7 @@
       "order": 4,
       "quota": {},
       "provider": "",
-      "verified": 61
+      "verified": 0
     },
     {
       "name": "<private-1 AIDEN>",
@@ -128,8 +128,8 @@
       "note": "ещё 5 дней",
       "order": 3,
       "quota": {
-        "upload": 23233280,
-        "download": 239429256,
+        "upload": 34965916,
+        "download": 407951448,
         "total": 0,
         "expire": 0
       },
@@ -165,7 +165,7 @@
       "order": 6,
       "quota": {
         "upload": 0,
-        "download": 26434231964,
+        "download": 26501932222,
         "total": 107374182400,
         "expire": 1792455564
       },
