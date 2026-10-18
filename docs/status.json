@@ -1,22 +1,22 @@
 {
-  "built_at": "2026-10-18T11:58:16+00:00",
+  "built_at": "2026-10-18T12:07:56+00:00",
   "brand": "Апельсинка VPN",
   "configs": 1200,
   "working_total": 327,
-  "reachable_total": 1377,
+  "reachable_total": 1379,
   "valid_total": 1691,
   "tiers": {
     "verified": 327,
-    "port_only": 1050,
-    "syntax_only": 314,
-    "notices": 4
+    "port_only": 1052,
+    "syntax_only": 312,
+    "notices": 5
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 1377,
+    "checked": 1379,
     "passed": 327,
-    "seconds": 138.9,
+    "seconds": 135.4,
     "version": "v26.3.27"
   },
   "duplicates_removed": 21,
@@ -77,6 +77,13 @@
       "ok": true,
       "seen": 7,
       "kept": 7,
+      "error": ""
+    },
+    {
+      "name": "<private-4 MEDUSA>",
+      "ok": true,
+      "seen": 1,
+      "kept": 0,
       "error": ""
     }
   ]
