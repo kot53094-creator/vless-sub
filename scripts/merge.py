@@ -14,7 +14,6 @@ Design rules implemented here:
 Output (default ./docs):
   sub.txt           base64 subscription, only endpoints that answered a probe
   sub-plain.txt     same list, one URI per line
-  sub-all.txt       base64, everything that passed the validator (unverified included)
   status.json       build metadata / per-source health
   index.html        small landing page
 """
@@ -459,52 +458,85 @@ def write_atomic(path: str, content: str) -> None:
     os.replace(tmp, path)
 
 
-def     render_index(total: int, all_total: int, built: str, sources: list[dict],
+def render_index(total: int, tiers: dict, built: str, sources: list[dict],
                  degraded: bool, deep: dict, ru_present: bool = False) -> str:
     rows = "\n".join(
         f"<tr><td>{'ok' if s['ok'] else 'fail'}</td>"
-        f"<td>{(s['name'] if s['ok'] else (s['name'] + ' — ' + str(s.get('error',''))[:80]))}</td>"
+        f"<td>{(s['name'] if s['ok'] else (s['name'] + ' — ' + str(s.get('error', ''))[:80]))}</td>"
         f"<td>{s['kept']}</td><td>{s['seen']}</td></tr>"
         for s in sources
     )
     if deep.get("available"):
-        deep_line = (f"Проверено прогоном трафика через Xray {deep.get('version', '')}: "
+        deep_line = (f"Соединение проверено прогоном трафика через Xray {deep.get('version', '')}: "
                      f"{deep.get('passed', 0)} из {deep.get('checked', 0)} конфигов реально "
                      f"пропустили HTTP-запрос.")
     else:
         deep_line = (f"Прогон трафика недоступен ({deep.get('reason', 'n/a')}) — "
-                     f"список основан только на TCP/TLS-ответе.")
-    note = ("<p style='color:#b00'><b>Внимание:</b> список получился коротким.</p>"
-            if degraded else "")
+                     f"порядок основан только на TCP/TLS-ответе.")
+    note = ("<p class='warn'><b>Внимание:</b> проверка трафиком не выполнялась, "
+            "список отсортирован по доступности порта.</p>" if degraded else "")
     ru_line = ("<li><b>sub-ru.txt</b> — <a href=\"sub-ru.txt\">список, проверенный из сети "
-               "автора</a> (обновляется локальной сборкой, обычно заметно точнее "
-               "для российских операторов)</li>" if ru_present else "")
+               "автора</a> (обновляется локальной сборкой, точнее для российских операторов)</li>"
+               if ru_present else "")
     return f"""<!doctype html>
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VLESS subscription</title>
+<title>Апельсинка VPN — подписка</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
-body{{font:16px/1.5 system-ui,sans-serif;max-width:760px;margin:40px auto;padding:0 16px;color:#111}}
-code{{background:#f2f2f2;padding:2px 6px;border-radius:4px;word-break:break-all}}
-table{{border-collapse:collapse;width:100%;margin-top:16px;font-size:14px}}
-td,th{{border-bottom:1px solid #e5e5e5;padding:6px 8px;text-align:left}}
-.muted{{color:#666;font-size:14px}}
-</style></head><body>
-<h1>VLESS subscription</h1>
+:root{{--orange:#f97316;--deep:#7c2d12;--cream:#fff7ed}}
+*{{box-sizing:border-box}}
+body{{font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;margin:0;
+background:radial-gradient(1200px 600px at 10% -10%,#ffedd5 0%,#fff 55%);color:#1c1917}}
+.wrap{{max-width:760px;margin:0 auto;padding:56px 20px 72px}}
+h1{{font-weight:800;font-size:clamp(30px,6vw,46px);letter-spacing:-.02em;margin:0 0 8px}}
+h1 span{{color:var(--orange)}}
+p.lead{{color:#57534e;margin:0 0 28px;font-size:17px}}
+.card{{background:#fff;border:1px solid #fed7aa;border-radius:18px;padding:22px 24px;
+box-shadow:0 10px 30px rgba(249,115,22,.08);margin-bottom:18px}}
+a{{color:var(--orange);font-weight:600}}
+code{{background:var(--cream);padding:3px 8px;border-radius:7px;word-break:break-all;
+font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px}}
+table{{border-collapse:collapse;width:100%;margin-top:6px;font-size:14px}}
+th{{text-align:left;font-weight:600;color:#78716c;text-transform:uppercase;font-size:11px;
+letter-spacing:.08em;padding:6px 8px;border-bottom:2px solid #fed7aa}}
+td{{border-bottom:1px solid #f5f5f4;padding:7px 8px}}
+.muted{{color:#78716c;font-size:13px;line-height:1.6}}
+.warn{{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px 16px;
+border-radius:12px;font-size:14px}}
+.pill{{display:inline-block;background:var(--cream);border:1px solid #fed7aa;border-radius:999px;
+padding:5px 14px;font-size:13px;font-weight:600;color:var(--deep);margin:0 8px 8px 0}}
+</style></head><body><div class="wrap">
+<h1>Апельсинка <span>VPN</span></h1>
+<p class="lead">Одна подписка для v2rayNG: твои ключи сверху, публичные узлы — в конце.</p>
 {note}
-<p>Ссылка для v2rayNG:</p>
-<p><code>sub.txt</code> — <a href="sub.txt">скачать / вставить в клиент</a></p>
-<ul>
-<li><b>sub.txt</b> — рабочие конфиги, {total}</li>
-<li><b>sub-plain.txt</b> — тот же список текстом</li>
-<li><b>sub-all.txt</b> — все валидные конфиги, включая непроверенные, {all_total}</li>
+<div class="card">
+<p style="margin:0 0 10px"><b>Ссылка для клиента</b></p>
+<p style="margin:0 0 14px"><code><a href="sub.txt">sub.txt</a></code></p>
+<ul style="margin:0;padding-left:20px;line-height:1.9">
+<li><b>sub.txt</b> — всё, что прошло проверку синтаксиса, {total}</li>
+<li><b>sub-plain.txt</b> — тот же список построчно</li>
 {ru_line}
-<li><b>status.json</b> — состояние источников</li>
+<li><b>status.json</b> — три уровня диагностики и состояние источников</li>
 </ul>
-<p class="muted">Сборка: {built}. {deep_line} Конфиги принадлежат третьим лицам,
-их работа из вашей сети не гарантируется.</p>
+</div>
+<div class="card">
+<p style="margin:0 0 10px"><b>Как проверялись узлы</b></p>
+<span class="pill">конфигурация корректна: {tiers['syntax_only'] + tiers['port_only'] + tiers['verified']}</span>
+<span class="pill">порт доступен: {tiers['port_only'] + tiers['verified']}</span>
+<span class="pill">VPN-соединение проверено: {tiers['verified']}</span>
+<p class="muted" style="margin:12px 0 0">{deep_line} Узлы без пометки проверки стоят ниже:
+их никто не назвал мёртвыми, просто соединение не подтверждено.</p>
+</div>
+<div class="card">
+<p style="margin:0 0 6px"><b>Источники</b></p>
 <table><tr><th>источник</th><th>в подписке</th><th>получено</th></tr>{rows}</table>
-</body></html>
+</div>
+<p class="muted">Сборка: {built}. Конфиги публичных источников принадлежат третьим лицам,
+их работа из вашей сети не гарантируется.</p>
+</div></body></html>
 """
 
 
@@ -520,8 +552,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--timeout", type=float, default=30.0, help="per-source HTTP timeout")
     ap.add_argument("--probe-timeout", type=float, default=4.0)
     ap.add_argument("--probe-concurrency", type=int, default=48)
-    ap.add_argument("--max-configs", type=int, default=int(os.getenv("MAX_CONFIGS", "800")))
-    ap.add_argument("--max-all", type=int, default=int(os.getenv("MAX_ALL", "2000")))
+    ap.add_argument("--max-configs", type=int, default=int(os.getenv("MAX_CONFIGS", "1200")))
     ap.add_argument("--min-configs", type=int, default=int(os.getenv("MIN_CONFIGS", "20")))
     ap.add_argument("--max-per-host", type=int, default=int(os.getenv("MAX_PER_HOST", "4")))
     ap.add_argument("--allow-protocols", default=os.getenv("ALLOW_PROTOCOLS", "vless"))
@@ -565,6 +596,50 @@ def load_sources(path: str) -> list[dict]:
     return items
 
 
+def label_from(url: str) -> str:
+    """Short provider tag shown in v2rayNG, e.g. aidenvpn.com -> AID."""
+    host = (urlsplit(url).hostname or "key").lower()
+    parts = [p for p in host.split(".") if p not in ("www", "api", "sub", "conf")]
+    core = parts[0] if parts else host
+    return re.sub(r"[^A-Za-z0-9]", "", core).upper()[:4] or "KEY"
+
+
+def parse_private(raw: str) -> list[dict]:
+    """`LABEL|https://...` entries, separated by comma, space or newline."""
+    out: list[dict] = []
+    for token in re.split(r"[,\s]+", raw):
+        token = token.strip()
+        if not token:
+            continue
+        label = ""
+        url = token
+        if "|" in token and "://" not in token.split("|", 1)[0]:
+            label, url = token.split("|", 1)
+        url = url.strip()
+        if "://" not in url:
+            continue
+        label = re.sub(r"[^A-Za-z0-9 ]", "", label).strip().upper()[:5] or label_from(url)
+        out.append({"url": url, "label": label})
+    return out
+
+
+def with_remark(uri: str, remark: str) -> str:
+    """Replace only the #fragment: connection parameters stay byte-identical."""
+    base = uri.split("#", 1)[0]
+    return f"{base}#{remark}"
+
+
+def notice_uri(remark: str) -> str:
+    """A syntactically valid VLESS entry that only carries a message.
+
+    Providers that hit a daily limit often answer with an empty list, and then
+    the group in v2rayNG simply disappears. Such an entry keeps the group
+    visible with an explanation instead of nothing.
+    """
+    null_uuid = "00000000-0000-0000-0000-000000000000"
+    return f"vless://{null_uuid}@0.0.0.0:1?encryption=none&security=none&type=tcp#{remark}"
+
+
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     allowed = {p.strip().lower() for p in args.allow_protocols.split(",") if p.strip()}
@@ -577,13 +652,15 @@ def main(argv: list[str]) -> int:
     include_private = (os.getenv("INCLUDE_PRIVATE") or "").strip().lower() in {"1", "true", "yes"}
     # Several private subscriptions may be listed in one secret, separated by
     # comma, space or newline.
-    private_urls = [u for u in re.split(r"[,\s]+", private_raw) if u]
+    private_urls = parse_private(private_raw)
     if private_urls and include_private:
-        for index, url in enumerate(private_urls, 1):
-            sources.append({"url": url, "name": f"private-{index}", "private": True,
-                            "label": f"<private-{index}>"})
+        for index, item in enumerate(private_urls, 1):
+            sources.append({"url": item["url"], "name": f"private-{index}", "private": True,
+                            "index": index, "label": item["label"],
+                            "title": f"<private-{index} {item['label']}>"})
         print(f"[build] private sources: {len(private_urls)} enabled "
-              f"(their content will be PUBLIC in the result)")
+              f"({', '.join(i['label'] for i in private_urls)}; "
+              f"their content will be PUBLIC in the result)")
     elif private_urls:
         print(f"[build] private sources: {len(private_urls)} configured but "
               f"INCLUDE_PRIVATE is not set -> skipped")
@@ -591,7 +668,7 @@ def main(argv: list[str]) -> int:
     all_records: list[dict] = []
     status: list[dict] = []
     for src in sources:
-        entry = {"name": (src.get("label") or "<private>") if src["private"] else src["name"],
+        entry = {"name": (src.get("title") or "<private>") if src["private"] else src["name"],
                  "ok": False, "seen": 0, "kept": 0, "error": ""}
         try:
             text = fetch_text(src["url"], timeout=args.timeout)
@@ -616,6 +693,8 @@ def main(argv: list[str]) -> int:
                     continue
                 rec["origin"] = entry["name"]
                 rec["from_private"] = bool(src["private"])
+                rec["group"] = src.get("index", 999)
+                rec["label"] = src.get("label", "FREE")
                 all_records.append(rec)
                 kept += 1
             entry.update(ok=True, seen=seen, kept=kept)
@@ -709,49 +788,66 @@ def main(argv: list[str]) -> int:
         rec.setdefault("deep_ok", None)
         rec.setdefault("deep_latency_ms", None)
 
-    # ---- ordering ----------------------------------------------------------
+    # ---- ordering: own keys first (K1, K2, ...), free sources at the very end
     def tier(rec: dict) -> int:
         if rec.get("deep_ok") is True:
             return 0          # traffic actually passed through the node
         if rec["reachable"]:
-            return 1          # answered the handshake, not proven to work
-        if rec.get("deep_ok") is False:
-            return 3          # tested and failed -> keep them last
-        return 2              # never answered the handshake
+            return 1          # port answered, proxy behaviour not proven
+        return 2              # did not answer at all
 
     def rank(rec: dict) -> tuple:
-        # own subscription first: it must never be pushed out by the 800-item cap
-        prio = 0 if rec.get("from_private") else 1
+        grp = rec.get("group", 999)
+        owned = 0 if rec.get("from_private") else 1
         dlat = rec["deep_latency_ms"] if rec.get("deep_latency_ms") is not None else 9e9
         lat = rec["latency_ms"] if rec["latency_ms"] is not None else 9e9
-        return (tier(rec), prio, dlat, lat, rec["host"])
+        return (owned, grp, tier(rec), dlat, lat, rec["host"])
 
     records.sort(key=rank)
+
+    # Brand the remark only: the #fragment is a label, every connection
+    # parameter of the key stays byte-identical.
+    for rec in records:
+        prefix = f"K{rec['group']} {rec['label']}" if rec.get("from_private") else "FREE"
+        old = unquote(rec["uri"].split("#", 1)[1]) if "#" in rec["uri"] else ""
+        rec["out_uri"] = with_remark(rec["uri"], f"{prefix} · {old or rec['host']}")
+
+    # A provider that hit a daily limit answers with an empty list; without a
+    # placeholder the whole group vanishes from v2rayNG with no explanation.
+    notices: list[dict] = []
+    for src in sources:
+        if not src["private"]:
+            continue
+        title = src.get("title") or "<private>"
+        entry = next((s for s in status if s["name"] == title), None)
+        if entry and entry["ok"] and entry["kept"] == 0:
+            remark = (f"K{src['index']} {src['label']} · ⏳ серверы появятся позже "
+                      f"(дневной лимит или обновление подписки)")
+            notices.append({"group": src["index"], "notice": True, "proto": "vless",
+                            "out_uri": notice_uri(remark), "uri": remark, "host": ""})
+            print(f"[notice] {src['label']}: no configs returned -> placeholder added")
+
+    ordered: list[dict] = []
+    groups = sorted({r["group"] for r in records if r.get("from_private")}
+                    | {n["group"] for n in notices})
+    for idx in groups:
+        ordered += [n for n in notices if n["group"] == idx]
+        ordered += [r for r in records if r.get("from_private") and r["group"] == idx]
+    ordered += [r for r in records if not r.get("from_private")]
+
     working = [r for r in records if r.get("deep_ok") is True]
     reachable = [r for r in records if r["reachable"]]
-    degraded = False
-    if deep["available"]:
-        # Only nodes that carried traffic are published; a small list is fine.
-        selected = working[: args.max_configs]
-        degraded = len(selected) < args.min_configs
-    elif len(reachable) >= args.min_configs:
-        selected = reachable[: args.max_configs]
-    else:
-        # Probe gave nothing usable (network blocked in CI?) -> publish everything,
-        # but say so loudly instead of silently shipping an unverified list as "verified".
-        degraded = True
-        selected = records[: args.max_configs]
-    everything = records[: args.max_all]
+    degraded = not deep["available"] and not args.no_probe
+
+    owned_all = [r for r in ordered if r.get("from_private") or r.get("notice")]
+    free_all = [r for r in ordered if not (r.get("from_private") or r.get("notice"))]
+    room = max(0, args.max_configs - len(owned_all))
+    selected = owned_all + free_all[:room]
 
     # ---- safety gate -------------------------------------------------------
     prev_count = count_uris(args.prev) if os.path.exists(args.prev) else 0
     reason = ""
-    if deep["available"]:
-        # A large drop is the whole point here: dead nodes were removed on purpose,
-        # so the 50% rule would block every successful cleanup.
-        if len(selected) < 5:
-            reason = f"traffic test left {len(selected)} working config(s)"
-    elif len(selected) < args.min_configs:
+    if len(selected) < args.min_configs:
         reason = f"only {len(selected)} configs (min {args.min_configs})"
     elif prev_count and len(selected) < prev_count * 0.5:
         reason = f"count dropped {prev_count} -> {len(selected)} (<50%)"
@@ -761,37 +857,43 @@ def main(argv: list[str]) -> int:
     if reason:
         print(f"[guard] WARNING: {reason}; --force given, publishing anyway")
 
-    if degraded and deep["available"]:
-        print(f"[deep] WARNING: only {len(selected)} configs passed; list is short")
-    elif degraded and not args.no_probe:
-        print("[probe] WARNING: nothing answered the probe; publishing the full list")
+    if degraded:
+        print("[probe] WARNING: traffic test unavailable; order is based on TCP only")
 
-    payload = "\n".join(r["uri"] for r in selected) + "\n"
-    all_payload = "\n".join(r["uri"] for r in everything) + "\n"
+    payload = "\n".join(r["out_uri"] for r in selected) + "\n"
 
     if args.dry_run:
-        mode = "unverified (probe skipped)" if args.no_probe else "probed"
-        print(f"[dry-run] would publish {len(selected)} {mode} configs "
-              f"({len(payload)} bytes) + full list {len(everything)}")
+        print(f"[dry-run] would publish {len(selected)} configs "
+              f"({len(working)} working, {len(records)} valid overall), "
+              f"{len(payload)} bytes")
         return 0
 
     # ---- write -------------------------------------------------------------
     os.makedirs(args.out, exist_ok=True)
     write_atomic(os.path.join(args.out, "sub.txt"), b64encode_std(payload))
     write_atomic(os.path.join(args.out, "sub-plain.txt"), payload)
-    write_atomic(os.path.join(args.out, "sub-all.txt"), b64encode_std(all_payload))
     write_atomic(os.path.join(args.out, ".nojekyll"), "")
-    legacy = os.path.join(args.out, "sub-verified.txt")
-    if os.path.exists(legacy):          # leftover from an older layout
-        os.remove(legacy)
+    for legacy in ("sub-verified.txt", "sub-all.txt"):   # older layout
+        path = os.path.join(args.out, legacy)
+        if os.path.exists(path):
+            os.remove(path)
 
     by_proto = Counter(r["proto"] for r in selected)
+    tiers = {
+        "verified": len(working),
+        "port_only": sum(1 for r in records
+                         if r["reachable"] and r.get("deep_ok") is not True),
+        "syntax_only": sum(1 for r in records if not r["reachable"]),
+        "notices": len(notices),
+    }
     meta = {
         "built_at": started_wall.isoformat(timespec="seconds"),
+        "brand": "Апельсинка VPN",
         "configs": len(selected),
         "working_total": len(working),
         "reachable_total": len(reachable),
-        "configs_all": len(everything),
+        "valid_total": len(records),
+        "tiers": tiers,
         "probe_degraded": degraded,
         "deep_test": deep,
         "duplicates_removed": dups,
@@ -805,13 +907,12 @@ def main(argv: list[str]) -> int:
     write_atomic(os.path.join(args.out, "status.json"),
                  json.dumps(meta, ensure_ascii=False, indent=2) + "\n")
     write_atomic(os.path.join(args.out, "index.html"),
-                 render_index(len(selected), len(everything),
-                              meta["built_at"], status, degraded, deep,
+                 render_index(len(selected), tiers, meta["built_at"], status,
+                              degraded, deep,
                               os.path.exists(os.path.join(args.out, "sub-ru.txt"))))
-    verdict = (f"{len(working)} verified working" if deep["available"]
-               else "not traffic-tested")
-    print(f"[done] published {len(selected)} configs ({verdict}) "
-          f"+ {len(everything)} total, {len(payload)} bytes -> {args.out}")
+    print(f"[done] published {len(selected)} configs "
+          f"(verified {tiers['verified']}, port-only {tiers['port_only']}, "
+          f"unreachable {tiers['syntax_only']}) -> {args.out}")
 
     if os.getenv("GITHUB_ACTIONS") == "true" and not args.no_publish_commit:
         publish_commit(args.out)
