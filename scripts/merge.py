@@ -497,9 +497,9 @@ def render_index(total: int, tiers: dict, built: str, sources: list[dict],
         return f"v2rayng://install-sub?url={target}#{quote(title, safe='')}"
 
     if site_url:
-        ru_btn = (f'<a class="btn" href="{install_link("sub-ru.txt", "Апельсинка VPN")}">'
+        ru_btn = (f'<a class="btn" href="{install_link("sub-ru.txt", "Апельсинка впн")}">'
                   f'Добавить в v2rayNG</a>' if ru_present else "")
-        cloud_btn = (f'<a class="btn ghost" href="{install_link("sub.txt", "Апельсинка VPN (облако)")}">'
+        cloud_btn = (f'<a class="btn ghost" href="{install_link("sub.txt", "Апельсинка впн (облако)")}">'
                      f'Облачный список</a>')
     else:
         ru_btn = cloud_btn = ""
