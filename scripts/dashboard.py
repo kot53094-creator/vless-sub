@@ -70,7 +70,7 @@ def _device_cards(worker_url: str) -> str:
         grid.innerHTML = list.map(d => {{
           const online = !d.blocked && Date.now() - new Date(d.last_seen).getTime() < 15 * 60000;
           return '<div class="dev' + (d.blocked ? ' off' : '') + '">' +
-            '<div class="dev-top"><span class="dev-name">' + esc(d.device) + '</span>' +
+            '<div class="dev-top"><span class="dev-name">' + esc(d.title || d.device) + '</span>' +
             '<span class="dot ' + (d.blocked ? 'ban' : online ? 'on' : 'off') + '"></span></div>' +
             (d.blocked ? '<div class="dev-row blocked">отвязано — подписка не выдаётся</div>' : '') +
             '<div class="dev-row">последний раз: ' + fmt(d.last_seen) + '</div>' +

@@ -50,6 +50,7 @@ async function logHit(env, device, request) {
   const prev = await readDevice(env, device);
   const record = {
     device,
+    title: prev?.title || "",
     first_seen: prev?.first_seen || now,
     last_seen: now,
     hits: (prev?.hits || 0) + 1,
@@ -113,9 +114,13 @@ async function load(){
     if(!data.devices.length){ box.innerHTML = '<div class="card muted">Устройств пока нет.</div>'; return; }
     box.innerHTML = data.devices.map(d => \`
       <div class="card"><div class="row">
-        <div><div class="name">\${d.device}</div>
-          <div class="muted">последний раз: \${fmt(d.last_seen)} · запросов: \${d.hits} · \${d.country || "—"}</div>
-          <div class="\${d.blocked ? "bad" : "ok"}">\${d.blocked ? "отвязано" : "активно"}</div></div>
+        <div><div class="name">\${d.title || d.device}</div>
+          <div class="muted">метка: \${d.device} · последний раз: \${fmt(d.last_seen)} · запросов: \${d.hits} · \${d.country || "—"}</div>
+          <div class="\${d.blocked ? "bad" : "ok"}">\${d.blocked ? "отвязано" : "активно"}</div>
+          <div style="margin-top:8px"><input style="max-width:220px;display:inline-block"
+            id="t-\${d.device}" value="\${(d.title || "").replace(/"/g, "&quot;")}"
+            placeholder="название устройства">
+            <button class="sec" onclick="rename('\${d.device}')">сохранить</button></div></div>
         <button class="\${d.blocked ? "sec" : ""}" onclick="toggle('\${d.device}', \${!d.blocked})">
           \${d.blocked ? "вернуть" : "отвязать"}</button>
       </div></div>\`).join("");
@@ -123,6 +128,11 @@ async function load(){
 }
 async function toggle(device, blocked){
   await api("/api/admin/block", {method:"POST", body: JSON.stringify({device, blocked})});
+  load();
+}
+async function rename(device){
+  const title = document.getElementById("t-" + device).value;
+  await api("/api/admin/rename", {method:"POST", body: JSON.stringify({device, title})});
   load();
 }
 if(KEY) load();
@@ -153,7 +163,8 @@ export default {
         const value = await env.STATS.get(key.name, "json");
         if (value) {
           devices.push({
-            device: value.device, first_seen: value.first_seen, last_seen: value.last_seen,
+            device: value.device, title: value.title || "",
+            first_seen: value.first_seen, last_seen: value.last_seen,
             hits: value.hits, country: value.country, client: value.client,
             blocked: Boolean(value.blocked),
           });
@@ -185,6 +196,17 @@ export default {
       record.blocked = Boolean(body.blocked);
       await env.STATS.put(`dev:${device}`, JSON.stringify(record));
       return json({ ok: true, device, blocked: record.blocked });
+    }
+
+    if (url.pathname === "/api/admin/rename" && request.method === "POST") {
+      if (!isAdmin(request, env)) return json({ error: "forbidden" }, 403);
+      const body = await request.json().catch(() => ({}));
+      const device = String(body.device || "").toLowerCase().slice(0, 32);
+      const record = await readDevice(env, device);
+      if (!record) return json({ error: "unknown device" }, 404);
+      record.title = String(body.title || "").slice(0, 40);
+      await env.STATS.put(`dev:${device}`, JSON.stringify(record));
+      return json({ ok: true, device, title: record.title });
     }
 
     const match = url.pathname.match(/^\/s\/([A-Za-z0-9_-]{1,32})$/);
