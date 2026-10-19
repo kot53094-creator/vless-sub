@@ -788,6 +788,27 @@ def parse_private(raw: str) -> list[dict]:
     return out
 
 
+def profile_of(rec: dict) -> str:
+    """Имя профиля из ответа провайдера, без служебного номера выхода.
+
+    `🇫🇮 Финляндия · 3` и `🇫🇮 Финляндия · 7` — один и тот же профиль,
+    в списке от него нужен только самый быстрый выход.
+    """
+    frag = rec.get("uri", "")
+    if "#" not in frag:
+        return ""
+    name = unquote(frag.split("#", 1)[1])
+    return re.sub(r"\s*·\s*\d+$", "", name).strip()
+
+
+GENERIC_PROFILE_MARKS = ("АВТО", "БЕЗЛИМИТ", "ЛИМИТНЫЕ", "Обход", "AUTO")
+
+
+def is_generic_profile(name: str) -> bool:
+    """Служебные профили провайдера: в них собраны серверы со всех стран."""
+    return any(mark.lower() in name.lower() for mark in GENERIC_PROFILE_MARKS)
+
+
 def with_remark(uri: str, remark: str) -> str:
     """Replace only the #fragment: connection parameters stay byte-identical."""
     base = uri.split("#", 1)[0]
@@ -917,20 +938,35 @@ def main(argv: list[str]) -> int:
     # ---- deduplicate -------------------------------------------------------
     uniq: dict[str, dict] = {}
     exact: set[str] = set()
+    names: dict[str, str] = {}          # fingerprint -> самое точное имя профиля
     dups = 0
     for rec in all_records:
+        fp = rec["fingerprint"]
+        if rec.get("from_private") and not is_generic_profile(profile_of(rec)):
+            names.setdefault(fp, profile_of(rec))
         if rec["uri"] in exact:
             dups += 1
             continue
         exact.add(rec["uri"])
-        if rec["fingerprint"] in uniq:
+        if fp in uniq:
             dups += 1
             # a node that is also in the private subscription keeps its priority
             if rec.get("from_private"):
-                uniq[rec["fingerprint"]]["from_private"] = True
+                uniq[fp]["from_private"] = True
             continue
-        uniq[rec["fingerprint"]] = rec
+        uniq[fp] = rec
     records = list(uniq.values())
+    # Провайдер перечисляет одни и те же серверы и в общем профиле «АВТО», и в
+    # страновых. Дедупликация оставляла имя «АВТО» — вернём стране её название.
+    renamed = 0
+    for rec in records:
+        better = names.get(rec["fingerprint"])
+        if better and rec.get("from_private") and "#" in rec["uri"]:
+            if profile_of(rec) != better:
+                rec["uri"] = with_remark(rec["uri"], better)
+                renamed += 1
+    if renamed:
+        print(f"[dedup] {renamed} узлов получили страновые имена")
     print(f"[dedup] {len(all_records)} -> {len(records)} ({dups} duplicates removed)")
 
     # ---- per-host cap ------------------------------------------------------
@@ -1087,13 +1123,22 @@ def main(argv: list[str]) -> int:
     # not like a dump of 77 entries. Nodes are already sorted best-first.
     if args.max_per_key:
         counted: dict = {}
+        per_profile: Counter = Counter()
         trimmed: list[dict] = []
         for rec in ordered:
             if rec.get("from_private") and rec.get("host"):
                 used = counted.get(rec["group"], 0)
                 if used >= args.max_per_key:
                     continue
+                # Один сервер на профиль провайдера: иначе быстрые «АВТО»-
+                # выходы вытесняют весь список и в клиенте видно 15 одинаковых
+                # строк вместо Финляндии, Германии, США.
+                prof = profile_of(rec)
+                if prof and per_profile[(rec["group"], prof)] >= 1:
+                    continue
                 counted[rec["group"]] = used + 1
+                if prof:
+                    per_profile[(rec["group"], prof)] += 1
             trimmed.append(rec)
         ordered = trimmed
 
