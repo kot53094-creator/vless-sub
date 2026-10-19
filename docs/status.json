@@ -1,25 +1,25 @@
 {
-  "built_at": "2026-10-19T10:14:30+00:00",
+  "built_at": "2026-10-19T14:23:52+00:00",
   "brand": "Апельсинка VPN",
   "configs": 1200,
-  "working_total": 195,
-  "reachable_total": 902,
-  "valid_total": 1606,
+  "working_total": 374,
+  "reachable_total": 1284,
+  "valid_total": 1558,
   "tiers": {
-    "verified": 195,
-    "port_only": 707,
-    "syntax_only": 704,
+    "verified": 374,
+    "port_only": 910,
+    "syntax_only": 274,
     "notices": 1
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 902,
-    "passed": 195,
-    "seconds": 147.8,
+    "checked": 1284,
+    "passed": 374,
+    "seconds": 133.7,
     "version": "v26.3.27"
   },
-  "duplicates_removed": 294,
+  "duplicates_removed": 296,
   "protocols": {
     "vless": 1200
   },
@@ -33,15 +33,15 @@
     {
       "name": "raw.githubusercontent.com/mehrtat/vless-collector/main/vless.txt",
       "ok": true,
-      "seen": 341,
-      "kept": 338,
+      "seen": 291,
+      "kept": 288,
       "error": "",
       "label": "",
       "note": "",
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 49
+      "verified": 182
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -54,7 +54,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 1
+      "verified": 28
     },
     {
       "name": "raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/",
@@ -67,7 +67,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 2
+      "verified": 7
     },
     {
       "name": "<kavkaz>",
@@ -93,12 +93,12 @@
       "order": 1,
       "quota": {
         "upload": 0,
-        "download": 12071957,
+        "download": 137479914,
         "total": 6442450944,
         "expire": 1792655196
       },
       "provider": "🚀 TITAN VPS ⚡",
-      "verified": 126
+      "verified": 141
     },
     {
       "name": "<private-2 AIDEN2>",
@@ -111,25 +111,25 @@
       "order": 2,
       "quota": {
         "upload": 0,
-        "download": 1708176012,
+        "download": 3637988212,
         "total": 32212254720,
         "expire": 1792925166
       },
       "provider": "Aiden VPN",
-      "verified": 13
+      "verified": 12
     },
     {
       "name": "<private-3 VLESS>",
       "ok": true,
-      "seen": 6,
-      "kept": 6,
+      "seen": 7,
+      "kept": 7,
       "error": "",
       "label": "VLESS",
       "note": "ещё 5 дней",
       "order": 3,
       "quota": {
-        "upload": 71654471,
-        "download": 868320688,
+        "upload": 74461523,
+        "download": 889000810,
         "total": 0,
         "expire": 0
       },
@@ -165,7 +165,7 @@
       "order": 6,
       "quota": {
         "upload": 0,
-        "download": 28863469700,
+        "download": 30797873767,
         "total": 107374182400,
         "expire": 1792455564
       },
