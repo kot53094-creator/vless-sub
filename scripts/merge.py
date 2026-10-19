@@ -38,6 +38,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
+import auto_config
 import dashboard
 import xray_check
 
@@ -541,7 +542,7 @@ def write_atomic(path: str, content: str) -> None:
 
 def render_index(total: int, tiers: dict, built: str, sources: list[dict],
                  degraded: bool, deep: dict, ru_present: bool = False,
-                 site_url: str = "") -> str:
+                 site_url: str = "", auto_nodes: int = 0) -> str:
     rows = "\n".join(
         f"<tr><td>{'ok' if s['ok'] else 'fail'}</td>"
         f"<td>{(s['name'] if s['ok'] else (s['name'] + ' — ' + str(s.get('error', ''))[:80]))}</td>"
@@ -573,6 +574,12 @@ def render_index(total: int, tiers: dict, built: str, sources: list[dict],
                      f'<a class="btn ghost" href="dashboard.html">Состояние ключей</a>')
     else:
         ru_btn = cloud_btn = ""
+    auto_btn = (f'<a class="btn" href="auto.json">АВТО — лучший сервер</a>'
+                if auto_nodes else "")
+    auto_line = (f'<li><b><a href="auto.json">auto.json</a></b> — профиль «АВТО»: '
+                 f'{auto_nodes} узлов и балансировщик leastPing, клиент сам '
+                 f'выбирает живой и самый быстрый (Happ, v2RayTun)</li>'
+                 if auto_nodes else "")
     return f"""<!doctype html>
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -613,12 +620,13 @@ padding:5px 14px;font-size:13px;font-weight:600;color:var(--deep);margin:0 8px 8
 {note}
 <div class="card">
 <p style="margin:0 0 10px"><b>Ссылка для клиента</b></p>
-<p class="btns">{ru_btn}{cloud_btn}</p>
-<p style="margin:0 0 14px"><code><a href="sub.txt">sub.txt</a></code></p>
-<ul style="margin:0;padding-left:20px;line-height:1.9">
-<li><b>sub.txt</b> — всё, что прошло проверку синтаксиса, {total}</li>
-<li><b>sub-plain.txt</b> — тот же список построчно</li>
-{ru_line}
+ <p class="btns">{ru_btn}{cloud_btn}{auto_btn}</p>
+ <p style="margin:0 0 14px"><code><a href="sub.txt">sub.txt</a></code></p>
+ <ul style="margin:0;padding-left:20px;line-height:1.9">
+ <li><b>sub.txt</b> — всё, что прошло проверку синтаксиса, {total}</li>
+ <li><b>sub-plain.txt</b> — тот же список построчно</li>
+ {ru_line}
+ {auto_line}
 <li><b><a href="dashboard.html">dashboard.html</a></b> — трафик и срок действия каждого ключа</li>
 <li><b>status.json</b> — три уровня диагностики и состояние источников</li>
 </ul>
@@ -1203,6 +1211,28 @@ def main(argv: list[str]) -> int:
         if os.path.exists(path):
             os.remove(path)
 
+    # ---- АВТО-профиль ------------------------------------------------------
+    # Подписка из ссылок не выбирает сервер сама. Отдельный JSON с
+    # балансировщиком leastPing делает это внутри клиента (Happ, v2RayTun).
+    auto_nodes = 0
+    auto_path = os.path.join(args.out, "auto.json")
+    auto_candidates = [r for r in selected
+                       if r.get("host") and r.get("deep_ok") is True
+                       and r["proto"] in {"vless", "vmess", "trojan"}
+                       and (r["network"] or "tcp") in {"tcp", "ws", "grpc", "xhttp", "httpupgrade"}]
+    auto_candidates = (auto_candidates or [r for r in selected
+                                           if r.get("host") and r.get("from_private")])[:12]
+    try:
+        if len(auto_candidates) >= 2:
+            cfg = auto_config.build_auto_config(auto_candidates, limit=12)
+            write_atomic(auto_path, json.dumps(cfg, ensure_ascii=False, indent=1) + "\n")
+            auto_nodes = len(cfg["outbounds"]) - 2
+            print(f"[auto] profile with {auto_nodes} nodes and leastPing balancer -> auto.json")
+    except Exception as exc:                                  # noqa: BLE001
+        print(f"[auto] skipped: {type(exc).__name__}: {exc}")
+        if os.path.exists(auto_path):
+            os.remove(auto_path)
+
     by_proto = Counter(r["proto"] for r in selected)
     tiers = {
         "verified": len(working),
@@ -1234,8 +1264,8 @@ def main(argv: list[str]) -> int:
     write_atomic(os.path.join(args.out, "index.html"),
                  render_index(len(selected), tiers, meta["built_at"], status,
                               degraded, deep,
-                              os.path.exists(os.path.join(args.out, "sub-ru.txt")),
-                              args.site_url))
+                               os.path.exists(os.path.join(args.out, "sub-ru.txt")),
+                               args.site_url, auto_nodes))
     worker_url = ""
     worker_file = os.path.join("configs", "worker.txt")
     if os.path.exists(worker_file):

@@ -1,0 +1,422 @@
+{
+ "remarks": "Апельсинка · АВТО",
+ "log": {
+  "loglevel": "warning"
+ },
+ "inbounds": [
+  {
+   "tag": "socks",
+   "listen": "127.0.0.1",
+   "port": 10808,
+   "protocol": "socks",
+   "settings": {
+    "auth": "noauth",
+    "udp": true
+   }
+  },
+  {
+   "tag": "http",
+   "listen": "127.0.0.1",
+   "port": 10809,
+   "protocol": "http",
+   "settings": {
+    "allowTransparent": false
+   }
+  }
+ ],
+ "outbounds": [
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "188.225.56.53",
+      "port": 1444,
+      "users": [
+       {
+        "id": "38e64fb6-432d-4109-b6ac-8597abafa0d6",
+        "encryption": "none",
+        "flow": "xtls-rprx-vision"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "tcp",
+    "security": "reality",
+    "realitySettings": {
+     "serverName": "timeweb.cloud",
+     "publicKey": "MxgcxFzTKYOyhtjQp5Ms_OWWzA1dskcQn6TvRS1t01o",
+     "shortId": "49",
+     "fingerprint": "firefox",
+     "spiderX": "/"
+    }
+   },
+   "tag": "auto-1"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "89.167.72.143",
+      "port": 5443,
+      "users": [
+       {
+        "id": "38e64fb6-432d-4109-b6ac-8597abafa0d6",
+        "encryption": "none"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "xhttp",
+    "security": "reality",
+    "xhttpSettings": {
+     "path": "/"
+    },
+    "realitySettings": {
+     "serverName": "www.booking.com",
+     "publicKey": "MjBxxU3QQ8YP-Ut58vIfkIRZAHxaB0to7K_qwg35KlU",
+     "shortId": "5e2939ea2953003a",
+     "fingerprint": "firefox",
+     "spiderX": "/"
+    }
+   },
+   "tag": "auto-2"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "94.183.170.8",
+      "port": 8449,
+      "users": [
+       {
+        "id": "38e64fb6-432d-4109-b6ac-8597abafa0d6",
+        "encryption": "mlkem768x25519plus.native.0rtt.rqb-IJcGgmJcHdidZ836W10SUcB0DcVRn5yXIttevEE"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "xhttp",
+    "security": "none",
+    "xhttpSettings": {
+     "path": "/upd",
+     "mode": "stream-up"
+    }
+   },
+   "tag": "auto-3"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "144.31.0.201",
+      "port": 41216,
+      "users": [
+       {
+        "id": "38e64fb6-432d-4109-b6ac-8597abafa0d6",
+        "encryption": "mlkem768x25519plus.native.0rtt.VEg_wSjR_0uNigcXCjGdhB1SlIo-F393TOutpXALCGg"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "xhttp",
+    "security": "none",
+    "xhttpSettings": {
+     "path": "/upd",
+     "mode": "stream-up"
+    }
+   },
+   "tag": "auto-4"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "82.29.128.144",
+      "port": 4443,
+      "users": [
+       {
+        "id": "38e64fb6-432d-4109-b6ac-8597abafa0d6",
+        "encryption": "none"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "xhttp",
+    "security": "reality",
+    "xhttpSettings": {
+     "path": "/"
+    },
+    "realitySettings": {
+     "serverName": "www.booking.com",
+     "publicKey": "XBzmPmWVQkRCuaHkF8ikuGYFoTPYrTa5QG2-z_DCfBM",
+     "shortId": "53",
+     "fingerprint": "firefox",
+     "spiderX": "/"
+    }
+   },
+   "tag": "auto-5"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "62.182.198.41",
+      "port": 989,
+      "users": [
+       {
+        "id": "38e64fb6-432d-4109-b6ac-8597abafa0d6",
+        "encryption": "none"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "xhttp",
+    "security": "reality",
+    "xhttpSettings": {
+     "path": "/",
+     "mode": "packet-up"
+    },
+    "realitySettings": {
+     "serverName": "www.booking.com",
+     "publicKey": "YnV-foZHxwr87PSmp2XKTwmQFZ8HjU-IFV0PglqY_kI",
+     "shortId": "34ac",
+     "fingerprint": "edge",
+     "spiderX": "/"
+    }
+   },
+   "tag": "auto-6"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "fin91.kvnrkn.ru",
+      "port": 5443,
+      "users": [
+       {
+        "id": "38e64fb6-432d-4109-b6ac-8597abafa0d6",
+        "encryption": "none"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "grpc",
+    "security": "tls",
+    "grpcSettings": {
+     "serviceName": "grpc",
+     "multiMode": false
+    },
+    "tlsSettings": {
+     "serverName": "fin91.kvnrkn.ru",
+     "allowInsecure": false,
+     "alpn": [
+      "h2",
+      "http/1.1"
+     ]
+    }
+   },
+   "tag": "auto-7"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "91.218.112.207",
+      "port": 3443,
+      "users": [
+       {
+        "id": "38e64fb6-432d-4109-b6ac-8597abafa0d6",
+        "encryption": "none"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "xhttp",
+    "security": "reality",
+    "xhttpSettings": {
+     "path": "/",
+     "mode": "packet-up"
+    },
+    "realitySettings": {
+     "serverName": "ads.x5.ru",
+     "publicKey": "2FA3GPKEzxxspjNeSlAFGFDTpne-Gs8rJYwnmT5jOlQ",
+     "shortId": "842b353e8eb7",
+     "fingerprint": "edge",
+     "spiderX": "/"
+    }
+   },
+   "tag": "auto-8"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "103.27.157.204",
+      "port": 45250,
+      "users": [
+       {
+        "id": "38e64fb6-432d-4109-b6ac-8597abafa0d6",
+        "encryption": "mlkem768x25519plus.native.0rtt.RgDlyQXWmDWFjSCTx-nXzjkfA3DFbg8_5ifZU_TJDk4"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "grpc",
+    "security": "none",
+    "grpcSettings": {
+     "serviceName": "upd",
+     "multiMode": false
+    }
+   },
+   "tag": "auto-9"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "144.31.94.33",
+      "port": 38079,
+      "users": [
+       {
+        "id": "38e64fb6-432d-4109-b6ac-8597abafa0d6",
+        "encryption": "mlkem768x25519plus.native.0rtt.uWDdy4fteWxVPTXVVaRBiW0TSkGJPJSFytfkOf2lhC4"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "xhttp",
+    "security": "none",
+    "xhttpSettings": {
+     "path": "/upd",
+     "mode": "stream-up"
+    }
+   },
+   "tag": "auto-10"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "45.151.180.119",
+      "port": 5443,
+      "users": [
+       {
+        "id": "38e64fb6-432d-4109-b6ac-8597abafa0d6",
+        "encryption": "none"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "xhttp",
+    "security": "reality",
+    "xhttpSettings": {
+     "path": "/"
+    },
+    "realitySettings": {
+     "serverName": "www.nic.cz",
+     "publicKey": "-1MXZsQMmWcOXodGJcDicZFV8MCLii-pf2ex87ceQkQ",
+     "shortId": "bf60b726a390c8f2",
+     "fingerprint": "edge",
+     "spiderX": "/"
+    }
+   },
+   "tag": "auto-11"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "217.13.104.104",
+      "port": 8449,
+      "users": [
+       {
+        "id": "38e64fb6-432d-4109-b6ac-8597abafa0d6",
+        "encryption": "mlkem768x25519plus.native.0rtt.eE95etY_A5z_svewgEbGhvLEUHwNoyUR-W4gcQaugTk"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "xhttp",
+    "security": "none",
+    "xhttpSettings": {
+     "path": "/upd",
+     "mode": "stream-up"
+    }
+   },
+   "tag": "auto-12"
+  },
+  {
+   "tag": "direct",
+   "protocol": "freedom"
+  },
+  {
+   "tag": "block",
+   "protocol": "blackhole"
+  }
+ ],
+ "routing": {
+  "domainStrategy": "AsIs",
+  "balancers": [
+   {
+    "tag": "auto",
+    "selector": [
+     "auto-"
+    ],
+    "strategy": {
+     "type": "leastPing"
+    }
+   }
+  ],
+  "rules": [
+   {
+    "type": "field",
+    "network": "tcp,udp",
+    "balancerTag": "auto"
+   }
+  ]
+ },
+ "observatory": {
+  "subjectSelector": [
+   "auto-"
+  ],
+  "probeUrl": "https://www.connectivitycheck.gstatic.com/generate_204",
+  "probeInterval": "30s",
+  "enableConcurrency": true
+ }
+}

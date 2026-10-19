@@ -1,25 +1,44 @@
 {
-  "built_at": "2026-10-19T10:14:30+00:00",
+<<<<<<< HEAD
+  "built_at": "2026-10-19T14:23:52+00:00",
   "brand": "Апельсинка VPN",
   "configs": 1200,
-  "working_total": 195,
-  "reachable_total": 902,
-  "valid_total": 1606,
+  "working_total": 374,
+  "reachable_total": 1284,
+  "valid_total": 1558,
   "tiers": {
-    "verified": 195,
-    "port_only": 707,
-    "syntax_only": 704,
+    "verified": 374,
+    "port_only": 910,
+    "syntax_only": 274,
+=======
+  "built_at": "2026-10-19T15:09:39+00:00",
+  "brand": "Апельсинка VPN",
+  "configs": 1200,
+  "working_total": 186,
+  "reachable_total": 881,
+  "valid_total": 1557,
+  "tiers": {
+    "verified": 186,
+    "port_only": 695,
+    "syntax_only": 676,
+>>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
     "notices": 1
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 902,
-    "passed": 195,
-    "seconds": 147.8,
+<<<<<<< HEAD
+    "checked": 1284,
+    "passed": 374,
+    "seconds": 133.7,
+=======
+    "checked": 881,
+    "passed": 186,
+    "seconds": 145.2,
+>>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
     "version": "v26.3.27"
   },
-  "duplicates_removed": 294,
+  "duplicates_removed": 296,
   "protocols": {
     "vless": 1200
   },
@@ -33,15 +52,19 @@
     {
       "name": "raw.githubusercontent.com/mehrtat/vless-collector/main/vless.txt",
       "ok": true,
-      "seen": 341,
-      "kept": 338,
+      "seen": 291,
+      "kept": 288,
       "error": "",
       "label": "",
       "note": "",
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 49
+<<<<<<< HEAD
+      "verified": 182
+=======
+      "verified": 40
+>>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -54,7 +77,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 1
+      "verified": 28
     },
     {
       "name": "raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/",
@@ -67,7 +90,11 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 2
+<<<<<<< HEAD
+      "verified": 7
+=======
+      "verified": 3
+>>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
     },
     {
       "name": "<kavkaz>",
@@ -93,12 +120,16 @@
       "order": 1,
       "quota": {
         "upload": 0,
-        "download": 12071957,
+<<<<<<< HEAD
+        "download": 137479914,
+=======
+        "download": 137613290,
+>>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
         "total": 6442450944,
         "expire": 1792655196
       },
       "provider": "🚀 TITAN VPS ⚡",
-      "verified": 126
+      "verified": 141
     },
     {
       "name": "<private-2 AIDEN2>",
@@ -111,25 +142,34 @@
       "order": 2,
       "quota": {
         "upload": 0,
-        "download": 1708176012,
+<<<<<<< HEAD
+        "download": 3637988212,
+=======
+        "download": 4759280905,
+>>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
         "total": 32212254720,
         "expire": 1792925166
       },
       "provider": "Aiden VPN",
-      "verified": 13
+      "verified": 12
     },
     {
       "name": "<private-3 VLESS>",
       "ok": true,
-      "seen": 6,
-      "kept": 6,
+      "seen": 7,
+      "kept": 7,
       "error": "",
       "label": "VLESS",
       "note": "ещё 5 дней",
       "order": 3,
       "quota": {
-        "upload": 71654471,
-        "download": 868320688,
+<<<<<<< HEAD
+        "upload": 74461523,
+        "download": 889000810,
+=======
+        "upload": 74578428,
+        "download": 889389132,
+>>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
         "total": 0,
         "expire": 0
       },
@@ -165,7 +205,11 @@
       "order": 6,
       "quota": {
         "upload": 0,
-        "download": 28863469700,
+<<<<<<< HEAD
+        "download": 30797873767,
+=======
+        "download": 30917815149,
+>>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
         "total": 107374182400,
         "expire": 1792455564
       },

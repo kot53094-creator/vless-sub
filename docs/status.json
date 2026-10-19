@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
   "built_at": "2026-10-19T14:23:52+00:00",
   "brand": "Апельсинка VPN",
   "configs": 1200,
@@ -9,14 +10,32 @@
     "verified": 374,
     "port_only": 910,
     "syntax_only": 274,
+=======
+  "built_at": "2026-10-19T15:09:39+00:00",
+  "brand": "Апельсинка VPN",
+  "configs": 1200,
+  "working_total": 186,
+  "reachable_total": 881,
+  "valid_total": 1557,
+  "tiers": {
+    "verified": 186,
+    "port_only": 695,
+    "syntax_only": 676,
+>>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
     "notices": 1
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
+<<<<<<< HEAD
     "checked": 1284,
     "passed": 374,
     "seconds": 133.7,
+=======
+    "checked": 881,
+    "passed": 186,
+    "seconds": 145.2,
+>>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
     "version": "v26.3.27"
   },
   "duplicates_removed": 296,
@@ -41,7 +60,11 @@
       "order": 0,
       "quota": {},
       "provider": "",
+<<<<<<< HEAD
       "verified": 182
+=======
+      "verified": 40
+>>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -67,7 +90,11 @@
       "order": 0,
       "quota": {},
       "provider": "",
+<<<<<<< HEAD
       "verified": 7
+=======
+      "verified": 3
+>>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
     },
     {
       "name": "<kavkaz>",
@@ -93,7 +120,11 @@
       "order": 1,
       "quota": {
         "upload": 0,
+<<<<<<< HEAD
         "download": 137479914,
+=======
+        "download": 137613290,
+>>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
         "total": 6442450944,
         "expire": 1792655196
       },
@@ -111,7 +142,11 @@
       "order": 2,
       "quota": {
         "upload": 0,
+<<<<<<< HEAD
         "download": 3637988212,
+=======
+        "download": 4759280905,
+>>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
         "total": 32212254720,
         "expire": 1792925166
       },
@@ -128,8 +163,13 @@
       "note": "ещё 5 дней",
       "order": 3,
       "quota": {
+<<<<<<< HEAD
         "upload": 74461523,
         "download": 889000810,
+=======
+        "upload": 74578428,
+        "download": 889389132,
+>>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
         "total": 0,
         "expire": 0
       },
@@ -165,7 +205,11 @@
       "order": 6,
       "quota": {
         "upload": 0,
+<<<<<<< HEAD
         "download": 30797873767,
+=======
+        "download": 30917815149,
+>>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
         "total": 107374182400,
         "expire": 1792455564
       },
