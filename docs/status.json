@@ -1,44 +1,25 @@
 {
-<<<<<<< HEAD
-  "built_at": "2026-10-19T14:23:52+00:00",
+  "built_at": "2026-10-19T15:14:39+00:00",
   "brand": "Апельсинка VPN",
   "configs": 1200,
-  "working_total": 374,
-  "reachable_total": 1284,
-  "valid_total": 1558,
-  "tiers": {
-    "verified": 374,
-    "port_only": 910,
-    "syntax_only": 274,
-=======
-  "built_at": "2026-10-19T15:09:39+00:00",
-  "brand": "Апельсинка VPN",
-  "configs": 1200,
-  "working_total": 186,
-  "reachable_total": 881,
+  "working_total": 366,
+  "reachable_total": 1268,
   "valid_total": 1557,
   "tiers": {
-    "verified": 186,
-    "port_only": 695,
-    "syntax_only": 676,
->>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
+    "verified": 366,
+    "port_only": 902,
+    "syntax_only": 289,
     "notices": 1
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-<<<<<<< HEAD
-    "checked": 1284,
-    "passed": 374,
-    "seconds": 133.7,
-=======
-    "checked": 881,
-    "passed": 186,
-    "seconds": 145.2,
->>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
+    "checked": 1268,
+    "passed": 366,
+    "seconds": 125.3,
     "version": "v26.3.27"
   },
-  "duplicates_removed": 296,
+  "duplicates_removed": 297,
   "protocols": {
     "vless": 1200
   },
@@ -60,11 +41,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-<<<<<<< HEAD
-      "verified": 182
-=======
-      "verified": 40
->>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
+      "verified": 177
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -77,7 +54,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 28
+      "verified": 25
     },
     {
       "name": "raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/",
@@ -90,11 +67,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-<<<<<<< HEAD
-      "verified": 7
-=======
       "verified": 3
->>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
     },
     {
       "name": "<kavkaz>",
@@ -120,16 +93,12 @@
       "order": 1,
       "quota": {
         "upload": 0,
-<<<<<<< HEAD
-        "download": 137479914,
-=======
         "download": 137613290,
->>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
         "total": 6442450944,
         "expire": 1792655196
       },
       "provider": "🚀 TITAN VPS ⚡",
-      "verified": 141
+      "verified": 144
     },
     {
       "name": "<private-2 AIDEN2>",
@@ -142,11 +111,7 @@
       "order": 2,
       "quota": {
         "upload": 0,
-<<<<<<< HEAD
-        "download": 3637988212,
-=======
-        "download": 4759280905,
->>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
+        "download": 4922564705,
         "total": 32212254720,
         "expire": 1792925166
       },
@@ -163,18 +128,13 @@
       "note": "ещё 5 дней",
       "order": 3,
       "quota": {
-<<<<<<< HEAD
-        "upload": 74461523,
-        "download": 889000810,
-=======
-        "upload": 74578428,
-        "download": 889389132,
->>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
+        "upload": 74595617,
+        "download": 889456946,
         "total": 0,
         "expire": 0
       },
       "provider": "",
-      "verified": 4
+      "verified": 5
     },
     {
       "name": "<private-4 MEDUSA>",
@@ -205,11 +165,7 @@
       "order": 6,
       "quota": {
         "upload": 0,
-<<<<<<< HEAD
-        "download": 30797873767,
-=======
-        "download": 30917815149,
->>>>>>> 2350f63 (feat: AUTO profile with leastPing balancer (auto.json))
+        "download": 30931915125,
         "total": 107374182400,
         "expire": 1792455564
       },
