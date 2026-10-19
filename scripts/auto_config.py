@@ -44,11 +44,38 @@ def build_outbound(rec: dict) -> dict:
     return out
 
 
+def pick_mixed(records: list[dict], limit: int = 16, per_group: int = 4) -> list[dict]:
+    """Берёт узлы по кругу из разных ключей, а не всё из одного.
+
+    Если набить балансировщик только Titan, исчерпание его 6 ГБ убивает весь
+    профиль. По 4 узла с каждого ключа — потеря одного ключа переживаема.
+    """
+    buckets: dict = {}
+    for rec in records:
+        buckets.setdefault(rec.get("group", 0), []).append(rec)
+
+    picked: list[dict] = []
+    used: dict = {}
+    while len(picked) < limit:
+        added = False
+        for group in sorted(buckets):
+            if len(picked) >= limit:
+                break
+            if used.get(group, 0) >= per_group or not buckets[group]:
+                continue
+            picked.append(buckets[group].pop(0))
+            used[group] = used.get(group, 0) + 1
+            added = True
+        if not added:
+            break
+    return picked
+
+
 def build_auto_config(records: list[dict], limit: int = 12,
                       http_port: int = 10809, socks_port: int = 10808) -> dict:
     """Готовый конфиг: список живых узлов + балансировщик leastPing."""
     outbounds: list[dict] = []
-    for index, rec in enumerate(records[:limit], 1):
+    for index, rec in enumerate(pick_mixed(records, limit=limit), 1):
         out = build_outbound(rec)
         out["tag"] = f"{BALANCER_SELECTOR}{index}"
         outbounds.append(out)

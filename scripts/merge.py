@@ -1221,10 +1221,10 @@ def main(argv: list[str]) -> int:
                        and r["proto"] in {"vless", "vmess", "trojan"}
                        and (r["network"] or "tcp") in {"tcp", "ws", "grpc", "xhttp", "httpupgrade"}]
     auto_candidates = (auto_candidates or [r for r in selected
-                                           if r.get("host") and r.get("from_private")])[:12]
+                                           if r.get("host") and r.get("from_private")])[:40]
     try:
         if len(auto_candidates) >= 2:
-            cfg = auto_config.build_auto_config(auto_candidates, limit=12)
+            cfg = auto_config.build_auto_config(auto_candidates, limit=16)
             write_atomic(auto_path, json.dumps(cfg, ensure_ascii=False, indent=1) + "\n")
             auto_nodes = len(cfg["outbounds"]) - 2
             print(f"[auto] profile with {auto_nodes} nodes and leastPing balancer -> auto.json")
