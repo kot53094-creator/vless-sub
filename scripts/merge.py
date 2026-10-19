@@ -56,6 +56,9 @@ NETWORKS = {
 }
 SECURITIES = {"none", "tls", "reality", "xtls"}
 FLOWS = {"", "xtls-rprx-vision", "xtls-rprx-vision-udp443", "xtls-rprx-direct"}
+# VLESS может требовать собственное шифрование канала
+# (mlkem768x25519plus.native.0rtt.<key>) — без него сервер не пустит клиента.
+ENCRYPTION_RE = re.compile(r"^[A-Za-z0-9._+/=-]{1,2048}$")
 PRIVATE_HOST_SUFFIXES = (".local", ".localhost", ".internal", ".lan", ".home")
 
 
@@ -132,17 +135,22 @@ def parse_userinfo(value: str) -> dict:
     return quota
 
 
-def fetch_meta(url: str, timeout: float = 30.0, retries: int = 2) -> tuple[str, dict]:
-    """Fetch text plus the headers the panel uses to report quota and expiry."""
+def fetch_meta(url: str, timeout: float = 30.0, retries: int = 2,
+               extra: dict | None = None) -> tuple[str, dict]:
+    """Fetch text plus the headers the panel uses to report quota and expiry.
+
+    `extra` carries per-key request headers: some panels only serve real
+    configs to their own client and answer everyone else with a placeholder.
+    """
     if url.startswith("file:"):
         return fetch_text(url), {}
     last = None
+    headers = {"User-Agent": UA, "Accept": "*/*", "Accept-Encoding": "identity"}
+    if extra:
+        headers.update({k: v for k, v in extra.items() if v})
     for attempt in range(retries + 1):
         try:
-            req = urllib.request.Request(
-                url,
-                headers={"User-Agent": UA, "Accept": "*/*", "Accept-Encoding": "identity"},
-            )
+            req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 raw = resp.read(MAX_SOURCE_BYTES + 1)
                 headers = {k.lower(): v for k, v in resp.headers.items()}
@@ -154,18 +162,19 @@ def fetch_meta(url: str, timeout: float = 30.0, retries: int = 2) -> tuple[str, 
     raise FetchError(f"{type(last).__name__}: {last}")
 
 
-def fetch_text(url: str, timeout: float = 30.0, retries: int = 2) -> str:
+def fetch_text(url: str, timeout: float = 30.0, retries: int = 2,
+               extra: dict | None = None) -> str:
     if url.startswith("file:"):
         path = url[5:].lstrip("/\\")
         with open(path, "r", encoding="utf-8-sig") as fh:
             return fh.read(MAX_SOURCE_BYTES)
     last = None
+    headers = {"User-Agent": UA, "Accept": "*/*", "Accept-Encoding": "identity"}
+    if extra:
+        headers.update({k: v for k, v in extra.items() if v})
     for attempt in range(retries + 1):
         try:
-            req = urllib.request.Request(
-                url,
-                headers={"User-Agent": UA, "Accept": "*/*", "Accept-Encoding": "identity"},
-            )
+            req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 raw = resp.read(MAX_SOURCE_BYTES + 1)
             if len(raw) > MAX_SOURCE_BYTES:
@@ -194,12 +203,10 @@ def xray_json_to_uris(text: str) -> list[str]:
         if not isinstance(cfg, dict):
             continue
         remark = str(cfg.get("remarks") or cfg.get("remark") or "").strip()
-        for ob in cfg.get("outbounds") or []:
-            if not isinstance(ob, dict):
-                continue
+        usable = [o for o in (cfg.get("outbounds") or [])
+                  if isinstance(o, dict) and str(o.get("protocol", "")).lower() in {"vless", "trojan"}]
+        for pos, ob in enumerate(usable, 1):
             proto = str(ob.get("protocol", "")).lower()
-            if proto not in {"vless", "trojan"}:
-                continue
             ss = ob.get("streamSettings") or {}
             net = str(ss.get("network") or "tcp").lower()
             if net == "raw":
@@ -239,6 +246,9 @@ def xray_json_to_uris(text: str) -> list[str]:
                 hdr = (xh.get("headers") or {}).get("Host")
                 if hdr:
                     params["host"] = str(hdr)
+                mode = str(xh.get("mode") or "")
+                if mode and mode != "auto":
+                    params["mode"] = mode      # сервер требует stream-up / packet-up
             if sni:
                 params["sni"] = sni
             settings = ob.get("settings") or {}
@@ -251,6 +261,9 @@ def xray_json_to_uris(text: str) -> list[str]:
                 flow = str(users[0].get("flow") or "")
                 if flow:
                     params["flow"] = flow
+                encryption = str(users[0].get("encryption") or "").strip()
+                if encryption and encryption.lower() != "none":
+                    params["encryption"] = encryption
                 userinfo = uid
             else:
                 servers = (settings.get("servers") or [{}])[0]
@@ -261,6 +274,8 @@ def xray_json_to_uris(text: str) -> list[str]:
                 continue
             query = "&".join(f"{k}={v}" for k, v in params.items() if v != "")
             frag = remark or f"{host}:{port}"
+            if len(usable) > 1:
+                frag = f"{frag} · {pos}"      # один профиль = несколько транспортов
             out.append(f"{proto}://{userinfo}@{host}:{port}?{query}#{frag}")
     return out
 
@@ -338,13 +353,18 @@ def validate_uri(uri: str, allowed: set[str], allow_private: bool = False) -> di
         "sid": "",
         "fp": "",
         "alpn": "",
+        "encryption": "",
+        "xhttp_mode": "",
     }
 
     if scheme == "vless":
         if not UUID_RE.match(userinfo):
             raise Bad("vless id is not a UUID")
-        if params.get("encryption", "none").lower() not in {"", "none"}:
-            raise Bad("vless encryption must be none")
+        encryption = (params.get("encryption") or "none").strip()
+        if encryption.lower() in {"", "none"}:
+            encryption = ""
+        elif not ENCRYPTION_RE.match(encryption):
+            raise Bad("bad vless encryption")
         security = params.get("security", "none").lower() or "none"
         if security not in SECURITIES:
             raise Bad(f"unknown security={security}")
@@ -370,6 +390,8 @@ def validate_uri(uri: str, allowed: set[str], allow_private: bool = False) -> di
             sid=params.get("sid", ""),
             fp=params.get("fp", "").lower(),
             alpn=params.get("alpn", "").lower(),
+            encryption=encryption,
+            xhttp_mode=params.get("mode", ""),
         )
         if network == "grpc":
             record["path"] = params.get("servicename", "")
@@ -404,7 +426,8 @@ def validate_uri(uri: str, allowed: set[str], allow_private: bool = False) -> di
         scheme, record["host"], str(record["port"]), record["security"],
         record["network"], record["flow"], record["sni"], record["path"],
         record["host_header"], record["pbk"], record["sid"], record["fp"],
-        record["alpn"], userinfo.lower(),
+        record["alpn"], record.get("encryption", ""), record.get("xhttp_mode", ""),
+        userinfo.lower(),
     ]
     record["fingerprint"] = hashlib.sha1(
         "|".join(fp_parts).encode("utf-8")
@@ -728,8 +751,23 @@ def parse_private(raw: str) -> list[dict]:
         # `~Label|url` stays silent when the provider returns no configs
         is_quiet = label_raw.strip().startswith("~")
         label = re.sub(r"[^A-Za-z0-9 ]", "", label_raw).strip().upper()[:8] or label_from(url)
+        # `...|note ua=Happ/2.9.1 hwid=<id>` — панели, которые отдают конфиги
+        # только своему приложению, узнают клиента по этим заголовкам.
+        headers: dict[str, str] = {}
+        words: list[str] = []
+        for token in note.split():
+            low = token.lower()
+            if low.startswith("ua="):
+                headers["User-Agent"] = token[3:]
+            elif low.startswith("hwid="):
+                headers["x-hwid"] = token[5:]
+                headers.setdefault("x-device-os", "Windows")
+                headers.setdefault("x-ver-os", "10.0")
+                headers.setdefault("x-device-model", "PC")
+            else:
+                words.append(token)
         out.append({"url": url, "label": label, "raw": is_raw, "quiet": is_quiet,
-                    "note": note.strip()[:40], "order": order})
+                    "note": " ".join(words)[:40], "headers": headers, "order": order})
 
     tokens: list[str] = []
     for chunk in re.split(r"[,\n]+", raw):
@@ -795,6 +833,7 @@ def main(argv: list[str]) -> int:
                             "raw": item["raw"], "quiet": item.get("quiet", False),
                             "order": item.get("order", 0),
                             "note": item.get("note", ""),
+                            "headers": item.get("headers", {}),
                             "title": f"<private-{index} {item['label']}>"})
 
     # Labelled entries in sources.txt (e.g. `KAVKAZ|file:configs/kavkaz.txt`) become
@@ -821,7 +860,8 @@ def main(argv: list[str]) -> int:
                  "label": src.get("label") or "", "note": src.get("note") or "",
                  "order": src.get("index") or 0, "quota": {}, "provider": ""}
         try:
-            text, headers = fetch_meta(src["url"], timeout=args.timeout)
+            text, headers = fetch_meta(src["url"], timeout=args.timeout,
+                                       extra=src.get("headers"))
             entry["quota"] = parse_userinfo(headers.get("subscription-userinfo", ""))
             entry["provider"] = decode_title(headers.get("profile-title", ""))
             lines = decode_payload(text)

@@ -123,6 +123,8 @@ def _tcp_settings(rec: dict) -> dict:
         stream["grpcSettings"] = {"serviceName": rec["path"] or "", "multiMode": False}
     elif net in {"xhttp", "splithttp"}:
         xh = {"path": rec["path"] or "/"}
+        if rec.get("xhttp_mode"):
+            xh["mode"] = rec["xhttp_mode"]
         if rec["host_header"]:
             xh["host"] = rec["host_header"]
         stream["network"] = "xhttp"
@@ -160,7 +162,7 @@ def _tcp_settings(rec: dict) -> dict:
 def build_config(rec: dict, listen_port: int) -> dict:
     proto = rec["proto"]
     if proto == "vless":
-        user = {"id": rec["auth"], "encryption": "none"}
+        user = {"id": rec["auth"], "encryption": rec.get("encryption") or "none"}
         if rec["flow"]:
             user["flow"] = rec["flow"]
         out = {"protocol": "vless",
