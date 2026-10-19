@@ -1,22 +1,22 @@
 {
-  "built_at": "2026-10-19T15:22:20+00:00",
+  "built_at": "2026-10-19T15:34:10+00:00",
   "brand": "Апельсинка VPN",
   "configs": 1200,
-  "working_total": 188,
-  "reachable_total": 885,
-  "valid_total": 1556,
+  "working_total": 365,
+  "reachable_total": 1255,
+  "valid_total": 1557,
   "tiers": {
-    "verified": 188,
-    "port_only": 697,
-    "syntax_only": 671,
+    "verified": 365,
+    "port_only": 890,
+    "syntax_only": 302,
     "notices": 1
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 885,
-    "passed": 188,
-    "seconds": 147.1,
+    "checked": 1255,
+    "passed": 365,
+    "seconds": 128.9,
     "version": "v26.3.27"
   },
   "duplicates_removed": 297,
@@ -41,7 +41,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 43
+      "verified": 177
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -54,7 +54,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 1
+      "verified": 28
     },
     {
       "name": "raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/",
@@ -67,7 +67,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 2
+      "verified": 5
     },
     {
       "name": "<kavkaz>",
@@ -98,7 +98,7 @@
         "expire": 1792655196
       },
       "provider": "🚀 TITAN VPS ⚡",
-      "verified": 125
+      "verified": 141
     },
     {
       "name": "<private-2 AIDEN2>",
@@ -111,25 +111,25 @@
       "order": 2,
       "quota": {
         "upload": 0,
-        "download": 5048795669,
+        "download": 5283598771,
         "total": 32212254720,
         "expire": 1792925166
       },
       "provider": "Aiden VPN",
-      "verified": 13
+      "verified": 10
     },
     {
       "name": "<private-3 VLESS>",
       "ok": true,
-      "seen": 6,
-      "kept": 6,
+      "seen": 7,
+      "kept": 7,
       "error": "",
       "label": "VLESS",
       "note": "ещё 5 дней",
       "order": 3,
       "quota": {
-        "upload": 76063685,
-        "download": 914657399,
+        "upload": 77584919,
+        "download": 922075545,
         "total": 0,
         "expire": 0
       },
@@ -165,7 +165,7 @@
       "order": 6,
       "quota": {
         "upload": 0,
-        "download": 31003430094,
+        "download": 31088478924,
         "total": 107374182400,
         "expire": 1792455564
       },
