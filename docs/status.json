@@ -1,12 +1,12 @@
 {
-  "built_at": "2026-10-20T09:23:54+00:00",
+  "built_at": "2026-10-20T09:25:33+00:00",
   "brand": "Апельсинка VPN",
-  "configs": 62,
-  "working_total": 57,
-  "reachable_total": 57,
-  "valid_total": 57,
+  "configs": 228,
+  "working_total": 223,
+  "reachable_total": 223,
+  "valid_total": 223,
   "tiers": {
-    "verified": 57,
+    "verified": 223,
     "port_only": 0,
     "syntax_only": 0,
     "notices": 0
@@ -14,22 +14,22 @@
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 236,
-    "passed": 57,
-    "seconds": 35.8,
+    "checked": 468,
+    "passed": 223,
+    "seconds": 43.5,
     "version": "v26.3.27"
   },
   "duplicates_removed": 6,
   "protocols": {
-    "vless": 59,
-    "ss": 3
+    "vless": 223,
+    "ss": 5
   },
   "allowed_protocols": [
     "ss",
     "vless"
   ],
   "max_configs": 400,
-  "previous_configs": 400,
+  "previous_configs": 62,
   "probe": "tcp/tls handshake",
   "sources": [
     {
@@ -43,7 +43,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 46
+      "verified": 179
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -56,7 +56,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 1
+      "verified": 29
     },
     {
       "name": "raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/",
@@ -69,7 +69,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 2
+      "verified": 4
     },
     {
       "name": "<kavkaz>",
@@ -108,7 +108,7 @@
       "order": 7,
       "quota": {},
       "provider": "",
-      "verified": 0
+      "verified": 3
     },
     {
       "name": "<private-1 TITAN>",
@@ -149,15 +149,15 @@
     {
       "name": "<private-3 VLESS>",
       "ok": true,
-      "seen": 6,
-      "kept": 6,
+      "seen": 7,
+      "kept": 7,
       "error": "",
       "label": "VLESS",
       "note": "ещё 5 дней",
       "order": 3,
       "quota": {
-        "upload": 165311615,
-        "download": 1327534766,
+        "upload": 166899224,
+        "download": 1328761730,
         "total": 0,
         "expire": 0
       },
