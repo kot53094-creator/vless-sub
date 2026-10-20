@@ -10,9 +10,10 @@ from datetime import datetime, timezone
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..db import SessionLocal
 from ..models import Event, Node, Source, SyncRun
-from . import checker, fetcher, parser, subscription
+from . import checker, fetcher, notifier, parser, subscription
 
 LogFn = Callable[[str], Awaitable[None]] | Callable[[str], None]
 
@@ -156,5 +157,30 @@ async def run_sync(log_cb: LogFn | None = None, mode: str = subscription.MODE_NO
         "size": len(encoded),
     }
     await _log(log_cb, f"Готово: опубликовано {published} узлов за {summary['seconds']} с")
+
+    # Новые устройства на ключах Remnawave — отдельное уведомление.
+    if settings.remnawave_url and settings.remnawave_token and notifier.enabled():
+        try:
+            from .detector import watch_new_device
+            from .remnawave import Remnawave
+
+            panel_users = await Remnawave().users()
+            await watch_new_device({u.username: u.devices for u in panel_users})
+        except Exception as exc:  # noqa: BLE001 - панель не должна ломать sync
+            await _log(log_cb, f"Remnawave недоступна: {type(exc).__name__}")
+
+    # Итог одной строкой и предупреждения — в Telegram, если он настроен.
+    if notifier.enabled():
+        await notifier.send(notifier.format_sync(summary))
+        warnings: list[tuple[str, int | None, int | None]] = []
+        for src in db.execute(select(Source).where(Source.status == "active")).scalars():
+            total = src.total_bytes or src.traffic_limit
+            pct = int(src.used_bytes / total * 100) if total else None
+            days = src.days_left
+            if (days is not None and days <= 3) or (pct is not None and pct >= 80):
+                warnings.append((src.name, days, pct))
+        if warnings:
+            await notifier.send(notifier.format_expiring(warnings[:15]))
+
     db.close()
     return summary

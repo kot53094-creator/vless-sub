@@ -16,7 +16,7 @@ from .config import settings
 from .db import SessionLocal, init_db
 from .models import Event, Setting
 from .routers import api, remna, servers, ui
-from .services import subscription, sync
+from .services import detector, subscription, sync
 
 
 def _bootstrap() -> None:
@@ -53,10 +53,13 @@ async def lifespan(app: FastAPI):
     for warning in settings.warnings():
         print(f"[warn] {warning}", flush=True)
     task = asyncio.create_task(_scheduler())
+    detector_task = asyncio.create_task(detector.loop()) if settings.detector_enabled else None
     try:
         yield
     finally:
         task.cancel()
+        if detector_task:
+            detector_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
 

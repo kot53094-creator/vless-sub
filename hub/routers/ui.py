@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from .. import security
 from ..db import SessionLocal, get_db
 from ..models import Event, Node, Server, Source, SyncRun, utcnow
-from ..services import subscription
+from ..services import detector, subscription
 from ..services.remnawave import Remnawave
 from ..templating import templates
 
@@ -25,6 +25,13 @@ def _mode(db: Session) -> str:
 
     row = db.get(Setting, "mode")
     return row.value if row else subscription.MODE_NORMAL
+
+
+def _detector_state(db: Session) -> dict | None:
+    state = detector.load_state(db)
+    if not state.get("checked_at"):
+        return None
+    return state
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -126,6 +133,11 @@ def settings_page(request: Request, db: Session = Depends(get_db)):
         "sub_url": f"{cfg.public_base_url}/sub/{cfg.sub_token}",
         "warnings": cfg.warnings(),
         "sync_hours": cfg.sync_interval_hours,
+        "detector": _detector_state(db),
+        "detector_enabled": cfg.detector_enabled,
+        "detector_interval": cfg.detector_interval,
+        "threshold": 3,
+        "telegram": bool(cfg.telegram_token and cfg.telegram_chat),
     })
 
 

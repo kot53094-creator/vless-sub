@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from .. import security
 from ..db import get_db
 from ..models import Event, Server, Setting, Source, utcnow
-from ..services import checker, fetcher, parser, subscription, sync
+from ..services import checker, detector, fetcher, parser, subscription, sync
 
 router = APIRouter()
 
@@ -184,3 +184,16 @@ async def sync_stream(request: Request):
 def _current_mode(db: Session) -> str:
     row = db.get(Setting, "mode")
     return row.value if row else subscription.MODE_NORMAL
+
+
+@router.post("/api/detector/check")
+async def detector_check(request: Request, csrf: str = Form(""),
+                         db: Session = Depends(get_db)):
+    """Одна ручная проверка: доступен ли российский сайт и зарубежный."""
+    _guard(request, csrf)
+    result = await detector.check_once()
+    db.add(Event(level="info",
+                 message=f"Проверка сети: RU={'да' if result['ru_ok'] else 'нет'}, "
+                         f"зарубеж={'да' if result['foreign_ok'] else 'нет'}"))
+    db.commit()
+    return RedirectResponse("/settings?checked=1", status_code=303)

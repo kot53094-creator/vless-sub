@@ -36,6 +36,20 @@ def mask_link(url: str, keep: int = 10) -> str:
     return f"{url[:keep]}…{url[-4:]}"
 
 
+def fmt_iso(value) -> str:
+    """ISO-строка из состояния детектора → «21.10.2026 13:05»."""
+    if not value:
+        return "—"
+    try:
+        moment = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return str(value)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone().strftime("%d.%m.%Y %H:%M")
+
+
 templates.env.filters["bytes"] = fmt_bytes
+templates.env.filters["iso"] = fmt_iso
 templates.env.filters["dt"] = fmt_dt
 templates.env.filters["mask"] = mask_link

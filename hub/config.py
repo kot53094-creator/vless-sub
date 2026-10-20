@@ -13,11 +13,12 @@ def _bool(name: str, default: bool = False) -> bool:
     return os.getenv(name, "1" if default else "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
-@dataclass(frozen=True)
+@dataclass
 class Settings:
     # --- общее
     app_name: str = os.getenv("HUB_APP_NAME", "VPN Hub")
-    data_dir: Path = Path(os.getenv("HUB_DATA_DIR", "/data"))
+    # В Docker это /data, локально — папка data рядом с проектом.
+    data_dir: Path = Path(os.getenv("HUB_DATA_DIR") or (ROOT / "data"))
     database_url: str = ""
     secret_key: str = os.getenv("HUB_SECRET_KEY", "")
     sub_token: str = os.getenv("HUB_SUB_TOKEN", "")
@@ -58,7 +59,10 @@ class Settings:
     def resolved_db_url(self) -> str:
         if self.database_url:
             return self.database_url
-        self.data_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:  # нет прав на /data вне Docker
+            print(f"[warn] не удалось создать {self.data_dir}: {exc}", flush=True)
         return f"sqlite:///{self.db_path}"
 
     def warnings(self) -> list[str]:

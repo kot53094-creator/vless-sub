@@ -1,5 +1,39 @@
 {% extends "base.html" %}
-{% block title %}Настройки · VPN Hub{% endblock %}
+{% block title %}Настройки · VPN Hub
+<div class="card" style="margin-top:12px">
+  <h2>Детектор белых списков</h2>
+  <div class="muted" style="margin-bottom:10px">
+    Проверяет, открывается ли российский сайт и зарубежный. Режим включается
+    после {{ threshold }} таких проверок подряд и выключается, когда зарубежный
+    снова работает.
+  </div>
+  {% if detector %}
+    <div class="row" style="border:0;padding-top:0">
+      <div>
+        <span class="pill {{ 'bad' if detector.ru_ok and not detector.foreign_ok else 'ok' }}">
+          RU: {{ 'открыт' if detector.ru_ok else 'закрыт' }}
+        </span>
+        <span class="pill {{ 'bad' if not detector.foreign_ok else 'ok' }}">
+          Зарубеж: {{ 'открыт' if detector.foreign_ok else 'закрыт' }}
+        </span>
+        <span class="pill">серия: {{ detector.fails }}</span>
+        <div class="muted" style="margin-top:6px">{{ detector.checked_at | iso if detector.checked_at else 'проверок ещё не было' }}</div>
+      </div>
+    </div>
+  {% else %}
+    <div class="muted">Проверок ещё не было.</div>
+  {% endif %}
+  <form method="post" action="/api/detector/check" style="margin-top:12px">
+    <input type="hidden" name="csrf" value="{{ request.cookies.get('hub_csrf','') }}">
+    <button class="btn ghost">Проверить сейчас</button>
+  </form>
+  <div class="muted" style="margin-top:10px">
+    Автозапуск: {{ 'включён' if detector_enabled else 'выключен' }} ·
+    интервал {{ detector_interval }} с · Telegram: {{ 'настроен' if telegram else 'не настроен' }}
+  </div>
+</div>
+
+{% endblock %}
 {% block body %}
 
 {% if warnings %}
@@ -41,6 +75,40 @@
   <div class="muted">
     Этап 1: источники, синхронизация, подписка, главная — работает.<br>
     Дальше: экран ключей Remnawave, автоустановка ноды по SSH, детектор белых списков.
+  </div>
+</div>
+
+
+<div class="card" style="margin-top:12px">
+  <h2>Детектор белых списков</h2>
+  <div class="muted" style="margin-bottom:10px">
+    Проверяет, открывается ли российский сайт и зарубежный. Режим включается
+    после {{ threshold }} таких проверок подряд и выключается, когда зарубежный
+    снова работает.
+  </div>
+  {% if detector %}
+    <div class="row" style="border:0;padding-top:0">
+      <div>
+        <span class="pill {{ 'bad' if detector.ru_ok and not detector.foreign_ok else 'ok' }}">
+          RU: {{ 'открыт' if detector.ru_ok else 'закрыт' }}
+        </span>
+        <span class="pill {{ 'bad' if not detector.foreign_ok else 'ok' }}">
+          Зарубеж: {{ 'открыт' if detector.foreign_ok else 'закрыт' }}
+        </span>
+        <span class="pill">серия: {{ detector.fails }}</span>
+        <div class="muted" style="margin-top:6px">{{ detector.checked_at | iso if detector.checked_at else 'проверок ещё не было' }}</div>
+      </div>
+    </div>
+  {% else %}
+    <div class="muted">Проверок ещё не было.</div>
+  {% endif %}
+  <form method="post" action="/api/detector/check" style="margin-top:12px">
+    <input type="hidden" name="csrf" value="{{ request.cookies.get('hub_csrf','') }}">
+    <button class="btn ghost">Проверить сейчас</button>
+  </form>
+  <div class="muted" style="margin-top:10px">
+    Автозапуск: {{ 'включён' if detector_enabled else 'выключен' }} ·
+    интервал {{ detector_interval }} с · Telegram: {{ 'настроен' if telegram else 'не настроен' }}
   </div>
 </div>
 
