@@ -51,7 +51,7 @@
     "realitySettings": {
      "serverName": "jtmagen.com",
      "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
-     "shortId": "d5f6",
+     "shortId": "47923c5f7c",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
@@ -63,11 +63,11 @@
    "settings": {
     "vnext": [
      {
-      "address": "tgfree.rush-server.com",
-      "port": 443,
+      "address": "15.204.97.219",
+      "port": 23576,
       "users": [
        {
-        "id": "ebd1c0d6-7ff4-4b9f-8692-237517a27a64",
+        "id": "48ff2b70-e180-582f-8866-d9a2edeed5f5",
         "encryption": "none",
         "flow": "xtls-rprx-vision"
        }
@@ -79,9 +79,9 @@
     "network": "tcp",
     "security": "reality",
     "realitySettings": {
-     "serverName": "anyfile2file.com",
-     "publicKey": "mza5Hn1aolSz65qu-UwvBP3oesxMe25r11o4nxvikF0",
-     "shortId": "64c1fe36c7846400",
+     "serverName": "fuck.rkn",
+     "publicKey": "1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s",
+     "shortId": "01",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
@@ -114,7 +114,7 @@
     "realitySettings": {
      "serverName": "imppartner.hu",
      "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
-     "shortId": "ee5ae6ba57ea8175",
+     "shortId": "74f89edcf20d40",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
@@ -126,11 +126,41 @@
    "settings": {
     "vnext": [
      {
-      "address": "150.40.126.24",
+      "address": "15.204.97.198",
+      "port": 23576,
+      "users": [
+       {
+        "id": "48ff2b70-e180-582f-8866-d9a2edeed5f5",
+        "encryption": "none",
+        "flow": "xtls-rprx-vision"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "tcp",
+    "security": "reality",
+    "realitySettings": {
+     "serverName": "fuck.rkn",
+     "publicKey": "1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s",
+     "shortId": "01",
+     "fingerprint": "chrome",
+     "spiderX": "/"
+    }
+   },
+   "tag": "auto-4"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "51.79.157.197",
       "port": 443,
       "users": [
        {
-        "id": "2f35965a-9a9b-45fd-ba32-987296dfb6be",
+        "id": "29743268-301d-5932-8168-ceda9e3f128c",
         "encryption": "none"
        }
       ]
@@ -138,21 +168,50 @@
     ]
    },
    "streamSettings": {
-    "network": "grpc",
+    "network": "xhttp",
     "security": "reality",
-    "grpcSettings": {
-     "serviceName": "gw.v1.ObjectService",
-     "multiMode": false
+    "xhttpSettings": {
+     "path": "/api/v1/updates",
+     "host": "dpdpstaq.com"
     },
     "realitySettings": {
-     "serverName": "rs5.univesalsrv.com",
-     "publicKey": "X8mPYnsoTd8QCnvFZKSy7VvpSn_nrt_NWJkCUJhFCyE",
-     "shortId": "4872856d5489c37d",
+     "serverName": "dpdpstaq.com",
+     "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
+     "shortId": "d5f6",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
    },
-   "tag": "auto-4"
+   "tag": "auto-5"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "181.214.152.137",
+      "port": 51104,
+      "users": [
+       {
+        "id": "f5f0babe-aea2-4f07-a1fc-3c9820253f49",
+        "encryption": "none"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "tcp",
+    "security": "reality",
+    "realitySettings": {
+     "serverName": "apple.com",
+     "publicKey": "5XPuEa7CkCbN4W1iJH6P0ogGhODHkKUDEhmTosBQASQ",
+     "shortId": "abcd1234",
+     "fingerprint": "chrome",
+     "spiderX": "/"
+    }
+   },
+   "tag": "auto-6"
   },
   {
    "protocol": "vless",
@@ -180,73 +239,7 @@
     "realitySettings": {
      "serverName": "mosamic.com",
      "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
-     "shortId": "d5f6",
-     "fingerprint": "chrome",
-     "spiderX": "/"
-    }
-   },
-   "tag": "auto-5"
-  },
-  {
-   "protocol": "vless",
-   "settings": {
-    "vnext": [
-     {
-      "address": "rus1.justnable.xyz",
-      "port": 8443,
-      "users": [
-       {
-        "id": "5d7e07ba-f460-4638-af79-bbcde67fcb6b",
-        "encryption": "none"
-       }
-      ]
-     }
-    ]
-   },
-   "streamSettings": {
-    "network": "xhttp",
-    "security": "reality",
-    "xhttpSettings": {
-     "path": "/xh",
-     "mode": "auto"
-    },
-    "realitySettings": {
-     "serverName": "www.asus.com",
-     "publicKey": "xlXuN8KDdbqGEsaj1m2D8NUnR5d2oeo5TT71RSMmfxY",
-     "shortId": "",
-     "fingerprint": "chrome",
-     "spiderX": "/"
-    }
-   },
-   "tag": "auto-6"
-  },
-  {
-   "protocol": "vless",
-   "settings": {
-    "vnext": [
-     {
-      "address": "2.29.29.37",
-      "port": 443,
-      "users": [
-       {
-        "id": "29743268-301d-5932-8168-ceda9e3f128c",
-        "encryption": "none"
-       }
-      ]
-     }
-    ]
-   },
-   "streamSettings": {
-    "network": "xhttp",
-    "security": "reality",
-    "xhttpSettings": {
-     "path": "/api/v1/updates",
-     "host": "amm.finance"
-    },
-    "realitySettings": {
-     "serverName": "amm.finance",
-     "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
-     "shortId": "ee5ae6ba57ea8175",
+     "shortId": "47923c5f7c",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
@@ -258,12 +251,13 @@
    "settings": {
     "vnext": [
      {
-      "address": "35.181.176.187",
-      "port": 22224,
+      "address": "15.204.97.216",
+      "port": 23576,
       "users": [
        {
-        "id": "e4514801-0d5a-42ba-869f-39bd605aef9e",
-        "encryption": "none"
+        "id": "48ff2b70-e180-582f-8866-d9a2edeed5f5",
+        "encryption": "none",
+        "flow": "xtls-rprx-vision"
        }
       ]
      }
@@ -271,7 +265,14 @@
    },
    "streamSettings": {
     "network": "tcp",
-    "security": "none"
+    "security": "reality",
+    "realitySettings": {
+     "serverName": "fuck.rkn",
+     "publicKey": "1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s",
+     "shortId": "01",
+     "fingerprint": "chrome",
+     "spiderX": "/"
+    }
    },
    "tag": "auto-8"
   },
