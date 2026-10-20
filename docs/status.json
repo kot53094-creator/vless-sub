@@ -1,28 +1,28 @@
 {
-  "built_at": "2026-10-20T09:11:57+00:00",
+  "built_at": "2026-10-20T09:23:54+00:00",
   "brand": "Апельсинка VPN",
-  "configs": 400,
-  "working_total": 230,
-  "reachable_total": 475,
-  "valid_total": 514,
+  "configs": 62,
+  "working_total": 57,
+  "reachable_total": 57,
+  "valid_total": 57,
   "tiers": {
-    "verified": 230,
-    "port_only": 245,
-    "syntax_only": 39,
+    "verified": 57,
+    "port_only": 0,
+    "syntax_only": 0,
     "notices": 0
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 475,
-    "passed": 230,
-    "seconds": 43.3,
+    "checked": 236,
+    "passed": 57,
+    "seconds": 35.8,
     "version": "v26.3.27"
   },
   "duplicates_removed": 6,
   "protocols": {
-    "vless": 365,
-    "ss": 35
+    "vless": 59,
+    "ss": 3
   },
   "allowed_protocols": [
     "ss",
@@ -43,7 +43,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 184
+      "verified": 46
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -56,7 +56,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 31
+      "verified": 1
     },
     {
       "name": "raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/",
@@ -69,7 +69,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 4
+      "verified": 2
     },
     {
       "name": "<kavkaz>",
@@ -95,7 +95,7 @@
       "order": 6,
       "quota": {},
       "provider": "",
-      "verified": 2
+      "verified": 1
     },
     {
       "name": "<freesock>",
@@ -108,7 +108,7 @@
       "order": 7,
       "quota": {},
       "provider": "",
-      "verified": 3
+      "verified": 0
     },
     {
       "name": "<private-1 TITAN>",
@@ -149,20 +149,20 @@
     {
       "name": "<private-3 VLESS>",
       "ok": true,
-      "seen": 7,
-      "kept": 7,
+      "seen": 6,
+      "kept": 6,
       "error": "",
       "label": "VLESS",
       "note": "ещё 5 дней",
       "order": 3,
       "quota": {
-        "upload": 152036904,
-        "download": 1321573848,
+        "upload": 165311615,
+        "download": 1327534766,
         "total": 0,
         "expire": 0
       },
       "provider": "",
-      "verified": 4
+      "verified": 5
     },
     {
       "name": "<private-4 MEDUSA>",

@@ -697,6 +697,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--max-per-host", type=int, default=int(os.getenv("MAX_PER_HOST", "4")))
     ap.add_argument("--allow-protocols", default=os.getenv("ALLOW_PROTOCOLS", "vless,ss"))
     ap.add_argument("--no-probe", action="store_true", help="skip reachability probe")
+    ap.add_argument("--reachable-only", action="store_true",
+                    default=os.getenv("REACHABLE_ONLY", "0") == "1",
+                    help="drop nodes that neither answered the port nor passed traffic")
+    ap.add_argument("--verified-only", action="store_true",
+                    default=os.getenv("VERIFIED_ONLY", "1") == "1",
+                    help="keep only nodes that passed the real traffic test")
     ap.add_argument("--site-url", default=os.getenv("SITE_URL",
                     "https://kot53094-creator.github.io/vless-sub/"),
                     help="public base URL, used to build v2rayNG install links")
@@ -1063,6 +1069,17 @@ def main(argv: list[str]) -> int:
     for rec in records:
         rec.setdefault("deep_ok", None)
         rec.setdefault("deep_latency_ms", None)
+
+    # Мёртвая строка в клиенте выглядит как рабочий VPN, пока не нажмёшь
+    # «подключить». Поэтому по умолчанию публикуем только проверенные трафиком.
+    if args.verified_only:
+        before = len(records)
+        records = [r for r in records if r.get("deep_ok") is True]
+        print(f"[filter] verified only: {before} -> {len(records)}")
+    elif args.reachable_only:
+        before = len(records)
+        records = [r for r in records if r["reachable"] or r.get("deep_ok") is True]
+        print(f"[filter] reachable only: {before} -> {len(records)}")
 
     # ---- ordering: own keys first (K1, K2, ...), free sources at the very end
     def tier(rec: dict) -> int:

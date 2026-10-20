@@ -51,7 +51,7 @@
     "realitySettings": {
      "serverName": "jtmagen.com",
      "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
-     "shortId": "eb9268756a12",
+     "shortId": "df",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
@@ -95,13 +95,12 @@
    "settings": {
     "vnext": [
      {
-      "address": "130.49.189.158",
-      "port": 45433,
+      "address": "35.181.176.187",
+      "port": 22224,
       "users": [
        {
-        "id": "739f3bf7-4a8a-4a1b-bdc6-fb3a00123ce3",
-        "encryption": "none",
-        "flow": "xtls-rprx-vision"
+        "id": "e4514801-0d5a-42ba-869f-39bd605aef9e",
+        "encryption": "none"
        }
       ]
      }
@@ -109,14 +108,7 @@
    },
    "streamSettings": {
     "network": "tcp",
-    "security": "reality",
-    "realitySettings": {
-     "serverName": "addons.mozilla.org",
-     "publicKey": "dfJb8gJq6IRsE1KMsfZp5tNLiwBNQMbSl5NF1z5dq3c",
-     "shortId": "5f203fdf",
-     "fingerprint": "chrome",
-     "spiderX": "/"
-    }
+    "security": "none"
    },
    "tag": "auto-3"
   },
@@ -125,11 +117,11 @@
    "settings": {
     "vnext": [
      {
-      "address": "ghosts-spasm.quick-cdn.net",
+      "address": "51.15.91.23",
       "port": 443,
       "users": [
        {
-        "id": "01b3cd91-21d6-494a-8af3-e3093914f5f8",
+        "id": "29743268-301d-5932-8168-ceda9e3f128c",
         "encryption": "none"
        }
       ]
@@ -137,20 +129,18 @@
     ]
    },
    "streamSettings": {
-    "network": "ws",
-    "security": "tls",
-    "wsSettings": {
-     "path": "/ws",
-     "headers": {
-      "Host": "ghosts-spasm.quick-cdn.net"
-     }
+    "network": "xhttp",
+    "security": "reality",
+    "xhttpSettings": {
+     "path": "/api/v1/updates",
+     "host": "mosamic.com"
     },
-    "tlsSettings": {
-     "serverName": "ghosts-spasm.quick-cdn.net",
-     "allowInsecure": false,
-     "alpn": [
-      "http/1.1"
-     ]
+    "realitySettings": {
+     "serverName": "mosamic.com",
+     "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
+     "shortId": "df",
+     "fingerprint": "chrome",
+     "spiderX": "/"
     }
    },
    "tag": "auto-4"
@@ -160,11 +150,11 @@
    "settings": {
     "vnext": [
      {
-      "address": "15.204.97.197",
-      "port": 23576,
+      "address": "144.31.7.36",
+      "port": 8443,
       "users": [
        {
-        "id": "48ff2b70-e180-582f-8866-d9a2edeed5f5",
+        "id": "338f6cc1-9dc3-4f29-a9bb-c0c9cff03303",
         "encryption": "none",
         "flow": "xtls-rprx-vision"
        }
@@ -176,14 +166,44 @@
     "network": "tcp",
     "security": "reality",
     "realitySettings": {
-     "serverName": "fuck.rkn",
-     "publicKey": "1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s",
-     "shortId": "01",
-     "fingerprint": "chrome",
+     "serverName": "studio.bubuvideo.online",
+     "publicKey": "L2dWefp4t55nVagHb0T8AxRc619x67Ka7lv7B4LmMzc",
+     "shortId": "3f7b1e5a9c2d8f46",
+     "fingerprint": "qq",
      "spiderX": "/"
     }
    },
    "tag": "auto-5"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "yoy-api.bachidze.com",
+      "port": 443,
+      "users": [
+       {
+        "id": "8a9c586c-4b2c-49e5-9e78-97408bf58500",
+        "encryption": "none",
+        "flow": "xtls-rprx-vision"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "tcp",
+    "security": "reality",
+    "realitySettings": {
+     "serverName": "yoy-api.bachidze.com",
+     "publicKey": "ZJlfiMh4ebjrTl2_kwAk_zXMAaCiwNS7yMd5XzlUgmI",
+     "shortId": "",
+     "fingerprint": "chrome",
+     "spiderX": "/"
+    }
+   },
+   "tag": "auto-6"
   },
   {
    "protocol": "vless",
@@ -216,18 +236,18 @@
      "spiderX": "/"
     }
    },
-   "tag": "auto-6"
+   "tag": "auto-7"
   },
   {
    "protocol": "vless",
    "settings": {
     "vnext": [
      {
-      "address": "144.31.7.36",
-      "port": 8443,
+      "address": "tgfree.rush-server.com",
+      "port": 443,
       "users": [
        {
-        "id": "338f6cc1-9dc3-4f29-a9bb-c0c9cff03303",
+        "id": "ebd1c0d6-7ff4-4b9f-8692-237517a27a64",
         "encryption": "none",
         "flow": "xtls-rprx-vision"
        }
@@ -239,46 +259,11 @@
     "network": "tcp",
     "security": "reality",
     "realitySettings": {
-     "serverName": "studio.bubuvideo.online",
-     "publicKey": "L2dWefp4t55nVagHb0T8AxRc619x67Ka7lv7B4LmMzc",
-     "shortId": "3f7b1e5a9c2d8f46",
-     "fingerprint": "qq",
+     "serverName": "anyfile2file.com",
+     "publicKey": "mza5Hn1aolSz65qu-UwvBP3oesxMe25r11o4nxvikF0",
+     "shortId": "64c1fe36c7846400",
+     "fingerprint": "chrome",
      "spiderX": "/"
-    }
-   },
-   "tag": "auto-7"
-  },
-  {
-   "protocol": "vless",
-   "settings": {
-    "vnext": [
-     {
-      "address": "grimness-backlogs.cdn-content.com",
-      "port": 443,
-      "users": [
-       {
-        "id": "01b3cd91-21d6-494a-8af3-e3093914f5f8",
-        "encryption": "none"
-       }
-      ]
-     }
-    ]
-   },
-   "streamSettings": {
-    "network": "ws",
-    "security": "tls",
-    "wsSettings": {
-     "path": "/ws",
-     "headers": {
-      "Host": "grimness-backlogs.cdn-content.com"
-     }
-    },
-    "tlsSettings": {
-     "serverName": "grimness-backlogs.cdn-content.com",
-     "allowInsecure": false,
-     "alpn": [
-      "http/1.1"
-     ]
     }
    },
    "tag": "auto-8"
@@ -288,25 +273,28 @@
    "settings": {
     "vnext": [
      {
-      "address": "15.204.97.206",
-      "port": 23576,
+      "address": "2.29.29.37",
+      "port": 443,
       "users": [
        {
-        "id": "48ff2b70-e180-582f-8866-d9a2edeed5f5",
-        "encryption": "none",
-        "flow": "xtls-rprx-vision"
+        "id": "29743268-301d-5932-8168-ceda9e3f128c",
+        "encryption": "none"
        }
       ]
      }
     ]
    },
    "streamSettings": {
-    "network": "tcp",
+    "network": "xhttp",
     "security": "reality",
+    "xhttpSettings": {
+     "path": "/api/v1/updates",
+     "host": "amm.finance"
+    },
     "realitySettings": {
-     "serverName": "fuck.rkn",
-     "publicKey": "1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s",
-     "shortId": "01",
+     "serverName": "amm.finance",
+     "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
+     "shortId": "6326c211",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
@@ -318,11 +306,11 @@
    "settings": {
     "vnext": [
      {
-      "address": "51.79.157.197",
-      "port": 443,
+      "address": "rus1.justnable.xyz",
+      "port": 8443,
       "users": [
        {
-        "id": "29743268-301d-5932-8168-ceda9e3f128c",
+        "id": "5d7e07ba-f460-4638-af79-bbcde67fcb6b",
         "encryption": "none"
        }
       ]
@@ -333,146 +321,18 @@
     "network": "xhttp",
     "security": "reality",
     "xhttpSettings": {
-     "path": "/api/v1/updates",
-     "host": "dpdpstaq.com"
+     "path": "/xh",
+     "mode": "auto"
     },
     "realitySettings": {
-     "serverName": "dpdpstaq.com",
-     "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
-     "shortId": "d5f6",
+     "serverName": "www.asus.com",
+     "publicKey": "xlXuN8KDdbqGEsaj1m2D8NUnR5d2oeo5TT71RSMmfxY",
+     "shortId": "",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
    },
    "tag": "auto-10"
-  },
-  {
-   "protocol": "vless",
-   "settings": {
-    "vnext": [
-     {
-      "address": "bounded-crammed.video-streams.org",
-      "port": 443,
-      "users": [
-       {
-        "id": "01b3cd91-21d6-494a-8af3-e3093914f5f8",
-        "encryption": "none"
-       }
-      ]
-     }
-    ]
-   },
-   "streamSettings": {
-    "network": "ws",
-    "security": "tls",
-    "wsSettings": {
-     "path": "/ws",
-     "headers": {
-      "Host": "bounded-crammed.video-streams.org"
-     }
-    },
-    "tlsSettings": {
-     "serverName": "bounded-crammed.video-streams.org",
-     "allowInsecure": false,
-     "alpn": [
-      "http/1.1"
-     ]
-    }
-   },
-   "tag": "auto-11"
-  },
-  {
-   "protocol": "vless",
-   "settings": {
-    "vnext": [
-     {
-      "address": "15.204.97.214",
-      "port": 23576,
-      "users": [
-       {
-        "id": "48ff2b70-e180-582f-8866-d9a2edeed5f5",
-        "encryption": "none",
-        "flow": "xtls-rprx-vision"
-       }
-      ]
-     }
-    ]
-   },
-   "streamSettings": {
-    "network": "tcp",
-    "security": "reality",
-    "realitySettings": {
-     "serverName": "fuck.rkn",
-     "publicKey": "1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s",
-     "shortId": "01",
-     "fingerprint": "chrome",
-     "spiderX": "/"
-    }
-   },
-   "tag": "auto-12"
-  },
-  {
-   "protocol": "vless",
-   "settings": {
-    "vnext": [
-     {
-      "address": "51.15.91.23",
-      "port": 443,
-      "users": [
-       {
-        "id": "29743268-301d-5932-8168-ceda9e3f128c",
-        "encryption": "none"
-       }
-      ]
-     }
-    ]
-   },
-   "streamSettings": {
-    "network": "xhttp",
-    "security": "reality",
-    "xhttpSettings": {
-     "path": "/api/v1/updates",
-     "host": "mosamic.com"
-    },
-    "realitySettings": {
-     "serverName": "mosamic.com",
-     "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
-     "shortId": "4fc112",
-     "fingerprint": "chrome",
-     "spiderX": "/"
-    }
-   },
-   "tag": "auto-13"
-  },
-  {
-   "protocol": "vless",
-   "settings": {
-    "vnext": [
-     {
-      "address": "15.204.97.198",
-      "port": 23576,
-      "users": [
-       {
-        "id": "48ff2b70-e180-582f-8866-d9a2edeed5f5",
-        "encryption": "none",
-        "flow": "xtls-rprx-vision"
-       }
-      ]
-     }
-    ]
-   },
-   "streamSettings": {
-    "network": "tcp",
-    "security": "reality",
-    "realitySettings": {
-     "serverName": "fuck.rkn",
-     "publicKey": "1y5h2FGWKXTJ9xLPCqPo6Mw7RxoZzh6fGkEQKNxpZ3s",
-     "shortId": "01",
-     "fingerprint": "chrome",
-     "spiderX": "/"
-    }
-   },
-   "tag": "auto-14"
   },
   {
    "tag": "direct",
