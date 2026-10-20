@@ -51,7 +51,7 @@
     "realitySettings": {
      "serverName": "jtmagen.com",
      "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
-     "shortId": "df",
+     "shortId": "ee5ae6ba57ea8175",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
@@ -95,12 +95,13 @@
    "settings": {
     "vnext": [
      {
-      "address": "35.181.176.187",
-      "port": 22224,
+      "address": "130.49.189.158",
+      "port": 45433,
       "users": [
        {
-        "id": "e4514801-0d5a-42ba-869f-39bd605aef9e",
-        "encryption": "none"
+        "id": "739f3bf7-4a8a-4a1b-bdc6-fb3a00123ce3",
+        "encryption": "none",
+        "flow": "xtls-rprx-vision"
        }
       ]
      }
@@ -108,135 +109,16 @@
    },
    "streamSettings": {
     "network": "tcp",
-    "security": "none"
+    "security": "reality",
+    "realitySettings": {
+     "serverName": "addons.mozilla.org",
+     "publicKey": "dfJb8gJq6IRsE1KMsfZp5tNLiwBNQMbSl5NF1z5dq3c",
+     "shortId": "5f203fdf",
+     "fingerprint": "chrome",
+     "spiderX": "/"
+    }
    },
    "tag": "auto-3"
-  },
-  {
-   "protocol": "vless",
-   "settings": {
-    "vnext": [
-     {
-      "address": "51.15.91.23",
-      "port": 443,
-      "users": [
-       {
-        "id": "29743268-301d-5932-8168-ceda9e3f128c",
-        "encryption": "none"
-       }
-      ]
-     }
-    ]
-   },
-   "streamSettings": {
-    "network": "xhttp",
-    "security": "reality",
-    "xhttpSettings": {
-     "path": "/api/v1/updates",
-     "host": "mosamic.com"
-    },
-    "realitySettings": {
-     "serverName": "mosamic.com",
-     "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
-     "shortId": "df",
-     "fingerprint": "chrome",
-     "spiderX": "/"
-    }
-   },
-   "tag": "auto-4"
-  },
-  {
-   "protocol": "vless",
-   "settings": {
-    "vnext": [
-     {
-      "address": "144.31.7.36",
-      "port": 8443,
-      "users": [
-       {
-        "id": "338f6cc1-9dc3-4f29-a9bb-c0c9cff03303",
-        "encryption": "none",
-        "flow": "xtls-rprx-vision"
-       }
-      ]
-     }
-    ]
-   },
-   "streamSettings": {
-    "network": "tcp",
-    "security": "reality",
-    "realitySettings": {
-     "serverName": "studio.bubuvideo.online",
-     "publicKey": "L2dWefp4t55nVagHb0T8AxRc619x67Ka7lv7B4LmMzc",
-     "shortId": "3f7b1e5a9c2d8f46",
-     "fingerprint": "qq",
-     "spiderX": "/"
-    }
-   },
-   "tag": "auto-5"
-  },
-  {
-   "protocol": "vless",
-   "settings": {
-    "vnext": [
-     {
-      "address": "yoy-api.bachidze.com",
-      "port": 443,
-      "users": [
-       {
-        "id": "8a9c586c-4b2c-49e5-9e78-97408bf58500",
-        "encryption": "none",
-        "flow": "xtls-rprx-vision"
-       }
-      ]
-     }
-    ]
-   },
-   "streamSettings": {
-    "network": "tcp",
-    "security": "reality",
-    "realitySettings": {
-     "serverName": "yoy-api.bachidze.com",
-     "publicKey": "ZJlfiMh4ebjrTl2_kwAk_zXMAaCiwNS7yMd5XzlUgmI",
-     "shortId": "",
-     "fingerprint": "chrome",
-     "spiderX": "/"
-    }
-   },
-   "tag": "auto-6"
-  },
-  {
-   "protocol": "vless",
-   "settings": {
-    "vnext": [
-     {
-      "address": "151.115.75.150",
-      "port": 443,
-      "users": [
-       {
-        "id": "29743268-301d-5932-8168-ceda9e3f128c",
-        "encryption": "none"
-       }
-      ]
-     }
-    ]
-   },
-   "streamSettings": {
-    "network": "xhttp",
-    "security": "reality",
-    "xhttpSettings": {
-     "path": "/api/v1/updates",
-     "host": "imppartner.hu"
-    },
-    "realitySettings": {
-     "serverName": "imppartner.hu",
-     "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
-     "shortId": "47923c5f7c",
-     "fingerprint": "chrome",
-     "spiderX": "/"
-    }
-   },
-   "tag": "auto-7"
   },
   {
    "protocol": "vless",
@@ -266,7 +148,100 @@
      "spiderX": "/"
     }
    },
-   "tag": "auto-8"
+   "tag": "auto-4"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "51.15.91.23",
+      "port": 443,
+      "users": [
+       {
+        "id": "29743268-301d-5932-8168-ceda9e3f128c",
+        "encryption": "none"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "xhttp",
+    "security": "reality",
+    "xhttpSettings": {
+     "path": "/api/v1/updates",
+     "host": "mosamic.com"
+    },
+    "realitySettings": {
+     "serverName": "mosamic.com",
+     "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
+     "shortId": "47923c5f7c",
+     "fingerprint": "chrome",
+     "spiderX": "/"
+    }
+   },
+   "tag": "auto-5"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "144.31.7.36",
+      "port": 8443,
+      "users": [
+       {
+        "id": "338f6cc1-9dc3-4f29-a9bb-c0c9cff03303",
+        "encryption": "none",
+        "flow": "xtls-rprx-vision"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "tcp",
+    "security": "reality",
+    "realitySettings": {
+     "serverName": "studio.bubuvideo.online",
+     "publicKey": "L2dWefp4t55nVagHb0T8AxRc619x67Ka7lv7B4LmMzc",
+     "shortId": "3f7b1e5a9c2d8f46",
+     "fingerprint": "qq",
+     "spiderX": "/"
+    }
+   },
+   "tag": "auto-6"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "104.171.133.209",
+      "port": 443,
+      "users": [
+       {
+        "id": "ebd1c0d6-7ff4-4b9f-8692-237517a27a64",
+        "encryption": "none",
+        "flow": "xtls-rprx-vision"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "tcp",
+    "security": "reality",
+    "realitySettings": {
+     "serverName": "anyfile2file.com",
+     "publicKey": "mza5Hn1aolSz65qu-UwvBP3oesxMe25r11o4nxvikF0",
+     "shortId": "64c1fe36c7846400",
+     "fingerprint": "chrome",
+     "spiderX": "/"
+    }
+   },
+   "tag": "auto-7"
   },
   {
    "protocol": "vless",
@@ -299,6 +274,39 @@
      "spiderX": "/"
     }
    },
+   "tag": "auto-8"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "150.40.126.21",
+      "port": 443,
+      "users": [
+       {
+        "id": "2f35965a-9a9b-45fd-ba32-987296dfb6be",
+        "encryption": "none"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "grpc",
+    "security": "reality",
+    "grpcSettings": {
+     "serviceName": "edge.v2.FeedService",
+     "multiMode": false
+    },
+    "realitySettings": {
+     "serverName": "rs3.univesalsrv.com",
+     "publicKey": "gHDoSWGWMVZKWNKONWHw-Cpl0-bdI6GaKusgJIQ-vWQ",
+     "shortId": "35d05b666e2c6cdf",
+     "fingerprint": "chrome",
+     "spiderX": "/"
+    }
+   },
    "tag": "auto-9"
   },
   {
@@ -306,11 +314,11 @@
    "settings": {
     "vnext": [
      {
-      "address": "rus1.justnable.xyz",
-      "port": 8443,
+      "address": "151.115.75.150",
+      "port": 443,
       "users": [
        {
-        "id": "5d7e07ba-f460-4638-af79-bbcde67fcb6b",
+        "id": "29743268-301d-5932-8168-ceda9e3f128c",
         "encryption": "none"
        }
       ]
@@ -321,18 +329,48 @@
     "network": "xhttp",
     "security": "reality",
     "xhttpSettings": {
-     "path": "/xh",
-     "mode": "auto"
+     "path": "/api/v1/updates",
+     "host": "imppartner.hu"
     },
     "realitySettings": {
-     "serverName": "www.asus.com",
-     "publicKey": "xlXuN8KDdbqGEsaj1m2D8NUnR5d2oeo5TT71RSMmfxY",
-     "shortId": "",
+     "serverName": "imppartner.hu",
+     "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
+     "shortId": "ee5ae6ba57ea8175",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
    },
    "tag": "auto-10"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "163.245.42.48",
+      "port": 443,
+      "users": [
+       {
+        "id": "b9bfa54d-bc44-4592-a6d6-89a9665d286f",
+        "encryption": "none",
+        "flow": "xtls-rprx-vision"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "tcp",
+    "security": "reality",
+    "realitySettings": {
+     "serverName": "mother-earth.fyi",
+     "publicKey": "SbVKOEMjK0sIlbwg4akyBg5mL5KZwwB-ed4eEE7YnRc",
+     "shortId": "",
+     "fingerprint": "chrome",
+     "spiderX": "/"
+    }
+   },
+   "tag": "auto-11"
   },
   {
    "tag": "direct",

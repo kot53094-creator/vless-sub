@@ -880,6 +880,14 @@ def notice_uri(remark: str) -> str:
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     allowed = {p.strip().lower() for p in args.allow_protocols.split(",") if p.strip()}
+
+    # Сборка на GitHub идёт из США: там живы узлы, которые в России режутся.
+    # Если в docs лежит маркер .frozen, публикуем то, что собрано локально,
+    # и только разворачиваем файлы на Pages.
+    marker = os.path.join(args.out, ".frozen")
+    if os.path.exists(marker) and os.getenv("BUILD_LOCAL") != "1":
+        print("[frozen] build skipped; publishing the committed files as is")
+        return 0
     started_wall = datetime.now(timezone.utc)
     print(f"[build] start {started_wall.isoformat(timespec='seconds')} "
           f"protocols={sorted(allowed)}")
