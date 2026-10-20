@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Синхронизация · VPN Hub{% endblock %}
+{% block body %}
+
+<div class="card">
+  <div class="row" style="border:0;padding-top:0">
+    <div>
+      <b>Обновить всё</b>
+      <div class="muted">скачать подписки, проверить узлы, пересобрать выдачу</div>
+    </div>
+    <button class="btn" id="start">Запустить</button>
+  </div>
+  <div class="muted" style="margin-top:8px">
+    Режим: {{ 'белые списки' if mode == 'whitelist' else 'обычный' }}.
+    Автоматически — раз в N часов, настраивается в .env.
+  </div>
+</div>
+
+<div class="card" style="margin-top:12px">
+  <h2>Лог</h2>
+  <div id="log">Нажмите «Запустить», чтобы увидеть процесс.</div>
+</div>
+
+<div class="card" style="margin-top:12px">
+  <h2>Прошлые прогоны</h2>
+  {% if runs %}
+    {% for r in runs %}
+      <div class="row">
+        <div>
+          <b>{{ r.published }} узлов</b>
+          <span class="pill {{ 'ok' if r.ok else 'bad' }}">{{ 'ок' if r.ok else 'ошибка' }}</span>
+          <div class="muted">живых {{ r.nodes_alive }} · источников {{ r.sources_total }}</div>
+        </div>
+        <span class="muted">{{ r.started_at | dt }}</span>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="muted">прогонов ещё не было</div>
+  {% endif %}
+</div>
+
+<script>
+const log = document.getElementById('log');
+const start = document.getElementById('start');
+
+start?.addEventListener('click', () => {
+  log.textContent = '';
+  start.disabled = true;
+  const es = new EventSource('/api/sync/stream');
+  es.onmessage = (e) => {
+    try { log.textContent += JSON.parse(e.data) + '\n'; }
+    catch { log.textContent += e.data + '\n'; }
+    log.scrollTop = log.scrollHeight;
+  };
+  es.addEventListener('done', () => { es.close(); start.disabled = false; log.textContent += '\n— готово, обновите главную —\n'; });
+  es.onerror = () => { es.close(); start.disabled = false; log.textContent += '\n— поток прерван —\n'; };
+});
+</script>
+
+{% endblock %}

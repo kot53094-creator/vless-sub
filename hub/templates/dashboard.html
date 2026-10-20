@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Главная · VPN Hub{% endblock %}
+{% block body %}
+
+<div class="grid">
+  <div class="card">
+    <h2>Режим сети</h2>
+    <div class="big">{{ 'Белые списки' if mode == 'whitelist' else 'Обычный' }}</div>
+    <div class="muted" style="margin-top:6px">
+      {% if mode == 'whitelist' %}Сначала мосты и CDN, потом остальное{% else %}Мои VPS → триалы → публичные{% endif %}
+    </div>
+    <form method="post" action="/api/mode" style="margin-top:10px">
+      <input type="hidden" name="csrf" value="{{ request.cookies.get('hub_csrf','') }}">
+      <input type="hidden" name="mode" value="{{ 'normal' if mode == 'whitelist' else 'whitelist' }}">
+      <button class="btn ghost" type="submit">
+        Переключить на {{ 'обычный' if mode == 'whitelist' else 'белые списки' }}
+      </button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Живые узлы</h2>
+    <div class="big">{{ alive_nodes }}<span class="muted"> / {{ total_nodes }}</span></div>
+    <div class="muted" style="margin-top:6px">после последней проверки</div>
+  </div>
+
+  <div class="card">
+    <h2>Трафик всего</h2>
+    <div class="big">{{ total_used | bytes }}</div>
+    {% if total_limit %}
+      <div class="muted" style="margin-top:6px">из {{ total_limit | bytes }}</div>
+      {% set pct = (total_used / total_limit * 100) if total_limit else 0 %}
+      <div class="bar-track"><div class="bar-fill {{ 'bad' if pct > 90 else 'warn' if pct > 70 else '' }}" style="width:{{ [pct, 100] | min }}%"></div></div>
+    {% else %}
+      <div class="muted" style="margin-top:6px">лимиты не заданы</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Последняя сборка</h2>
+    {% if last_run %}
+      <div class="big">{{ last_run.published }}<span class="muted"> узлов</span></div>
+      <div class="muted" style="margin-top:6px">{{ last_run.started_at | dt }}</div>
+    {% else %}
+      <div class="muted">ещё не запускалась</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card" style="margin-top:12px">
+  <div class="row" style="border-bottom:1px solid var(--line);padding-bottom:12px">
+    <div>
+      <b>Обновить всё</b>
+      <div class="muted">скачать подписки, проверить узлы, пересобрать выдачу</div>
+    </div>
+    <a class="btn" href="/sync">Запустить</a>
+  </div>
+</div>
+
+<div class="card" style="margin-top:12px">
+  <h2>Скоро кончится</h2>
+  {% if expiring %}
+    {% for s in expiring %}
+      <div class="row">
+        <div>
+          <b>{{ s.name }}</b>
+          <div class="muted">{{ s.kind }} · {{ s.deadline | dt }}</div>
+        </div>
+        <span class="pill {{ 'bad' if (s.days_left or 0) <= 0 else 'warn' }}">
+          {{ s.days_left }} дн.
+        </span>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="muted">ничего не истекает в ближайшую неделю</div>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-top:12px">
+  <h2>События</h2>
+  {% if events %}
+    {% for e in events %}
+      <div class="row">
+        <div>
+          <span class="pill {{ 'bad' if e.level == 'error' else 'warn' if e.level == 'warn' else 'ok' }}">{{ e.level }}</span>
+          <span style="margin-left:8px">{{ e.message }}</span>
+        </div>
+        <span class="muted">{{ e.ts | dt }}</span>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="muted">пока пусто</div>
+  {% endif %}
+</div>
+
+{% endblock %}

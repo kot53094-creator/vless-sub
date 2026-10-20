@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Источники · VPN Hub{% endblock %}
+{% block body %}
+
+<div class="row" style="border:0;padding:0 0 12px">
+  <div>
+    <b>Источники подписки</b>
+    <div class="muted">ключи, триалы и публичные списки, из которых собирается выдача</div>
+  </div>
+  <a class="btn" href="/add">Добавить ключ</a>
+</div>
+
+{% if not sources %}
+  <div class="card"><div class="muted">Пока ни одного источника. Нажмите «Добавить ключ».</div></div>
+{% endif %}
+
+{% for s in sources %}
+<div class="card" style="margin-bottom:10px">
+  <div class="row" style="border:0;padding-top:0">
+    <div style="min-width:0">
+      <b>{{ s.name }}</b>
+      <span class="pill">{{ s.kind }}</span>
+      <span class="pill {{ 'ok' if s.status == 'active' else 'bad' if s.status == 'dead' else '' }}">{{ s.status }}</span>
+      <div class="muted" style="margin-top:5px;word-break:break-all">{{ s.url | mask }}</div>
+    </div>
+    <div style="text-align:right;white-space:nowrap">
+      <div style="font-weight:700">{{ alive.get(s.id, 0) }} живых</div>
+      <div class="muted">{{ s.last_report or '—' }}</div>
+    </div>
+  </div>
+
+  <div class="muted" style="margin-top:8px">
+    Трафик: {{ s.used_bytes | bytes }}{% if s.total_bytes or s.traffic_limit %} / {{ (s.total_bytes or s.traffic_limit) | bytes }}{% endif %}
+    · Срок: {{ s.deadline | dt if s.deadline else '—' }}
+    {% if s.days_left is not none %} ({{ s.days_left }} дн.){% endif %}
+    {% if s.last_error %} · <span class="pill bad">{{ s.last_error }}</span>{% endif %}
+  </div>
+
+  {% if s.total_bytes and s.total_bytes > 0 %}
+    {% set pct = s.used_bytes / s.total_bytes * 100 %}
+    <div class="bar-track"><div class="bar-fill {{ 'bad' if pct > 90 else 'warn' if pct > 75 else '' }}" style="width:{{ [pct,100]|min }}%"></div></div>
+  {% endif %}
+
+  <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+    <form method="post" action="/api/sources/{{ s.id }}/toggle">
+      <input type="hidden" name="csrf" value="{{ request.cookies.get('hub_csrf','') }}">
+      <button class="btn ghost" type="submit">{{ 'Включить' if s.status == 'disabled' else 'Отключить' }}</button>
+    </form>
+    <form method="post" action="/api/sources/{{ s.id }}/delete"
+          onsubmit="return confirm('Удалить источник «{{ s.name }}»?')">
+      <input type="hidden" name="csrf" value="{{ request.cookies.get('hub_csrf','') }}">
+      <button class="btn danger" type="submit">Удалить</button>
+    </form>
+  </div>
+</div>
+{% endfor %}
+
+{% endblock %}

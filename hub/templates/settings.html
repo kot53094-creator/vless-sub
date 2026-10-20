@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Настройки · VPN Hub{% endblock %}
+{% block body %}
+
+{% if warnings %}
+  <div class="card" style="border-color:#5a3a1f;margin-bottom:12px">
+    <h2>Требует внимания</h2>
+    {% for w in warnings %}<div class="muted">• {{ w }}</div>{% endfor %}
+  </div>
+{% endif %}
+
+<div class="card">
+  <h2>Ссылка подписки</h2>
+  <p class="muted" style="margin-top:0">Её вставляют в Happ. Держите в секрете: кто знает ссылку — тот пользуется ключами.</p>
+  <div style="display:flex;gap:8px;align-items:center">
+    <input id="sub" readonly value="{{ sub_url }}">
+    <button class="btn ghost" onclick="navigator.clipboard.writeText(document.getElementById('sub').value)">Копировать</button>
+  </div>
+  <div class="muted" style="margin-top:8px">Обновление в клиенте — раз в {{ sync_hours }} ч.</div>
+</div>
+
+<div class="card" style="margin-top:12px">
+  <h2>Режим сети</h2>
+  <div class="row" style="border:0;padding-top:0">
+    <div>
+      <b>{{ 'Белые списки' if mode == 'whitelist' else 'Обычный' }}</b>
+      <div class="muted">
+        {% if mode == 'whitelist' %}bridge_ru → cdn_xhttp → мои VPS → триалы → публичные{% else %}мои VPS → триалы → публичные{% endif %}
+      </div>
+    </div>
+    <form method="post" action="/api/mode">
+      <input type="hidden" name="csrf" value="{{ request.cookies.get('hub_csrf','') }}">
+      <input type="hidden" name="mode" value="{{ 'normal' if mode == 'whitelist' else 'whitelist' }}">
+      <button class="btn ghost" type="submit">Переключить</button>
+    </form>
+  </div>
+</div>
+
+<div class="card" style="margin-top:12px">
+  <h2>Что дальше</h2>
+  <div class="muted">
+    Этап 1: источники, синхронизация, подписка, главная — работает.<br>
+    Дальше: экран ключей Remnawave, автоустановка ноды по SSH, детектор белых списков.
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,19 @@
+# Домен подставьте свой в .env (HUB_PUBLIC_URL) и здесь.
+# Caddy сам получит сертификат Let's Encrypt, если DNS указывает на этот сервер.
+hub.example.com {
+    encode zstd gzip
+    reverse_proxy hub:8000 {
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+    # SSE: не буферизовать лог синхронизации
+    @sse path /api/sync/stream
+    reverse_proxy @sse hub:8000 {
+        flush_interval -1
+    }
+}
+
+# Вариант без домена (доступ по IP, только для проверки):
+# :8080 {
+#     reverse_proxy hub:8000
+# }

@@ -1,0 +1,108 @@
+# VPN Hub
+
+Личный дашборд и скрипты для управления VPN-ключами. Разворачивается рядом с
+существующей сборкой подписки (`scripts/`, `docs/`) и переиспользует её парсер:
+VLESS (Reality, XHTTP, mlkem-шифрование), VMess, Trojan, Shadowsocks.
+
+## Что уже работает (этап 1)
+
+- **Источники** — таблица `sources`: имя, тип (`own_vps` / `trial` / `public` /
+  `bridge_ru` / `cdn_xhttp`), ссылка или одиночный ключ, срок, лимит, статус.
+- **Добавить ключ** — вставляете `vless://`, `ss://`, `hysteria2://` или ссылку
+  подписки; хаб проверяет её до сохранения (TCP + TLS) и только потом пишет в БД.
+- **hub-sync** — скачивает подписки с UA Happ, читает `subscription-userinfo`,
+  парсит ссылки, дедуплицирует по отпечатку, проверяет порты и TLS в 3 попытки,
+  помечает мёртвое, пересобирает выдачу. Лог — потоком SSE.
+- **Итоговая подписка** — `/sub/<токен>`, base64 в формате Happ, с заголовками
+  `subscription-userinfo` и `profile-update-interval`.
+- **Режимы сети** — обычный (`own_vps → trial → public`) и «белые списки»
+  (`bridge_ru → cdn_xhttp → own_vps → trial → public`), переключаются вручную.
+- **Главная** — режим, живые узлы, трафик, что скоро кончится, последние события.
+- **Автозапуск** — пересборка раз в `HUB_SYNC_INTERVAL_HOURS` (по умолчанию 6 ч).
+
+Публичные источники в выдаче помечаются тегом «не для банков».
+
+## Запуск на своём VPS (6 шагов)
+
+```bash
+# 1. код на сервер
+git clone https://github.com/kot53094-creator/vless-sub.git && cd vless-sub
+
+# 2. секреты
+cp .env.example .env
+python3 -c "import secrets;print('HUB_SECRET_KEY='+secrets.token_urlsafe(48))" >> .env
+python3 -c "import secrets;print('HUB_SUB_TOKEN='+secrets.token_urlsafe(24))" >> .env
+# впишите HUB_ADMIN_PASSWORD и HUB_PUBLIC_URL
+
+# 3. домен: A-запись на IP сервера, затем в Caddyfile заменить hub.example.com
+nano Caddyfile
+
+# 4. поднять
+docker compose up -d --build
+
+# 5. открыть https://ваш-домен → войти → «Источники» → «Добавить ключ»
+
+# 6. ссылка для Happ — на экране «Настройки»
+```
+
+Без домена можно проверить локально: `docker compose up hub` и открыть
+`http://IP:8000` (в Caddyfile есть закомментированный блок для IP).
+
+## Проверка после запуска
+
+```bash
+curl -s https://hub.example.com/healthz                    # ok
+curl -s -o /dev/null -w "%{http_code}\n" https://hub.example.com/login   # 200
+curl -s https://hub.example.com/sub/<HUB_SUB_TOKEN> | head -c 120       # base64
+```
+
+В браузере: «Главная» → «Синхронизация» → «Запустить» → в логе видно каждый
+источник, число узлов и итог. После прогона на главной меняются счётчики.
+
+## Тесты
+
+```bash
+python -m pytest tests -q
+```
+
+Покрыто: разбор VLESS Reality / WS / Hysteria2 / Shadowsocks, дедупликация,
+base64 и plain-подписки, порядок блоков в двух режимах, маскировка ссылок,
+проверка живого и закрытого порта, отношение к UDP-узлам.
+
+## Структура
+
+```
+hub/
+  main.py          FastAPI, /sub/<токен>, планировщик
+  config.py        настройки из .env
+  db.py            SQLite + сессии
+  models.py        sources, nodes, servers, sync_runs, events, settings
+  security.py      argon2, сессии, CSRF, антиперебор
+  services/
+    parser.py      разбор ссылок (переиспользует scripts/merge.py)
+    fetcher.py     загрузка подписок с UA Happ
+    checker.py     TCP + TLS + задержка, 3 попытки
+    subscription.py сборка выдачи и порядок блоков
+    sync.py        hub-sync
+  routers/         страницы и действия
+  templates/       тёмный адаптивный интерфейс
+```
+
+## Что дальше по этапам
+
+2. **Remnawave**: ключи, трафик, HWID-устройства, действия (сброс трафика,
+   перевыпуск ссылки, отключение). Хаб продолжает работать без неё.
+3. **Автоустановка ноды**: SSH (asyncssh) → Xray Reality + Hysteria2, ufw, BBR,
+   генерация ссылок; плюс `install-node.sh` для ручного запуска.
+4. **Детектор белых списков**: пробы A/B раз в 5 минут, авторежим, уведомление
+   в Telegram.
+5. **Маршрутизация для Happ**: профиль правил (RU напрямую, ИИ через US/EU,
+   игры через ближайшую ноду) и экран редактирования.
+
+## Безопасность
+
+- Пароль — argon2 (или готовый хеш в `HUB_ADMIN_PASSWORD_HASH`).
+- Сессия — подписанная cookie, HttpOnly; CSRF-токен в отдельной cookie.
+- Лимит попыток входа: 8 за 5 минут с одного IP.
+- Ссылки в интерфейсе маскируются, в логах ключи не печатаются.
+- SSH-секреты серверов хранятся в БД в зашифрованном виде (этап 3).

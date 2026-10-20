@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Добавить ключ · VPN Hub{% endblock %}
+{% block body %}
+
+<div class="card">
+  <h2>Новый источник</h2>
+  <p class="muted" style="margin-top:0">
+    Вставьте одиночный ключ (<code>vless://</code>, <code>vmess://</code>,
+    <code>trojan://</code>, <code>hysteria2://</code>, <code>ss://</code>)
+    или ссылку подписки. Хаб проверит его до сохранения.
+  </p>
+
+  {% if error %}<div class="err">{{ error }}</div>{% endif %}
+  {% if ok %}<div class="notice">{{ ok }}</div>{% endif %}
+
+  <form method="post" action="/api/sources">
+    <input type="hidden" name="csrf" value="{{ request.cookies.get('hub_csrf','') }}">
+
+    <label for="url">Ключ или ссылка подписки</label>
+    <textarea id="url" name="url" rows="4" required
+              placeholder="vless://… или https://panel/sub/…"></textarea>
+
+    <label for="name">Название</label>
+    <input id="name" name="name" placeholder="Например: Titan триал">
+
+    <label for="kind">Тип</label>
+    <select id="kind" name="kind">
+      <option value="trial">Триал</option>
+      <option value="own_vps">Мой VPS</option>
+      <option value="public">Публичный</option>
+      <option value="bridge_ru">Мост РФ</option>
+      <option value="cdn_xhttp">CDN / XHTTP</option>
+    </select>
+
+    <label for="trial_days">Срок, дней (если известен)</label>
+    <input id="trial_days" name="trial_days" inputmode="numeric" placeholder="3">
+
+    <label for="traffic_gb">Лимит трафика, ГБ (если известен)</label>
+    <input id="traffic_gb" name="traffic_gb" inputmode="decimal" placeholder="50">
+
+    <label for="note">Заметка</label>
+    <input id="note" name="note" placeholder="откуда ключ, что важно помнить">
+
+    <div style="margin-top:16px">
+      <button class="btn" type="submit">Проверить и добавить</button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
