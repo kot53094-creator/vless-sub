@@ -1,22 +1,22 @@
 {
-  "built_at": "2026-10-20T08:31:41+00:00",
+  "built_at": "2026-10-20T08:48:35+00:00",
   "brand": "Апельсинка VPN",
   "configs": 200,
   "working_total": 56,
-  "reachable_total": 148,
-  "valid_total": 402,
+  "reachable_total": 151,
+  "valid_total": 404,
   "tiers": {
     "verified": 56,
-    "port_only": 92,
-    "syntax_only": 254,
+    "port_only": 95,
+    "syntax_only": 253,
     "notices": 0
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 148,
+    "checked": 151,
     "passed": 56,
-    "seconds": 27.6,
+    "seconds": 31.3,
     "version": "v26.3.27"
   },
   "duplicates_removed": 6,
@@ -43,7 +43,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 46
+      "verified": 45
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -56,7 +56,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 1
+      "verified": 0
     },
     {
       "name": "raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/",
@@ -67,6 +67,19 @@
       "label": "",
       "note": "",
       "order": 0,
+      "quota": {},
+      "provider": "",
+      "verified": 2
+    },
+    {
+      "name": "<kavkaz>",
+      "ok": true,
+      "seen": 2,
+      "kept": 2,
+      "error": "",
+      "label": "KAVKAZ",
+      "note": "2 узла из кэша",
+      "order": 4,
       "quota": {},
       "provider": "",
       "verified": 2
@@ -130,8 +143,8 @@
       "note": "ещё 5 дней",
       "order": 3,
       "quota": {
-        "upload": 141475344,
-        "download": 1238728535,
+        "upload": 142671997,
+        "download": 1245540094,
         "total": 0,
         "expire": 0
       },

@@ -1,28 +1,28 @@
 {
-  "built_at": "2026-10-20T08:35:25+00:00",
+  "built_at": "2026-10-20T08:48:35+00:00",
   "brand": "Апельсинка VPN",
   "configs": 200,
-  "working_total": 234,
-  "reachable_total": 368,
-  "valid_total": 403,
+  "working_total": 56,
+  "reachable_total": 151,
+  "valid_total": 404,
   "tiers": {
-    "verified": 234,
-    "port_only": 134,
-    "syntax_only": 35,
+    "verified": 56,
+    "port_only": 95,
+    "syntax_only": 253,
     "notices": 0
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 368,
-    "passed": 234,
-    "seconds": 34.1,
+    "checked": 151,
+    "passed": 56,
+    "seconds": 31.3,
     "version": "v26.3.27"
   },
   "duplicates_removed": 6,
   "protocols": {
-    "vless": 195,
-    "ss": 5
+    "vless": 161,
+    "ss": 39
   },
   "allowed_protocols": [
     "ss",
@@ -43,7 +43,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 192
+      "verified": 45
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -56,7 +56,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 30
+      "verified": 0
     },
     {
       "name": "raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/",
@@ -69,7 +69,20 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 5
+      "verified": 2
+    },
+    {
+      "name": "<kavkaz>",
+      "ok": true,
+      "seen": 2,
+      "kept": 2,
+      "error": "",
+      "label": "KAVKAZ",
+      "note": "2 узла из кэша",
+      "order": 4,
+      "quota": {},
+      "provider": "",
+      "verified": 2
     },
     {
       "name": "<alb>",
@@ -123,15 +136,15 @@
     {
       "name": "<private-3 VLESS>",
       "ok": true,
-      "seen": 7,
-      "kept": 7,
+      "seen": 6,
+      "kept": 6,
       "error": "",
       "label": "VLESS",
       "note": "ещё 5 дней",
       "order": 3,
       "quota": {
-        "upload": 141518287,
-        "download": 1238853799,
+        "upload": 142671997,
+        "download": 1245540094,
         "total": 0,
         "expire": 0
       },
