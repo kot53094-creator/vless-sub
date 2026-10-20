@@ -1,28 +1,28 @@
 {
-  "built_at": "2026-10-20T08:31:41+00:00",
+  "built_at": "2026-10-20T08:35:25+00:00",
   "brand": "Апельсинка VPN",
   "configs": 200,
-  "working_total": 56,
-  "reachable_total": 148,
-  "valid_total": 402,
+  "working_total": 234,
+  "reachable_total": 368,
+  "valid_total": 403,
   "tiers": {
-    "verified": 56,
-    "port_only": 92,
-    "syntax_only": 254,
+    "verified": 234,
+    "port_only": 134,
+    "syntax_only": 35,
     "notices": 0
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 148,
-    "passed": 56,
-    "seconds": 27.6,
+    "checked": 368,
+    "passed": 234,
+    "seconds": 34.1,
     "version": "v26.3.27"
   },
   "duplicates_removed": 6,
   "protocols": {
-    "vless": 161,
-    "ss": 39
+    "vless": 195,
+    "ss": 5
   },
   "allowed_protocols": [
     "ss",
@@ -43,7 +43,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 46
+      "verified": 192
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -56,7 +56,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 1
+      "verified": 30
     },
     {
       "name": "raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/",
@@ -69,7 +69,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 2
+      "verified": 5
     },
     {
       "name": "<alb>",
@@ -123,15 +123,15 @@
     {
       "name": "<private-3 VLESS>",
       "ok": true,
-      "seen": 6,
-      "kept": 6,
+      "seen": 7,
+      "kept": 7,
       "error": "",
       "label": "VLESS",
       "note": "ещё 5 дней",
       "order": 3,
       "quota": {
-        "upload": 141475344,
-        "download": 1238728535,
+        "upload": 141518287,
+        "download": 1238853799,
         "total": 0,
         "expire": 0
       },
