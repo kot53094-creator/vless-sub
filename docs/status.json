@@ -69,7 +69,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 2
+      "verified": 4
     },
     {
       "name": "<kavkaz>",
@@ -108,7 +108,7 @@
       "order": 7,
       "quota": {},
       "provider": "",
-      "verified": 0
+      "verified": 3
     },
     {
       "name": "<private-1 TITAN>",
@@ -149,8 +149,8 @@
     {
       "name": "<private-3 VLESS>",
       "ok": true,
-      "seen": 6,
-      "kept": 6,
+      "seen": 7,
+      "kept": 7,
       "error": "",
       "label": "VLESS",
       "note": "ещё 5 дней",
