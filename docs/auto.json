@@ -51,7 +51,7 @@
     "realitySettings": {
      "serverName": "mosamic.com",
      "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
-     "shortId": "d5f6",
+     "shortId": "6326c211",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
@@ -123,11 +123,11 @@
    "settings": {
     "vnext": [
      {
-      "address": "150.40.126.22",
-      "port": 443,
+      "address": "45.138.100.248",
+      "port": 10443,
       "users": [
        {
-        "id": "2f35965a-9a9b-45fd-ba32-987296dfb6be",
+        "id": "ae908ff5-f749-402c-af25-e6e9aef4d6bb",
         "encryption": "none"
        }
       ]
@@ -135,19 +135,8 @@
     ]
    },
    "streamSettings": {
-    "network": "grpc",
-    "security": "reality",
-    "grpcSettings": {
-     "serviceName": "media.v1.StreamService",
-     "multiMode": false
-    },
-    "realitySettings": {
-     "serverName": "rs4.univesalsrv.com",
-     "publicKey": "sXsJ4ET-50TYqlhKZf03nPQr2JIy1F0D4m6lOsI0cAs",
-     "shortId": "861ac7d66953e55f",
-     "fingerprint": "chrome",
-     "spiderX": "/"
-    }
+    "network": "tcp",
+    "security": "none"
    },
    "tag": "auto-4"
   },
@@ -177,7 +166,7 @@
     "realitySettings": {
      "serverName": "imppartner.hu",
      "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
-     "shortId": "47923c5f7c",
+     "shortId": "6326c211",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
@@ -221,11 +210,11 @@
    "settings": {
     "vnext": [
      {
-      "address": "104.171.133.209",
-      "port": 443,
+      "address": "137.184.218.169",
+      "port": 36925,
       "users": [
        {
-        "id": "ebd1c0d6-7ff4-4b9f-8692-237517a27a64",
+        "id": "c9fd0fb1-8251-4106-b09a-f4b426736f67",
         "encryption": "none",
         "flow": "xtls-rprx-vision"
        }
@@ -237,9 +226,9 @@
     "network": "tcp",
     "security": "reality",
     "realitySettings": {
-     "serverName": "anyfile2file.com",
-     "publicKey": "mza5Hn1aolSz65qu-UwvBP3oesxMe25r11o4nxvikF0",
-     "shortId": "64c1fe36c7846400",
+     "serverName": "www.cloudflare.com",
+     "publicKey": "lJ9INPpO4rdnm2Tek_yg0PGFyUrBB6MoKyvqt_Mfqm0",
+     "shortId": "",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
@@ -284,11 +273,11 @@
    "settings": {
     "vnext": [
      {
-      "address": "tgfree.rush-server.com",
+      "address": "195.123.235.183",
       "port": 443,
       "users": [
        {
-        "id": "ebd1c0d6-7ff4-4b9f-8692-237517a27a64",
+        "id": "c14ec728-3eca-4750-87fc-fd1e6aeb81d5",
         "encryption": "none",
         "flow": "xtls-rprx-vision"
        }
@@ -300,9 +289,9 @@
     "network": "tcp",
     "security": "reality",
     "realitySettings": {
-     "serverName": "anyfile2file.com",
-     "publicKey": "mza5Hn1aolSz65qu-UwvBP3oesxMe25r11o4nxvikF0",
-     "shortId": "64c1fe36c7846400",
+     "serverName": "gateway.icloud.com",
+     "publicKey": "H3R3BUAl7thrIZsznTbb-eRREIjQOH2f3WO0oTN7OGY",
+     "shortId": "a0e2a6074c6456b0",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
@@ -335,7 +324,7 @@
     "realitySettings": {
      "serverName": "dpdpstaq.com",
      "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
-     "shortId": "d5f6",
+     "shortId": "eb9268756a12",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
@@ -347,12 +336,13 @@
    "settings": {
     "vnext": [
      {
-      "address": "connect.wecantos.site",
-      "port": 10000,
+      "address": "195.123.235.183",
+      "port": 443,
       "users": [
        {
-        "id": "a05ecf37-c661-4247-ab09-4432cf0f3cc1",
-        "encryption": "none"
+        "id": "c14ec728-3eca-4750-87fc-fd1e6aeb81d5",
+        "encryption": "none",
+        "flow": "xtls-rprx-vision"
        }
       ]
      }
@@ -360,7 +350,14 @@
    },
    "streamSettings": {
     "network": "tcp",
-    "security": "none"
+    "security": "reality",
+    "realitySettings": {
+     "serverName": "gateway.icloud.com",
+     "publicKey": "H3R3BUAl7thrIZsznTbb-eRREIjQOH2f3WO0oTN7OGY",
+     "shortId": "a0e2a6074c6456b0",
+     "fingerprint": "chrome",
+     "spiderX": "/"
+    }
    },
    "tag": "auto-11"
   },
