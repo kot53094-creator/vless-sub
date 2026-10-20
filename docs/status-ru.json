@@ -1,29 +1,31 @@
 {
-  "built_at": "2026-10-20T08:12:30+00:00",
+  "built_at": "2026-10-20T08:31:41+00:00",
   "brand": "Апельсинка VPN",
   "configs": 200,
-  "working_total": 46,
-  "reachable_total": 112,
-  "valid_total": 359,
+  "working_total": 56,
+  "reachable_total": 148,
+  "valid_total": 402,
   "tiers": {
-    "verified": 46,
-    "port_only": 66,
-    "syntax_only": 247,
+    "verified": 56,
+    "port_only": 92,
+    "syntax_only": 254,
     "notices": 0
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 112,
-    "passed": 46,
-    "seconds": 21.9,
+    "checked": 148,
+    "passed": 56,
+    "seconds": 27.6,
     "version": "v26.3.27"
   },
   "duplicates_removed": 6,
   "protocols": {
-    "vless": 200
+    "vless": 161,
+    "ss": 39
   },
   "allowed_protocols": [
+    "ss",
     "vless"
   ],
   "max_configs": 200,
@@ -41,7 +43,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 40
+      "verified": 46
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -60,14 +62,27 @@
       "name": "raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/",
       "ok": true,
       "seen": 2001,
-      "kept": 0,
+      "kept": 41,
       "error": "",
       "label": "",
       "note": "",
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 0
+      "verified": 2
+    },
+    {
+      "name": "<alb>",
+      "ok": true,
+      "seen": 2,
+      "kept": 2,
+      "error": "",
+      "label": "ALB",
+      "note": "3 дня",
+      "order": 6,
+      "quota": {},
+      "provider": "",
+      "verified": 2
     },
     {
       "name": "<private-1 TITAN>",
@@ -115,8 +130,8 @@
       "note": "ещё 5 дней",
       "order": 3,
       "quota": {
-        "upload": 140594489,
-        "download": 1233108366,
+        "upload": 141475344,
+        "download": 1238728535,
         "total": 0,
         "expire": 0
       },

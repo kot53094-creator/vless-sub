@@ -42,7 +42,7 @@ RELEASE_URL = "https://github.com/XTLS/Xray-core/releases/download/{ver}/{asset}
 # One target only: a second attempt doubles the cost of every dead node, and the
 # list is dominated by dead nodes. Cloudflare answers 204 without any payload.
 PROBE_TARGET = "http://cp.cloudflare.com/generate_204"
-SUPPORTED_PROTOCOLS = {"vless", "vmess", "trojan"}
+SUPPORTED_PROTOCOLS = {"vless", "vmess", "trojan", "ss"}
 ACCEPT_NETWORKS = {"tcp", "ws", "grpc", "h2", "http", "xhttp", "splithttp", "httpupgrade"}
 
 
@@ -177,9 +177,15 @@ def build_config(rec: dict, listen_port: int) -> dict:
         out = {"protocol": "trojan",
                "settings": {"servers": [{"address": rec["host"], "port": rec["port"],
                                          "password": rec["auth"]}]}}
+    elif proto == "ss":
+        out = {"protocol": "shadowsocks",
+               "settings": {"servers": [{"address": rec["host"], "port": rec["port"],
+                                         "method": rec["method"],
+                                         "password": rec["password"]}]}}
     else:
         raise ValueError(f"deep check does not support {proto}")
-    out["streamSettings"] = _tcp_settings(rec)
+    if proto != "ss":
+        out["streamSettings"] = _tcp_settings(rec)
     return {
         "log": {"loglevel": "none"},
         "inbounds": [{

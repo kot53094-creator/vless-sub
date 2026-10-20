@@ -60,6 +60,12 @@ FLOWS = {"", "xtls-rprx-vision", "xtls-rprx-vision-udp443", "xtls-rprx-direct"}
 # VLESS может требовать собственное шифрование канала
 # (mlkem768x25519plus.native.0rtt.<key>) — без него сервер не пустит клиента.
 ENCRYPTION_RE = re.compile(r"^[A-Za-z0-9._+/=-]{1,2048}$")
+# Методы Shadowsocks, которые понимает Outline и Xray.
+SS_METHODS = {
+    "aes-128-gcm", "aes-256-gcm", "chacha20-ietf-poly1305",
+    "2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm",
+    "2022-blake3-chacha20-poly1305",
+}
 PRIVATE_HOST_SUFFIXES = (".local", ".localhost", ".internal", ".lan", ".home")
 
 
@@ -357,6 +363,25 @@ def validate_uri(uri: str, allowed: set[str], allow_private: bool = False) -> di
         "encryption": "",
         "xhttp_mode": "",
     }
+
+    if scheme == "ss":
+        # Outline: ss://base64(method:password)@host:port
+        blob = unquote(parts.username or "")
+        try:
+            cred = base64.b64decode(blob + "=" * (-len(blob) % 4)).decode("utf-8")
+        except Exception:
+            cred = blob
+        if ":" not in cred:
+            raise Bad("ss credentials are not method:password")
+        method, password = cred.split(":", 1)
+        method = method.strip().lower()
+        if method not in SS_METHODS:
+            raise Bad(f"unsupported ss method={method}")
+        if not password:
+            raise Bad("ss without password")
+        if params.get("plugin"):
+            raise Bad("ss plugins are not supported")
+        record.update(method=method, password=password, auth=password)
 
     if scheme == "vless":
         if not UUID_RE.match(userinfo):
@@ -668,7 +693,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                     help="how many nodes to keep per key block (0 = all)")
     ap.add_argument("--min-configs", type=int, default=int(os.getenv("MIN_CONFIGS", "20")))
     ap.add_argument("--max-per-host", type=int, default=int(os.getenv("MAX_PER_HOST", "4")))
-    ap.add_argument("--allow-protocols", default=os.getenv("ALLOW_PROTOCOLS", "vless"))
+    ap.add_argument("--allow-protocols", default=os.getenv("ALLOW_PROTOCOLS", "vless,ss"))
     ap.add_argument("--no-probe", action="store_true", help="skip reachability probe")
     ap.add_argument("--site-url", default=os.getenv("SITE_URL",
                     "https://kot53094-creator.github.io/vless-sub/"),

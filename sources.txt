@@ -22,3 +22,6 @@ https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/be
 # KavkazVPN отдаёт конфиги только своему приложению, поэтому список снят из клиента.
 # 20.10.2026: снимок серверов устарел, все 15 узлов не отвечают; провайдер отдаёт конфиги только своему приложению.
 # KAVKAZ:4|file:configs/kavkaz.txt|до 23.10
+
+# Бесплатные ключи Албании (Outline + VLESS), срок 3 дня с 18.10.2026.
+ALB:6|file:configs/albania.txt|3 дня
