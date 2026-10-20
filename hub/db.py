@@ -1,10 +1,10 @@
-"""Подключение к SQLite и сессии SQLAlchemy."""
+"""Подключение к SQLite, сессии SQLAlchemy и лёгкие миграции схемы."""
 
 from __future__ import annotations
 
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from .config import settings
@@ -36,7 +36,33 @@ def get_db() -> Iterator[Session]:
         db.close()
 
 
+# Колонки, добавленные после первого релиза: SQLite не умеет ALTER с
+# несколькими полями, поэтому добавляем по одной и только если их нет.
+_EXTRA_COLUMNS: dict[str, dict[str, str]] = {
+    "servers": {
+        "ssh_port": "INTEGER DEFAULT 22",
+        "links": "TEXT DEFAULT ''",
+        "log": "TEXT DEFAULT ''",
+        "os_info": "VARCHAR(120) DEFAULT ''",
+        "provisioned_at": "DATETIME",
+    },
+}
+
+
+def _ensure_columns() -> None:
+    inspector = inspect(engine)
+    with engine.begin() as conn:
+        for table, columns in _EXTRA_COLUMNS.items():
+            if not inspector.has_table(table):
+                continue
+            existing = {col["name"] for col in inspector.get_columns(table)}
+            for name, ddl in columns.items():
+                if name not in existing:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+
+
 def init_db() -> None:
     from . import models  # noqa: F401  (регистрирует таблицы)
 
     models.Base.metadata.create_all(engine)
+    _ensure_columns()

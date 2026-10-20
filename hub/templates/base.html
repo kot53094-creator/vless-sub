@@ -57,6 +57,7 @@
     <span class="brand">VPN Hub</span>
     <a href="/" class="{{ 'active' if request.url.path == '/' else '' }}">Главная</a>
     <a href="/keys" class="{{ 'active' if request.url.path.startswith('/keys') else '' }}">Ключи</a>
+    <a href="/servers" class="{{ 'active' if request.url.path.startswith('/servers') else '' }}">Серверы</a>
     <a href="/sources" class="{{ 'active' if request.url.path.startswith('/sources') else '' }}">Источники</a>
     <a href="/add" class="{{ 'active' if request.url.path == '/add' else '' }}">Добавить ключ</a>
     <a href="/sync" class="{{ 'active' if request.url.path == '/sync' else '' }}">Синхронизация</a>

@@ -107,7 +107,12 @@ class Server(Base):
     price: Mapped[float] = mapped_column(Float, default=0.0)
     rent_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ssh_user: Mapped[str] = mapped_column(String(40), default="root")
+    ssh_port: Mapped[int] = mapped_column(Integer, default=22)
     ssh_secret_enc: Mapped[str] = mapped_column(Text, default="")  # зашифровано HUB_SECRET_KEY
+    links: Mapped[str] = mapped_column(Text, default="")           # vless:// и hysteria2://
+    log: Mapped[str] = mapped_column(Text, default="")
+    os_info: Mapped[str] = mapped_column(String(120), default="")
+    provisioned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active")
 
 
