@@ -21,7 +21,8 @@ https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/be
 # подписки (K1, K2, …). Префикс file: — локальный файл в репозитории.
 # KavkazVPN отдаёт конфиги только своему приложению, поэтому список снят из клиента.
 # 20.10.2026: конфиги сняты из кэша v2RayTun, из 110 узлов живы два.
-KAVKAZ:4|file:configs/kavkaz.txt|2 узла из кэша
+KAVKAZ:4|file:configs/kavkaz.txt|110 из кэша
 
 # Бесплатные ключи Албании (Outline + VLESS), срок 3 дня с 18.10.2026.
 ALB:6|file:configs/albania.txt|3 дня
+FREESOCKS:7|file:configs/freesocks.txt|CDN, режется

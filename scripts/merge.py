@@ -688,9 +688,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--probe-concurrency", type=int, default=48)
     # Публичные списки дают сотни узлов, но живыми оказываются единицы.
     # Публикуем верхушку: лучше 200 проверенных строк, чем 1200 мёртвых.
-    ap.add_argument("--max-configs", type=int, default=int(os.getenv("MAX_CONFIGS", "200")))
-    ap.add_argument("--max-per-key", type=int, default=int(os.getenv("MAX_PER_KEY", "15")),
-                    help="how many nodes to keep per key block (0 = all)")
+    ap.add_argument("--max-configs", type=int, default=int(os.getenv("MAX_CONFIGS", "400")))
+    ap.add_argument("--max-per-key", type=int, default=int(os.getenv("MAX_PER_KEY", "120")),
+                     help="how many nodes to keep per key block (0 = all)")
+    ap.add_argument("--max-per-profile", type=int, default=int(os.getenv("MAX_PER_PROFILE", "0")),
+                     help="nodes per provider profile (0 = all)")
     ap.add_argument("--min-configs", type=int, default=int(os.getenv("MIN_CONFIGS", "20")))
     ap.add_argument("--max-per-host", type=int, default=int(os.getenv("MAX_PER_HOST", "4")))
     ap.add_argument("--allow-protocols", default=os.getenv("ALLOW_PROTOCOLS", "vless,ss"))
@@ -1169,7 +1171,8 @@ def main(argv: list[str]) -> int:
                 # выходы вытесняют весь список и в клиенте видно 15 одинаковых
                 # строк вместо Финляндии, Германии, США.
                 prof = profile_of(rec)
-                if prof and per_profile[(rec["group"], prof)] >= 1:
+                if prof and args.max_per_profile > 0 \
+                        and per_profile[(rec["group"], prof)] >= args.max_per_profile:
                     continue
                 counted[rec["group"]] = used + 1
                 if prof:

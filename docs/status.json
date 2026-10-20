@@ -1,35 +1,35 @@
 {
-  "built_at": "2026-10-20T08:50:42+00:00",
+  "built_at": "2026-10-20T09:10:16+00:00",
   "brand": "Апельсинка VPN",
-  "configs": 200,
-  "working_total": 234,
-  "reachable_total": 368,
-  "valid_total": 405,
+  "configs": 400,
+  "working_total": 52,
+  "reachable_total": 234,
+  "valid_total": 513,
   "tiers": {
-    "verified": 234,
-    "port_only": 134,
-    "syntax_only": 37,
+    "verified": 52,
+    "port_only": 182,
+    "syntax_only": 279,
     "notices": 0
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 368,
-    "passed": 234,
-    "seconds": 35.0,
+    "checked": 234,
+    "passed": 52,
+    "seconds": 35.8,
     "version": "v26.3.27"
   },
   "duplicates_removed": 6,
   "protocols": {
-    "vless": 195,
-    "ss": 5
+    "vless": 359,
+    "ss": 41
   },
   "allowed_protocols": [
     "ss",
     "vless"
   ],
-  "max_configs": 200,
-  "previous_configs": 200,
+  "max_configs": 400,
+  "previous_configs": 400,
   "probe": "tcp/tls handshake",
   "sources": [
     {
@@ -43,7 +43,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 190
+      "verified": 40
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -56,7 +56,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 31
+      "verified": 1
     },
     {
       "name": "raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/",
@@ -69,16 +69,16 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 5
+      "verified": 2
     },
     {
       "name": "<kavkaz>",
       "ok": true,
-      "seen": 2,
-      "kept": 2,
+      "seen": 110,
+      "kept": 110,
       "error": "",
       "label": "KAVKAZ",
-      "note": "2 узла из кэша",
+      "note": "110 из кэша",
       "order": 4,
       "quota": {},
       "provider": "",
@@ -96,6 +96,19 @@
       "quota": {},
       "provider": "",
       "verified": 2
+    },
+    {
+      "name": "<freesock>",
+      "ok": true,
+      "seen": 3,
+      "kept": 3,
+      "error": "",
+      "label": "FREESOCK",
+      "note": "CDN, режется",
+      "order": 7,
+      "quota": {},
+      "provider": "",
+      "verified": 0
     },
     {
       "name": "<private-1 TITAN>",
@@ -136,20 +149,20 @@
     {
       "name": "<private-3 VLESS>",
       "ok": true,
-      "seen": 7,
-      "kept": 7,
+      "seen": 6,
+      "kept": 6,
       "error": "",
       "label": "VLESS",
       "note": "ещё 5 дней",
       "order": 3,
       "quota": {
-        "upload": 142799744,
-        "download": 1247652648,
+        "upload": 150428148,
+        "download": 1320600827,
         "total": 0,
         "expire": 0
       },
       "provider": "",
-      "verified": 4
+      "verified": 5
     },
     {
       "name": "<private-4 MEDUSA>",

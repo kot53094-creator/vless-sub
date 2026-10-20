@@ -30,7 +30,7 @@
    "settings": {
     "vnext": [
      {
-      "address": "51.15.91.23",
+      "address": "158.69.205.32",
       "port": 443,
       "users": [
        {
@@ -46,12 +46,12 @@
     "security": "reality",
     "xhttpSettings": {
      "path": "/api/v1/updates",
-     "host": "mosamic.com"
+     "host": "jtmagen.com"
     },
     "realitySettings": {
-     "serverName": "mosamic.com",
+     "serverName": "jtmagen.com",
      "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
-     "shortId": "6326c211",
+     "shortId": "eb9268756a12",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
@@ -63,27 +63,29 @@
    "settings": {
     "vnext": [
      {
-      "address": "144.31.7.36",
-      "port": 8443,
+      "address": "2.27.27.36",
+      "port": 443,
       "users": [
        {
         "id": "338f6cc1-9dc3-4f29-a9bb-c0c9cff03303",
-        "encryption": "none",
-        "flow": "xtls-rprx-vision"
+        "encryption": "none"
        }
       ]
      }
     ]
    },
    "streamSettings": {
-    "network": "tcp",
-    "security": "reality",
-    "realitySettings": {
-     "serverName": "studio.bubuvideo.online",
-     "publicKey": "L2dWefp4t55nVagHb0T8AxRc619x67Ka7lv7B4LmMzc",
-     "shortId": "3f7b1e5a9c2d8f46",
-     "fingerprint": "qq",
-     "spiderX": "/"
+    "network": "ws",
+    "security": "tls",
+    "wsSettings": {
+     "path": "/edge/319358895/chunk?ed=2560"
+    },
+    "tlsSettings": {
+     "serverName": "static.shomsti.online",
+     "allowInsecure": false,
+     "alpn": [
+      "http/1.1"
+     ]
     }
    },
    "tag": "auto-2"
@@ -123,11 +125,11 @@
    "settings": {
     "vnext": [
      {
-      "address": "45.138.100.248",
-      "port": 10443,
+      "address": "35.181.176.187",
+      "port": 22224,
       "users": [
        {
-        "id": "ae908ff5-f749-402c-af25-e6e9aef4d6bb",
+        "id": "e4514801-0d5a-42ba-869f-39bd605aef9e",
         "encryption": "none"
        }
       ]
@@ -139,6 +141,91 @@
     "security": "none"
    },
    "tag": "auto-4"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "51.15.91.23",
+      "port": 443,
+      "users": [
+       {
+        "id": "29743268-301d-5932-8168-ceda9e3f128c",
+        "encryption": "none"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "xhttp",
+    "security": "reality",
+    "xhttpSettings": {
+     "path": "/api/v1/updates",
+     "host": "mosamic.com"
+    },
+    "realitySettings": {
+     "serverName": "mosamic.com",
+     "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
+     "shortId": "6326c211",
+     "fingerprint": "chrome",
+     "spiderX": "/"
+    }
+   },
+   "tag": "auto-5"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "144.31.7.36",
+      "port": 8443,
+      "users": [
+       {
+        "id": "338f6cc1-9dc3-4f29-a9bb-c0c9cff03303",
+        "encryption": "none",
+        "flow": "xtls-rprx-vision"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "tcp",
+    "security": "reality",
+    "realitySettings": {
+     "serverName": "studio.bubuvideo.online",
+     "publicKey": "L2dWefp4t55nVagHb0T8AxRc619x67Ka7lv7B4LmMzc",
+     "shortId": "3f7b1e5a9c2d8f46",
+     "fingerprint": "qq",
+     "spiderX": "/"
+    }
+   },
+   "tag": "auto-6"
+  },
+  {
+   "protocol": "vless",
+   "settings": {
+    "vnext": [
+     {
+      "address": "35.181.176.187",
+      "port": 22222,
+      "users": [
+       {
+        "id": "e4514801-0d5a-42ba-869f-39bd605aef9e",
+        "encryption": "none"
+       }
+      ]
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "tcp",
+    "security": "none"
+   },
+   "tag": "auto-7"
   },
   {
    "protocol": "vless",
@@ -166,102 +253,7 @@
     "realitySettings": {
      "serverName": "imppartner.hu",
      "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
-     "shortId": "6326c211",
-     "fingerprint": "chrome",
-     "spiderX": "/"
-    }
-   },
-   "tag": "auto-5"
-  },
-  {
-   "protocol": "vless",
-   "settings": {
-    "vnext": [
-     {
-      "address": "2.27.27.36",
-      "port": 443,
-      "users": [
-       {
-        "id": "338f6cc1-9dc3-4f29-a9bb-c0c9cff03303",
-        "encryption": "none"
-       }
-      ]
-     }
-    ]
-   },
-   "streamSettings": {
-    "network": "ws",
-    "security": "tls",
-    "wsSettings": {
-     "path": "/edge/319358895/chunk?ed=2560"
-    },
-    "tlsSettings": {
-     "serverName": "static.shomsti.online",
-     "allowInsecure": false,
-     "alpn": [
-      "http/1.1"
-     ]
-    }
-   },
-   "tag": "auto-6"
-  },
-  {
-   "protocol": "vless",
-   "settings": {
-    "vnext": [
-     {
-      "address": "137.184.218.169",
-      "port": 36925,
-      "users": [
-       {
-        "id": "c9fd0fb1-8251-4106-b09a-f4b426736f67",
-        "encryption": "none",
-        "flow": "xtls-rprx-vision"
-       }
-      ]
-     }
-    ]
-   },
-   "streamSettings": {
-    "network": "tcp",
-    "security": "reality",
-    "realitySettings": {
-     "serverName": "www.cloudflare.com",
-     "publicKey": "lJ9INPpO4rdnm2Tek_yg0PGFyUrBB6MoKyvqt_Mfqm0",
-     "shortId": "",
-     "fingerprint": "chrome",
-     "spiderX": "/"
-    }
-   },
-   "tag": "auto-7"
-  },
-  {
-   "protocol": "vless",
-   "settings": {
-    "vnext": [
-     {
-      "address": "158.69.205.32",
-      "port": 443,
-      "users": [
-       {
-        "id": "29743268-301d-5932-8168-ceda9e3f128c",
-        "encryption": "none"
-       }
-      ]
-     }
-    ]
-   },
-   "streamSettings": {
-    "network": "xhttp",
-    "security": "reality",
-    "xhttpSettings": {
-     "path": "/api/v1/updates",
-     "host": "jtmagen.com"
-    },
-    "realitySettings": {
-     "serverName": "jtmagen.com",
-     "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
-     "shortId": "ee5ae6ba57ea8175",
+     "shortId": "74f89edcf20d40",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
@@ -273,11 +265,11 @@
    "settings": {
     "vnext": [
      {
-      "address": "195.123.235.183",
+      "address": "104.171.133.209",
       "port": 443,
       "users": [
        {
-        "id": "c14ec728-3eca-4750-87fc-fd1e6aeb81d5",
+        "id": "ebd1c0d6-7ff4-4b9f-8692-237517a27a64",
         "encryption": "none",
         "flow": "xtls-rprx-vision"
        }
@@ -289,9 +281,9 @@
     "network": "tcp",
     "security": "reality",
     "realitySettings": {
-     "serverName": "gateway.icloud.com",
-     "publicKey": "H3R3BUAl7thrIZsznTbb-eRREIjQOH2f3WO0oTN7OGY",
-     "shortId": "a0e2a6074c6456b0",
+     "serverName": "anyfile2file.com",
+     "publicKey": "mza5Hn1aolSz65qu-UwvBP3oesxMe25r11o4nxvikF0",
+     "shortId": "64c1fe36c7846400",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
@@ -303,7 +295,7 @@
    "settings": {
     "vnext": [
      {
-      "address": "51.79.157.197",
+      "address": "2.29.29.37",
       "port": 443,
       "users": [
        {
@@ -319,10 +311,10 @@
     "security": "reality",
     "xhttpSettings": {
      "path": "/api/v1/updates",
-     "host": "dpdpstaq.com"
+     "host": "amm.finance"
     },
     "realitySettings": {
-     "serverName": "dpdpstaq.com",
+     "serverName": "amm.finance",
      "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
      "shortId": "eb9268756a12",
      "fingerprint": "chrome",
@@ -336,11 +328,11 @@
    "settings": {
     "vnext": [
      {
-      "address": "195.123.235.183",
+      "address": "tgfree.rush-server.com",
       "port": 443,
       "users": [
        {
-        "id": "c14ec728-3eca-4750-87fc-fd1e6aeb81d5",
+        "id": "ebd1c0d6-7ff4-4b9f-8692-237517a27a64",
         "encryption": "none",
         "flow": "xtls-rprx-vision"
        }
@@ -352,9 +344,9 @@
     "network": "tcp",
     "security": "reality",
     "realitySettings": {
-     "serverName": "gateway.icloud.com",
-     "publicKey": "H3R3BUAl7thrIZsznTbb-eRREIjQOH2f3WO0oTN7OGY",
-     "shortId": "a0e2a6074c6456b0",
+     "serverName": "anyfile2file.com",
+     "publicKey": "mza5Hn1aolSz65qu-UwvBP3oesxMe25r11o4nxvikF0",
+     "shortId": "64c1fe36c7846400",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
