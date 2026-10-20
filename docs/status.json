@@ -1,28 +1,28 @@
 {
-  "built_at": "2026-10-20T09:10:16+00:00",
+  "built_at": "2026-10-20T09:11:57+00:00",
   "brand": "Апельсинка VPN",
   "configs": 400,
-  "working_total": 52,
-  "reachable_total": 234,
-  "valid_total": 513,
+  "working_total": 230,
+  "reachable_total": 475,
+  "valid_total": 514,
   "tiers": {
-    "verified": 52,
-    "port_only": 182,
-    "syntax_only": 279,
+    "verified": 230,
+    "port_only": 245,
+    "syntax_only": 39,
     "notices": 0
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 234,
-    "passed": 52,
-    "seconds": 35.8,
+    "checked": 475,
+    "passed": 230,
+    "seconds": 43.3,
     "version": "v26.3.27"
   },
   "duplicates_removed": 6,
   "protocols": {
-    "vless": 359,
-    "ss": 41
+    "vless": 365,
+    "ss": 35
   },
   "allowed_protocols": [
     "ss",
@@ -43,7 +43,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 40
+      "verified": 184
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -56,7 +56,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 1
+      "verified": 31
     },
     {
       "name": "raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/",
@@ -69,7 +69,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 2
+      "verified": 4
     },
     {
       "name": "<kavkaz>",
@@ -108,7 +108,7 @@
       "order": 7,
       "quota": {},
       "provider": "",
-      "verified": 0
+      "verified": 3
     },
     {
       "name": "<private-1 TITAN>",
@@ -149,20 +149,20 @@
     {
       "name": "<private-3 VLESS>",
       "ok": true,
-      "seen": 6,
-      "kept": 6,
+      "seen": 7,
+      "kept": 7,
       "error": "",
       "label": "VLESS",
       "note": "ещё 5 дней",
       "order": 3,
       "quota": {
-        "upload": 150428148,
-        "download": 1320600827,
+        "upload": 152036904,
+        "download": 1321573848,
         "total": 0,
         "expire": 0
       },
       "provider": "",
-      "verified": 5
+      "verified": 4
     },
     {
       "name": "<private-4 MEDUSA>",
