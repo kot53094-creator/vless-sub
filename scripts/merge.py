@@ -661,7 +661,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--timeout", type=float, default=30.0, help="per-source HTTP timeout")
     ap.add_argument("--probe-timeout", type=float, default=4.0)
     ap.add_argument("--probe-concurrency", type=int, default=48)
-    ap.add_argument("--max-configs", type=int, default=int(os.getenv("MAX_CONFIGS", "1200")))
+    # Публичные списки дают сотни узлов, но живыми оказываются единицы.
+    # Публикуем верхушку: лучше 200 проверенных строк, чем 1200 мёртвых.
+    ap.add_argument("--max-configs", type=int, default=int(os.getenv("MAX_CONFIGS", "200")))
     ap.add_argument("--max-per-key", type=int, default=int(os.getenv("MAX_PER_KEY", "15")),
                     help="how many nodes to keep per key block (0 = all)")
     ap.add_argument("--min-configs", type=int, default=int(os.getenv("MIN_CONFIGS", "20")))
