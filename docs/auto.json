@@ -51,7 +51,7 @@
     "realitySettings": {
      "serverName": "jtmagen.com",
      "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
-     "shortId": "ee5ae6ba57ea8175",
+     "shortId": "4fc112",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
@@ -63,13 +63,12 @@
    "settings": {
     "vnext": [
      {
-      "address": "67.220.73.204",
-      "port": 18662,
+      "address": "181.214.152.137",
+      "port": 51104,
       "users": [
        {
-        "id": "814bd064-544d-4255-a070-5705c03f6da9",
-        "encryption": "none",
-        "flow": "xtls-rprx-vision"
+        "id": "f5f0babe-aea2-4f07-a1fc-3c9820253f49",
+        "encryption": "none"
        }
       ]
      }
@@ -79,9 +78,9 @@
     "network": "tcp",
     "security": "reality",
     "realitySettings": {
-     "serverName": "www.apple.com",
-     "publicKey": "k2hPp0tTW0Da-HK94wYpSCLbuK44LfGqC2MSJIM1Ti0",
-     "shortId": "48050fab",
+     "serverName": "apple.com",
+     "publicKey": "5XPuEa7CkCbN4W1iJH6P0ogGhODHkKUDEhmTosBQASQ",
+     "shortId": "abcd1234",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
@@ -114,7 +113,7 @@
     "realitySettings": {
      "serverName": "mosamic.com",
      "publicKey": "BxPmS2krTbnfvhxAZy-8bNa9WC75bJTqdyboL-QFrHs",
-     "shortId": "74f89edcf20d40",
+     "shortId": "ee5ae6ba57ea8175",
      "fingerprint": "chrome",
      "spiderX": "/"
     }
@@ -188,7 +187,7 @@
     "vnext": [
      {
       "address": "45.138.100.248",
-      "port": 10443,
+      "port": 14430,
       "users": [
        {
         "id": "ae908ff5-f749-402c-af25-e6e9aef4d6bb",
@@ -199,8 +198,14 @@
     ]
    },
    "streamSettings": {
-    "network": "tcp",
-    "security": "none"
+    "network": "ws",
+    "security": "none",
+    "wsSettings": {
+     "path": "/vless",
+     "headers": {
+      "Host": "45.138.100.248"
+     }
+    }
    },
    "tag": "auto-6"
   },
@@ -242,25 +247,27 @@
    "settings": {
     "vnext": [
      {
-      "address": "45.138.100.248",
-      "port": 14430,
+      "address": "195.123.235.183",
+      "port": 443,
       "users": [
        {
-        "id": "ae908ff5-f749-402c-af25-e6e9aef4d6bb",
-        "encryption": "none"
+        "id": "c14ec728-3eca-4750-87fc-fd1e6aeb81d5",
+        "encryption": "none",
+        "flow": "xtls-rprx-vision"
        }
       ]
      }
     ]
    },
    "streamSettings": {
-    "network": "ws",
-    "security": "none",
-    "wsSettings": {
-     "path": "/vless",
-     "headers": {
-      "Host": "45.138.100.248"
-     }
+    "network": "tcp",
+    "security": "reality",
+    "realitySettings": {
+     "serverName": "gateway.icloud.com",
+     "publicKey": "H3R3BUAl7thrIZsznTbb-eRREIjQOH2f3WO0oTN7OGY",
+     "shortId": "a0e2a6074c6456b0",
+     "fingerprint": "chrome",
+     "spiderX": "/"
     }
    },
    "tag": "auto-8"
