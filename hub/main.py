@@ -15,7 +15,7 @@ from sqlalchemy import select
 from .config import settings
 from .db import SessionLocal, init_db
 from .models import Event, Setting
-from .routers import api, ui
+from .routers import api, remna, ui
 from .services import subscription, sync
 
 
@@ -64,6 +64,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.include_router(ui.router)
 app.include_router(api.router)
+app.include_router(remna.router)
 
 
 @app.get("/healthz", response_class=PlainTextResponse)

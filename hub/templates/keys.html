@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Ключи · VPN Hub{% endblock %}
+{% block body %}
+
+<div class="row" style="border:0;padding:0 0 12px">
+  <div>
+    <b>Ключи и пользователи</b>
+    <div class="muted">данные из панели Remnawave</div>
+  </div>
+</div>
+
+{% if not configured %}
+  <div class="card">
+    <div class="err" style="margin-bottom:12px">{{ error }}</div>
+    <div class="muted">
+      Хаб работает и без панели: источники, синхронизация и подписка доступны.
+      Чтобы появились ключи и устройства, добавьте в <code>.env</code>:
+      <pre style="background:#0b0d11;padding:10px;border-radius:9px;margin-top:8px">REMNAWAVE_URL=https://panel.example.com
+REMNAWAVE_TOKEN=ваш_api_токен</pre>
+      и перезапустите контейнер.
+    </div>
+  </div>
+{% elif error %}
+  <div class="card"><div class="err">{{ error }}</div>
+    <div class="muted">Проверьте адрес панели и токен. Хаб продолжает работать с остальными источниками.</div>
+  </div>
+{% elif not users %}
+  <div class="card"><div class="muted">В панели пока нет пользователей.</div></div>
+{% else %}
+
+{% for u in users %}
+<div class="card" style="margin-bottom:10px;border-color:{{ '#3a1d20' if u.level == 'bad' else '#4a3a15' if u.level == 'warn' else 'var(--line)' }}">
+  <div class="row" style="border:0;padding-top:0">
+    <div style="min-width:0">
+      <b>{{ u.username }}</b>
+      <span class="pill {{ 'ok' if u.level == 'ok' else 'warn' if u.level == 'warn' else 'bad' }}">{{ u.status }}</span>
+      <div class="muted" style="margin-top:4px">
+        Устройств: {{ u.devices }}{% if u.hwid_limit %} / {{ u.hwid_limit }}{% endif %}
+        {% if u.days_left is not none %} · осталось {{ u.days_left }} дн.{% endif %}
+      </div>
+    </div>
+    <a class="btn ghost" href="/keys/{{ u.uuid }}">Открыть</a>
+  </div>
+
+  <div class="muted" style="margin-top:8px">
+    Трафик: {{ u.used_bytes | bytes }}{% if u.limit_bytes %} / {{ u.limit_bytes | bytes }}{% else %} / без лимита{% endif %}
+    {% if u.expire_at %} · до {{ u.expire_at | dt }}{% endif %}
+  </div>
+  {% if u.limit_bytes %}
+    <div class="bar-track">
+      <div class="bar-fill {{ 'bad' if u.traffic_pct > 95 else 'warn' if u.traffic_pct > 80 else '' }}"
+           style="width:{{ u.traffic_pct }}%"></div>
+    </div>
+  {% endif %}
+</div>
+{% endfor %}
+
+{% endif %}
+{% endblock %}

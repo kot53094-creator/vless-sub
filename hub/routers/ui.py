@@ -14,6 +14,7 @@ from .. import security
 from ..db import SessionLocal, get_db
 from ..models import Event, Node, Server, Source, SyncRun, utcnow
 from ..services import subscription
+from ..services.remnawave import Remnawave
 from ..templating import templates
 
 router = APIRouter()
@@ -88,6 +89,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         "servers": servers,
         "events": events,
         "last_run": last_run,
+        "remna_configured": Remnawave().configured,
         "now": utcnow(),
     })
 

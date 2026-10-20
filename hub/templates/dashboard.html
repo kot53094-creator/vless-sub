@@ -1,5 +1,19 @@
 {% extends "base.html" %}
-{% block title %}Главная · VPN Hub{% endblock %}
+{% block title %}Главная · VPN Hub
+<div class="card" style="margin-top:12px">
+  <div class="row" style="border:0;padding:0">
+    <div>
+      <b>Remnawave</b>
+      <div class="muted">ключи, трафик и устройства</div>
+    </div>
+    <div style="text-align:right">
+      <span class="pill {{ 'ok' if remna_configured else 'warn' }}">{{ 'подключена' if remna_configured else 'не настроена' }}</span>
+      <div style="margin-top:8px"><a class="btn ghost" href="/keys">Открыть</a></div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
 {% block body %}
 
 <div class="grid">
@@ -91,6 +105,20 @@
   {% else %}
     <div class="muted">пока пусто</div>
   {% endif %}
+</div>
+
+
+<div class="card" style="margin-top:12px">
+  <div class="row" style="border:0;padding:0">
+    <div>
+      <b>Remnawave</b>
+      <div class="muted">ключи, трафик и устройства</div>
+    </div>
+    <div style="text-align:right">
+      <span class="pill {{ 'ok' if remna_configured else 'warn' }}">{{ 'подключена' if remna_configured else 'не настроена' }}</span>
+      <div style="margin-top:8px"><a class="btn ghost" href="/keys">Открыть</a></div>
+    </div>
+  </div>
 </div>
 
 {% endblock %}

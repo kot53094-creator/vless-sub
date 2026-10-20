@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Ключ · VPN Hub{% endblock %}
+{% block body %}
+
+<a href="/keys" class="muted">← к списку ключей</a>
+
+{% if error %}
+  <div class="card" style="margin-top:12px"><div class="err">{{ error }}</div></div>
+{% elif user %}
+
+<div class="card" style="margin-top:12px">
+  <h2>{{ user.username }}</h2>
+  <div class="row" style="border:0;padding-top:0">
+    <div>
+      <span class="pill {{ 'ok' if user.level == 'ok' else 'warn' if user.level == 'warn' else 'bad' }}">{{ user.status }}</span>
+      <div class="muted" style="margin-top:6px">
+        Трафик: {{ user.used_bytes | bytes }}{% if user.limit_bytes %} / {{ user.limit_bytes | bytes }}{% endif %}
+        · до {{ user.expire_at | dt if user.expire_at else '—' }}
+        {% if user.days_left is not none %} ({{ user.days_left }} дн.){% endif %}
+      </div>
+    </div>
+  </div>
+  {% if user.limit_bytes %}
+    <div class="bar-track"><div class="bar-fill {{ 'bad' if user.traffic_pct > 95 else 'warn' if user.traffic_pct > 80 else '' }}" style="width:{{ user.traffic_pct }}%"></div></div>
+  {% endif %}
+
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+    <form method="post" action="/api/keys/{{ uuid }}/reset-traffic"
+          onsubmit="return confirm('Сбросить счётчик трафика?')">
+      <input type="hidden" name="csrf" value="{{ request.cookies.get('hub_csrf','') }}">
+      <button class="btn ghost">Сбросить трафик</button>
+    </form>
+    <form method="post" action="/api/keys/{{ uuid }}/revoke"
+          onsubmit="return confirm('Перевыпустить ссылку? Старая перестанет работать.')">
+      <input type="hidden" name="csrf" value="{{ request.cookies.get('hub_csrf','') }}">
+      <button class="btn ghost">Перевыпустить ссылку</button>
+    </form>
+    <form method="post" action="/api/keys/{{ uuid }}/disable">
+      <input type="hidden" name="csrf" value="{{ request.cookies.get('hub_csrf','') }}">
+      <input type="hidden" name="status" value="{{ 'ACTIVE' if user.status.upper() in ['DISABLED','LIMITED'] else 'DISABLED' }}">
+      <button class="btn danger">{{ 'Включить ключ' if user.status.upper() in ['DISABLED','LIMITED'] else 'Отключить ключ' }}</button>
+    </form>
+  </div>
+</div>
+
+<div class="card" style="margin-top:12px">
+  <h2>Устройства (HWID)</h2>
+  {% if devices %}
+    {% for d in devices %}
+      <div class="row">
+        <div style="min-width:0">
+          <b>{{ d.model or d.platform or 'устройство' }}</b>
+          {% if d.os_version %}<span class="pill">{{ d.platform }} {{ d.os_version }}</span>{% endif %}
+          <div class="muted" style="margin-top:4px;word-break:break-all">
+            {{ d.hwid[:8] }}… {% if d.country %} · {{ d.country }}{% endif %}
+            {% if d.ip %} · {{ d.ip }}{% endif %}
+          </div>
+          <div class="muted">
+            первый вход: {{ d.first_seen | dt if d.first_seen else '—' }}
+            · последний: {{ d.last_seen | dt if d.last_seen else '—' }}
+          </div>
+        </div>
+        <form method="post" action="/api/keys/{{ uuid }}/devices/{{ d.hwid }}/delete"
+              onsubmit="return confirm('Удалить устройство?')">
+          <input type="hidden" name="csrf" value="{{ request.cookies.get('hub_csrf','') }}">
+          <button class="btn danger">Удалить</button>
+        </form>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="muted">устройства не привязаны или панель их не отдаёт</div>
+  {% endif %}
+</div>
+
+{% endif %}
+{% endblock %}
