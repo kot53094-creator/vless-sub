@@ -1,32 +1,32 @@
 {
-  "built_at": "2026-10-20T08:14:11+00:00",
+  "built_at": "2026-10-20T08:15:23+00:00",
   "brand": "Апельсинка VPN",
-  "configs": 373,
-  "working_total": 228,
-  "reachable_total": 331,
+  "configs": 200,
+  "working_total": 226,
+  "reachable_total": 325,
   "valid_total": 360,
   "tiers": {
-    "verified": 228,
-    "port_only": 103,
-    "syntax_only": 29,
+    "verified": 226,
+    "port_only": 99,
+    "syntax_only": 35,
     "notices": 8
   },
   "probe_degraded": false,
   "deep_test": {
     "available": true,
-    "checked": 331,
-    "passed": 228,
-    "seconds": 30.5,
+    "checked": 325,
+    "passed": 226,
+    "seconds": 28.5,
     "version": "v26.3.27"
   },
   "duplicates_removed": 6,
   "protocols": {
-    "vless": 373
+    "vless": 200
   },
   "allowed_protocols": [
     "vless"
   ],
-  "max_configs": 1200,
+  "max_configs": 200,
   "previous_configs": 200,
   "probe": "tcp/tls handshake",
   "sources": [
@@ -41,7 +41,7 @@
       "order": 0,
       "quota": {},
       "provider": "",
-      "verified": 193
+      "verified": 191
     },
     {
       "name": "raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt",
@@ -115,8 +115,8 @@
       "note": "ещё 5 дней",
       "order": 3,
       "quota": {
-        "upload": 140965128,
-        "download": 1234674728,
+        "upload": 141096749,
+        "download": 1236119318,
         "total": 0,
         "expire": 0
       },
