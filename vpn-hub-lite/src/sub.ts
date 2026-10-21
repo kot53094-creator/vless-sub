@@ -34,6 +34,11 @@ const SERVER_SQL = `
   JOIN servers s ON s.id = a.server_id
   JOIN sources src ON src.id = s.source_id
   WHERE a.user_id = ?1 AND s.status = 'alive'
+    AND (
+      src.max_devices = 0
+      OR EXISTS (SELECT 1 FROM user_sources us
+                  WHERE us.user_id = a.user_id AND us.source_id = src.id)
+    )
   ORDER BY (s.latency_ms IS NULL), s.latency_ms, s.id
 `;
 

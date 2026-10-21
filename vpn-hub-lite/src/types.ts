@@ -61,6 +61,7 @@ export interface SourceRow {
   last_sync_at: string | null;
   visibility: Visibility;
   last_error: string;
+  max_devices: number;
 }
 
 export interface ServerRow {

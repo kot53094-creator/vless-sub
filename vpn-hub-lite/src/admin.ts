@@ -448,6 +448,21 @@ async function usersPage(env: Env, url: URL): Promise<Response> {
      FROM users u ORDER BY u.created_at DESC LIMIT 200`,
   );
   const pools = await many<PoolRow>(env, "SELECT id, name FROM pools ORDER BY id");
+  const allSources = await many<{ id: number; name: string; max_devices: number }>(
+    env,
+    "SELECT id, name, max_devices FROM sources ORDER BY id",
+  );
+  const slotRows = await many<{ user_id: number; source_id: number; name: string }>(
+    env,
+    `SELECT us.user_id, us.source_id, src.name FROM user_sources us
+     JOIN sources src ON src.id = us.source_id`,
+  );
+  const userSlots = new Map<number, Array<{ id: number; name: string }>>();
+  for (const row of slotRows) {
+    const list = userSlots.get(row.user_id) ?? [];
+    list.push({ id: row.source_id, name: row.name });
+    userSlots.set(row.user_id, list);
+  }
   const ok = url.searchParams.get("ok");
   const err = url.searchParams.get("err");
 
@@ -491,6 +506,29 @@ async function usersPage(env: Env, url: URL): Promise<Response> {
                 ${pools.map((pool) => `<option value="${pool.id}">${esc(pool.name)}</option>`).join("")}
               </select>
               <button class="btn primary" type="submit">Сохранить</button>
+            </form>
+
+            <div class="muted" style="margin-top:8px">Слоты на источниках</div>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">
+              ${(userSlots.get(user.id) ?? []).map((slot) => `
+                <form method="post" action="/admin/action" class="inline">
+                  <input type="hidden" name="csrf" value="${csrf}">
+                  <input type="hidden" name="action" value="del_slot">
+                  <input type="hidden" name="id" value="${user.id}">
+                  <input type="hidden" name="source_id" value="${slot.id}">
+                  <button class="btn" title="Забрать слот">${esc(slot.name)} ×</button>
+                </form>`).join("") || `<span class="muted">нет</span>`}
+            </div>
+            <form method="post" action="/admin/action" style="display:flex;gap:4px;margin-top:6px">
+              <input type="hidden" name="csrf" value="${csrf}">
+              <input type="hidden" name="action" value="add_slot">
+              <input type="hidden" name="id" value="${user.id}">
+              <select name="source_id" aria-label="Источник">
+                ${allSources.filter((item) => item.max_devices > 0)
+                  .map((item) => `<option value="${item.id}">${esc(item.name)} (${item.max_devices})</option>`)
+                  .join("") || `<option value="0">лимитов нет</option>`}
+              </select>
+              <button class="btn">Дать слот</button>
             </form>
           </details>
           <form method="post" action="/admin/action" class="inline" style="margin-top:6px">
@@ -597,6 +635,11 @@ async function sourcesPage(env: Env, url: URL): Promise<Response> {
   );
   const ok = url.searchParams.get("ok");
   const err = url.searchParams.get("err");
+  const slotRows = await many<{ source_id: number; n: number }>(
+    env,
+    "SELECT source_id, COUNT(*) AS n FROM user_sources GROUP BY source_id",
+  );
+  const slots = new Map(slotRows.map((row) => [row.source_id, row.n]));
 
   const rows = sources
     .map((source) => {
@@ -611,6 +654,19 @@ async function sourcesPage(env: Env, url: URL): Promise<Response> {
         <td><span class="pill ${cls}">${esc(source.status)}</span></td>
         <td>${esc(source.expires_at?.slice(0, 10) ?? "—")}</td>
         <td>${traffic}<div class="muted">серверов: ${source.servers_count}</div></td>
+        <td>
+          ${source.max_devices > 0
+            ? `<b>${slots.get(source.id) ?? 0} / ${source.max_devices}</b>`
+            : `<span class="muted">без лимита</span>`}
+          <form method="post" action="/admin/action" style="display:flex;gap:4px;margin-top:4px">
+            <input type="hidden" name="csrf" value="${csrf}">
+            <input type="hidden" name="action" value="set_source_limit">
+            <input type="hidden" name="id" value="${source.id}">
+            <input name="limit" value="${source.max_devices}" inputmode="numeric"
+                   style="width:56px" aria-label="Сколько устройств">
+            <button class="btn">ОК</button>
+          </form>
+        </td>
         <td><details><summary>ссылка</summary><div class="mono">${esc(maskLink(source.url_or_link))}</div></details></td>
         <td>
           <form method="post" action="/admin/action" class="inline">
@@ -665,7 +721,7 @@ ${err ? `<div class="err">${esc(err)}</div>` : ""}
 
 <div class="card">
   <table>
-    <thead><tr><th>Название</th><th>Статус</th><th>Срок</th><th>Трафик</th><th>Ссылка</th><th>Действия</th></tr></thead>
+    <thead><tr><th>Название</th><th>Статус</th><th>Срок</th><th>Трафик</th><th>Слоты</th><th>Ссылка</th><th>Действия</th></tr></thead>
     <tbody>${rows || `<tr><td colspan="6" class="muted">Источников нет</td></tr>`}</tbody>
   </table>
 </div>`;
@@ -798,6 +854,52 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
       id,
     );
     return back("/admin/users", action === "ban" ? "Забанен" : "Разбанен");
+  }
+
+  if (action === "set_source_limit") {
+    const limit = Math.max(0, Number(form.get("limit") ?? 0));
+    await run(env, "UPDATE sources SET max_devices = ? WHERE id = ?", limit, id);
+    await logEvent(env, "source_limit", null, `#${id}: ${limit} устройств`);
+    return back("/admin/sources", limit ? `Лимит устройств: ${limit}` : "Лимит снят");
+  }
+
+  if (action === "add_slot" || action === "del_slot") {
+    const sourceId = Number(form.get("source_id") ?? 0);
+    if (!sourceId) return back("/admin/users", "", "Не выбран источник");
+    if (action === "del_slot") {
+      await run(env, "DELETE FROM user_sources WHERE user_id = ? AND source_id = ?", id, sourceId);
+      await run(
+        env,
+        "DELETE FROM assignments WHERE user_id = ? AND server_id IN (SELECT id FROM servers WHERE source_id = ?)",
+        id,
+        sourceId,
+      );
+      await logEvent(env, "slot_removed", id, `источник #${sourceId}`);
+      return back("/admin/users", "Слот забран");
+    }
+    const source = await one<{ max_devices: number; name: string }>(
+      env,
+      "SELECT max_devices, name FROM sources WHERE id = ?",
+      sourceId,
+    );
+    const used = await one<{ n: number }>(
+      env,
+      "SELECT COUNT(*) AS n FROM user_sources WHERE source_id = ?",
+      sourceId,
+    );
+    if (source && source.max_devices > 0 && (used?.n ?? 0) >= source.max_devices) {
+      return back("/admin/users", "", `У «${source.name}» все ${source.max_devices} слота заняты`);
+    }
+    await run(env, "INSERT OR IGNORE INTO user_sources (user_id, source_id) VALUES (?, ?)", id, sourceId);
+    await run(
+      env,
+      `INSERT OR IGNORE INTO assignments (user_id, server_id)
+       SELECT ?, s.id FROM servers s WHERE s.source_id = ? AND s.status = 'alive' LIMIT 3`,
+      id,
+      sourceId,
+    );
+    await logEvent(env, "slot_added", id, `источник #${sourceId}`);
+    return back("/admin/users", "Слот выдан");
   }
 
   if (action === "preview_source") {

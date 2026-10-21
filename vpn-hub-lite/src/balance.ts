@@ -49,6 +49,11 @@ const CANDIDATE_SQL = `
       WHERE up.user_id = ?1 AND ps.server_id = s.id
     )
     AND s.id NOT IN (SELECT server_id FROM assignments WHERE user_id = ?1)
+    AND (
+      src.max_devices = 0
+      OR EXISTS (SELECT 1 FROM user_sources us WHERE us.user_id = ?1 AND us.source_id = src.id)
+      OR (SELECT COUNT(*) FROM user_sources x WHERE x.source_id = src.id) < src.max_devices
+    )
 `;
 
 export async function candidatesForUser(
@@ -79,6 +84,25 @@ export async function assignForUser(
       ),
     ),
   );
+  // Занимаем слот на лимитированных источниках (например, платный ключ на 3 устройства)
+  const sourcesUsed = await many<{ source_id: number; max_devices: number }>(
+    env,
+    `SELECT DISTINCT s.source_id, src.max_devices
+     FROM servers s JOIN sources src ON src.id = s.source_id
+     WHERE s.id IN (${picked.map(() => "?").join(",")})`,
+    ...picked,
+  );
+  for (const item of sourcesUsed) {
+    if (item.max_devices > 0) {
+      await run(
+        env,
+        "INSERT OR IGNORE INTO user_sources (user_id, source_id) VALUES (?, ?)",
+        userId,
+        item.source_id,
+      );
+    }
+  }
+
   await logEvent(env, "assign", userId, `выдано серверов: ${picked.join(", ")}`);
   return picked;
 }
