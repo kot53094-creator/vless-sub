@@ -85,7 +85,14 @@ export function mainKeyboard(options: KeyboardOptions = {}): ReplyMarkup {
 }
 
 export function cabinetKeyboard(options: KeyboardOptions = {}): ReplyMarkup {
-  const rows: ReplyMarkup["inline_keyboard"] = [];
+  // Первый ряд повторяет чипы с баннера «Ваш аккаунт»: Срок · Трафик · Устройства.
+  const rows: ReplyMarkup["inline_keyboard"] = [
+    [
+      { text: "📅 Срок", callback_data: "act:term" },
+      { text: "📊 Трафик", callback_data: "act:traffic" },
+      { text: "📱 Устройства", callback_data: "act:devs" },
+    ],
+  ];
 
   if (options.daily !== false) {
     rows.push([{ text: "🎁 Забрать бонус дня", callback_data: "bon:claim" }]);
@@ -108,18 +115,43 @@ export function cabinetKeyboard(options: KeyboardOptions = {}): ReplyMarkup {
   return { inline_keyboard: rows };
 }
 
+/**
+ * Раскладка повторяет чипы с баннера «Подключите VPN»:
+ * macOS · Linux · Android · iOS · Windows.
+ */
 export function deviceKeyboard(): ReplyMarkup {
-  const rows = [];
-  for (let i = 0; i < DEVICES.length; i += 2) {
-    rows.push(
-      DEVICES.slice(i, i + 2).map((device) => ({
-        text: device.label,
-        callback_data: `dev:${device.key}`,
-      })),
-    );
-  }
-  rows.push([{ text: "← Назад", callback_data: "act:menu" }]);
-  return { inline_keyboard: rows };
+  const label = (key: string) => DEVICES.find((item) => item.key === key)?.label ?? key;
+  const row = (keys: string[]) =>
+    keys.map((key) => ({ text: label(key), callback_data: `dev:${key}` }));
+  return {
+    inline_keyboard: [
+      row(["macos", "linux"]),
+      row(["android", "ios", "windows"]),
+      [{ text: "← В меню", callback_data: "act:menu" }],
+    ],
+  };
+}
+
+/** Кнопки под баннером «Подписка активирована» / «Пробный период». */
+export function activatedKeyboard(): ReplyMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "⚡️ Как подключить", callback_data: "act:devices" }],
+      [{ text: "👤 Кабинет", callback_data: "act:cabinet" }],
+    ],
+  };
+}
+
+/** Кнопки под баннером «Заканчивается» — то же, что в уведомлении. */
+export function expiringKeyboard(): ReplyMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "👤 Кабинет", callback_data: "act:cabinet" },
+        { text: "🎁 Бонус дня", callback_data: "bon:claim" },
+      ],
+    ],
+  };
 }
 
 export function backKeyboard(): ReplyMarkup {
@@ -136,6 +168,7 @@ export function channelKeyboard(url: string): ReplyMarkup {
     inline_keyboard: [
       [{ text: "📣 Открыть канал", url }],
       [{ text: "✅ Я подписался", callback_data: "chk:sub" }],
+      [{ text: "👤 Кабинет", callback_data: "act:cabinet" }],
     ],
   };
 }

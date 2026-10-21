@@ -265,6 +265,17 @@ async function handleCallback(
       await user.sendHelp(env, chatId);
       return;
     }
+    if (data === "act:term" || data === "act:traffic" || data === "act:devs") {
+      if (!existing) {
+        await answerCallback(env, query.id, "Сначала нажмите /start.", true);
+        return;
+      }
+      await answerCallback(env, query.id, "");
+      if (data === "act:term") await user.sendTerm(env, chatId, existing);
+      else if (data === "act:traffic") await user.sendTraffic(env, chatId, existing);
+      else await user.sendDevicesInfo(env, chatId, existing);
+      return;
+    }
     if (data === "act:plans") {
       await answerCallback(env, query.id, "Тарифы — у администратора.", true);
       return;

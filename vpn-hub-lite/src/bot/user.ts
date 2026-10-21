@@ -12,6 +12,7 @@ import {
   DEVICES,
   INSTRUCTIONS,
   WELCOME,
+  activatedKeyboard,
   backKeyboard,
   cabinetKeyboard,
   channelKeyboard,
@@ -251,8 +252,10 @@ export async function approveUser(
     ? `Серверов выдано: ${assigned.length}.`
     : "Свободных серверов нет — админ добавит их в ближайшее время.";
 
+  // Первая выдача доступа на срок до недели — это пробный период: свой баннер.
+  const isTrial = firstTime && days <= 7;
   const caption = [
-    `<b>Подписка активирована!</b>`,
+    isTrial ? `<b>Пробная подписка активирована!</b>` : `<b>Подписка активирована!</b>`,
     `Срок: ${expires.slice(0, 10)} (${days} дн.)`,
     served,
     "",
@@ -264,9 +267,9 @@ export async function approveUser(
   await sendBanner(
     env,
     user.tg_id,
-    firstTime ? "activated" : "account",
+    isTrial ? "trial" : firstTime ? "activated" : "account",
     caption,
-    cabinetKeyboard({ referral: true, promo: true, active: true }),
+    firstTime ? activatedKeyboard() : cabinetKeyboard({ referral: true, promo: true, active: true }),
   );
 
   if (!assigned.length) {
@@ -545,6 +548,61 @@ export async function checkChannel(
 }
 
 /* ── команды ───────────────────────────────────────────────────────────── */
+
+/* ── чипы с баннера «Ваш аккаунт»: Срок · Трафик · Устройства ─────────── */
+
+export async function sendTerm(env: Env, chatId: number | string, user: UserRow): Promise<void> {
+  const until = user.expires_at?.slice(0, 10) ?? "не задан";
+  const ts = Date.parse(`${(user.expires_at ?? "").replace(" ", "T")}Z`);
+  const days = Number.isFinite(ts) ? Math.ceil((ts - Date.now()) / 86400_000) : 0;
+
+  const lines = [
+    `<b>Срок доступа</b>`,
+    `До: ${until}`,
+    Number.isFinite(days) && days > 0
+      ? `Осталось: ${days} ${plural(days, "день", "дня", "дней")}`
+      : "Срок истёк или ещё не выдан",
+    "",
+    "Продлить можно бонусом дня, промокодом или у администратора.",
+  ];
+  await sendMessage(
+    env,
+    chatId,
+    lines.join("\n"),
+    cabinetKeyboard({ referral: true, promo: true, active: user.status === "active" }),
+  );
+}
+
+export async function sendTraffic(env: Env, chatId: number | string, user: UserRow): Promise<void> {
+  const limit = user.traffic_gb ? `${user.traffic_gb} ГБ` : "без лимита";
+  const lines = [
+    `<b>Трафик</b>`,
+    `Лимит: ${limit}`,
+    "",
+    user.traffic_gb
+      ? "Израсходованное считает сервер: Happ показывает остаток в карточке подписки и обновляет его каждые 6 часов."
+      : "Трафик не ограничен — качайте сколько нужно.",
+  ];
+  await sendMessage(env, chatId, lines.join("\n"), cabinetKeyboard({ referral: true }));
+}
+
+export async function sendDevicesInfo(
+  env: Env,
+  chatId: number | string,
+  user: UserRow,
+): Promise<void> {
+  const used = await devices24h(env, user.id);
+  const lines = [
+    `<b>Устройства</b>`,
+    `Лимит: ${user.device_limit}`,
+    `Подключалось за 24 ч: ${used}`,
+    "",
+    used >= user.device_limit
+      ? "Лимит выбран. Отключите лишнее устройство или попросите добавить слот."
+      : `Свободно: ${user.device_limit - used}`,
+  ];
+  await sendMessage(env, chatId, lines.join("\n"), cabinetKeyboard({ referral: true }));
+}
 
 export async function handleKey(env: Env, user: UserRow): Promise<void> {
   if (user.status !== "active") {
