@@ -19,6 +19,16 @@ export interface Env {
   SUB_CACHE_TTL?: string;
   /** webhook — Telegram сам присылает обновления; polling — забираем по cron. */
   BOT_TRANSPORT?: string;
+  /** Канал для проверки подписки (@name или -100...). Пусто — награда выключена. */
+  CHANNEL_ID?: string;
+  /** Username бота без @ — для реферальных ссылок. */
+  BOT_USERNAME?: string;
+
+  // Remnawave (необязательно). Пусто — группы работают только в нашей D1.
+  REMNAWAVE_URL?: string;
+  REMNAWAVE_TOKEN?: string;
+  RW_PATH_USER_BY_TG?: string;
+  RW_PATH_USER_UPDATE?: string;
 }
 
 export type UserStatus = "pending" | "active" | "banned" | "expired";

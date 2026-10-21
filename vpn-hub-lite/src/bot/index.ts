@@ -8,6 +8,7 @@ import { answerCallback, adminId, sendMessage } from "./telegram";
 import * as user from "./user";
 import { rotateToken } from "../sub";
 import { runSync } from "../sync";
+import { parsePromoCommand } from "../promotions";
 
 interface TgMessage {
   message_id: number;
@@ -22,13 +23,15 @@ export interface TgUpdate {
     id: string;
     data?: string;
     from: { id: number };
-    message?: { chat: { id: number } };
+    message?: { chat: { id: number }; message_id: number };
   };
 }
 
 function chatOf(env: Env): string {
   return adminId(env);
 }
+
+const PROMO_STATE = (tgId: string) => `state:promo:${tgId}`;
 
 export async function handleUpdate(env: Env, update: TgUpdate): Promise<void> {
   if (update.callback_query) {
@@ -40,7 +43,7 @@ export async function handleUpdate(env: Env, update: TgUpdate): Promise<void> {
   if (!message || message.chat.type !== "private" || !message.from) return;
 
   const tgId = String(message.from.id);
-  // анти-спам: 20 команд в минуту с одного аккаунта
+  // анти-спам: 20 действий в минуту с одного аккаунта
   if (!memRateLimit(`tg:${tgId}`, 20, 60)) return;
 
   const text = (message.text ?? "").trim();
@@ -50,6 +53,17 @@ export async function handleUpdate(env: Env, update: TgUpdate): Promise<void> {
   const existing = await user.findUser(env, tgId);
 
   if (!text.startsWith("/")) {
+    // Ждём промокод?
+    if (await env.CACHE.get(PROMO_STATE(tgId))) {
+      await env.CACHE.delete(PROMO_STATE(tgId));
+      if (!existing) {
+        await sendMessage(env, message.chat.id, "Сначала нажмите /start.");
+        return;
+      }
+      const reply = await user.handlePromoCode(env, existing, text);
+      await sendMessage(env, message.chat.id, reply);
+      return;
+    }
     if (isAdmin && (await env.CACHE.get(`state:addkey:${tgId}`))) {
       await env.CACHE.delete(`state:addkey:${tgId}`);
       const reply = await admin.addKeys(env, text);
@@ -65,11 +79,15 @@ export async function handleUpdate(env: Env, update: TgUpdate): Promise<void> {
   // --- команды пользователя ---
   switch (command) {
     case "/start":
-      await user.handleStart(env, {
-        id: message.from.id,
-        username: message.from.username,
-        first_name: message.from.first_name,
-      });
+      await user.handleStart(
+        env,
+        {
+          id: message.from.id,
+          username: message.from.username,
+          first_name: message.from.first_name,
+        },
+        args[0] ?? "",
+      );
       return;
     case "/key":
       if (existing) await user.handleKey(env, existing);
@@ -83,6 +101,45 @@ export async function handleUpdate(env: Env, update: TgUpdate): Promise<void> {
       if (existing) await user.handleNewKey(env, existing);
       else await sendMessage(env, message.chat.id, "Сначала зарегистрируйтесь: /start");
       return;
+    case "/bonus": {
+      if (!existing) {
+        await sendMessage(env, message.chat.id, "Сначала зарегистрируйтесь: /start");
+        return;
+      }
+      if (!memRateLimit(`bon:${tgId}`, 6, 60)) {
+        await sendMessage(env, message.chat.id, "Не так быстро 🙂");
+        return;
+      }
+      const reply = await user.claimBonusText(env, existing);
+      await sendMessage(env, message.chat.id, reply);
+      const fresh = await user.findUser(env, tgId);
+      await user.sendCabinet(env, message.chat.id, fresh);
+      return;
+    }
+    case "/ref":
+    case "/referral": {
+      if (!existing) {
+        await sendMessage(env, message.chat.id, "Сначала нажмите /start.");
+        return;
+      }
+      await user.sendReferral(env, message.chat.id, existing);
+      return;
+    }
+    case "/promo": {
+      if (!existing) {
+        await sendMessage(env, message.chat.id, "Сначала нажмите /start.");
+        return;
+      }
+      const code = parsePromoCommand(text);
+      if (!code) {
+        await env.CACHE.put(PROMO_STATE(tgId), "1", { expirationTtl: 600 });
+        await sendMessage(env, message.chat.id, "Пришлите промокод одним сообщением.");
+        return;
+      }
+      const reply = await user.handlePromoCode(env, existing, code);
+      await sendMessage(env, message.chat.id, reply);
+      return;
+    }
     case "/help":
       await user.handleHelp(env, existing);
       return;
@@ -159,86 +216,151 @@ async function runAdminCommand(
   }
 }
 
+/* ── кнопки ────────────────────────────────────────────────────────────── */
+
 async function handleCallback(
   env: Env,
   query: NonNullable<TgUpdate["callback_query"]>,
 ): Promise<void> {
-  if (String(query.from.id) !== adminId(env)) {
-    await answerCallback(env, query.id, "Недостаточно прав");
-    return;
-  }
-
   const data = query.data ?? "";
   const chatId = query.message?.chat.id ?? query.from.id;
+  const messageId = query.message?.message_id;
   const tgId = String(query.from.id);
+  const isAdmin = tgId === adminId(env);
 
-  // Кнопки меню: доступны всем, без прав админа.
-  if (data.startsWith("act:") || data.startsWith("dev:")) {
+  // ── кнопки обычного пользователя: доступны всем ──
+  if (
+    data.startsWith("act:") ||
+    data.startsWith("dev:") ||
+    data.startsWith("bon:") ||
+    data.startsWith("ref:") ||
+    data.startsWith("prm:") ||
+    data.startsWith("sq:") ||
+    data.startsWith("chk:")
+  ) {
     const existing = await one<UserRow>(env, "SELECT * FROM users WHERE tg_id = ?", tgId);
-    await answerCallback(env, query.id, "");
 
     if (data === "act:menu") {
-      await user.sendMenu(env, chatId);
+      await answerCallback(env, query.id, "");
+      await user.sendMenu(env, chatId, messageId);
       return;
     }
     if (data === "act:devices") {
-      await user.sendDevices(env, chatId);
+      await answerCallback(env, query.id, "");
+      await user.sendDevices(env, chatId, messageId);
       return;
     }
     if (data.startsWith("dev:")) {
+      await answerCallback(env, query.id, "");
       await user.sendInstruction(env, chatId, data.slice(4));
       return;
     }
     if (data === "act:cabinet") {
-      await user.sendCabinet(env, chatId, existing);
+      await answerCallback(env, query.id, "");
+      await user.sendCabinet(env, chatId, existing, messageId);
       return;
     }
     if (data === "act:help") {
+      await answerCallback(env, query.id, "");
       await user.sendHelp(env, chatId);
       return;
     }
     if (data === "act:plans") {
-      await sendMessage(
-        env,
-        chatId,
-        "Тарифы и оплата — у администратора.\nПробный доступ выдаётся один раз.",
-      );
+      await answerCallback(env, query.id, "Тарифы — у администратора.", true);
       return;
     }
+
+    if (data === "bon:claim") {
+      if (!existing) {
+        await answerCallback(env, query.id, "Сначала нажмите /start.", true);
+        return;
+      }
+      if (!memRateLimit(`bon:${tgId}`, 6, 60)) {
+        await answerCallback(env, query.id, "Не так быстро 🙂", true);
+        return;
+      }
+      const text = await user.claimBonusText(env, existing);
+      await answerCallback(env, query.id, text, true);
+      const fresh = await user.findUser(env, tgId);
+      await user.sendCabinet(env, chatId, fresh, messageId);
+      return;
+    }
+
+    if (data === "ref:show") {
+      if (!existing) {
+        await answerCallback(env, query.id, "Сначала нажмите /start.", true);
+        return;
+      }
+      await answerCallback(env, query.id, "");
+      await user.sendReferral(env, chatId, existing);
+      return;
+    }
+
+    if (data === "prm:enter") {
+      if (!existing) {
+        await answerCallback(env, query.id, "Сначала нажмите /start.", true);
+        return;
+      }
+      await env.CACHE.put(PROMO_STATE(tgId), "1", { expirationTtl: 600 });
+      await answerCallback(env, query.id, "Пришлите промокод одним сообщением.", true);
+      return;
+    }
+
+    if (data === "sq:bypass") {
+      if (!existing) {
+        await answerCallback(env, query.id, "Сначала нажмите /start.", true);
+        return;
+      }
+      const result = await user.handleBypass(env, existing);
+      await answerCallback(env, query.id, result.text, true);
+      if (result.changed) {
+        const fresh = await user.findUser(env, tgId);
+        await user.sendCabinet(env, chatId, fresh, messageId);
+      }
+      return;
+    }
+
+    if (data === "chk:sub") {
+      if (!existing) {
+        await answerCallback(env, query.id, "Сначала нажмите /start.", true);
+        return;
+      }
+      const result = await user.checkChannel(env, existing);
+      await answerCallback(env, query.id, result.text, !result.ok);
+      if (result.ok) {
+        const fresh = await user.findUser(env, tgId);
+        await user.sendCabinet(env, chatId, fresh);
+      }
+      return;
+    }
+
     if (data === "act:status") {
       if (!existing) {
-        await sendMessage(env, chatId, "Сначала нажмите /start.");
+        await answerCallback(env, query.id, "Сначала нажмите /start.", true);
         return;
       }
-      const devices = await one<{ n: number }>(
-        env,
-        `SELECT COUNT(DISTINCT ip_hash || ':' || ua_hash) AS n FROM fetch_log
-         WHERE user_id = ? AND ts_hour >= strftime('%Y-%m-%dT%H', datetime('now','-24 hours'))`,
-        existing.id,
-      );
-      await sendMessage(
-        env,
-        chatId,
-        `<b>Состояние</b>\nСтатус: ${existing.status}\n` +
-          `Доступ до: ${existing.expires_at?.slice(0, 10) ?? "не задан"}\n` +
-          `Устройств за сутки: ${devices?.n ?? 0} из ${existing.device_limit}`,
-      );
+      await answerCallback(env, query.id, "");
+      await user.handleStatus(env, existing);
       return;
     }
+
     if (data === "act:refresh") {
-      if (tgId !== adminId(env)) {
-        await sendMessage(env, chatId, "Обновлять может только администратор.");
+      if (!isAdmin) {
+        await answerCallback(env, query.id, "Обновлять может только администратор.", true);
         return;
       }
+      await answerCallback(env, query.id, "Обновляю…");
       await sendMessage(env, chatId, "Обновляю. Напишу, когда закончу.");
       void runSync(env).catch(() => {});
       return;
     }
+
     if (data === "act:newkey") {
       if (!existing || existing.status !== "active") {
-        await sendMessage(env, chatId, "Ссылка станет активной после одобрения.");
+        await answerCallback(env, query.id, "Ссылка станет активной после одобрения.", true);
         return;
       }
+      await answerCallback(env, query.id, "");
       const token = await rotateToken(env, existing);
       await sendMessage(
         env,
@@ -247,6 +369,14 @@ async function handleCallback(
       );
       return;
     }
+
+    await answerCallback(env, query.id, "");
+    return;
+  }
+
+  // ── дальше только админ ──
+  if (!isAdmin) {
+    await answerCallback(env, query.id, "Недостаточно прав", true);
     return;
   }
 

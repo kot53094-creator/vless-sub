@@ -5,17 +5,39 @@ import { daysFromNowIso, logEvent, many, one, run } from "../db";
 import { devices24h, invalidateSubscription, rotateToken } from "../sub";
 import { randomToken } from "../security";
 import type { Env, UserRow } from "../types";
-import { escapeHtml, sendMessage, sendToAdmin } from "./telegram";
+import { escapeHtml, sendMessage, sendToAdmin, type ReplyMarkup } from "./telegram";
 import {
   BRAND,
-  DEVICES,
   HELP,
+  DEVICES,
   INSTRUCTIONS,
   WELCOME,
   backKeyboard,
+  cabinetKeyboard,
+  channelKeyboard,
   deviceKeyboard,
   mainKeyboard,
+  referralKeyboard,
 } from "./texts";
+import { editBanner, sendBanner } from "../banners";
+import {
+  attachReferral,
+  channelId,
+  claimChannel,
+  claimDaily,
+  dailyStatus,
+  flag,
+  grantSquad,
+  loadSettings,
+  nextMskMidnight,
+  num,
+  redeemPromo,
+  referralStats,
+  rewardReferral,
+  revokeSquad,
+  squadsOf,
+} from "../bonus";
+import { humanDuration, mskDate, plural, round2 } from "../promotions";
 
 export interface TgFrom {
   id: number;
@@ -62,7 +84,25 @@ function expiryNote(user: UserRow): string {
   return days === 0 ? "истекает сегодня" : `осталось ${days} дн.`;
 }
 
-export async function handleStart(env: Env, from: TgFrom): Promise<void> {
+/* ── экраны ────────────────────────────────────────────────────────────── */
+
+async function screen(
+  env: Env,
+  chatId: number | string,
+  messageId: number | undefined,
+  key: "start" | "trial" | "channel" | "devices" | "account" | "activated" | "expiring",
+  caption: string,
+  keyboard: ReplyMarkup,
+): Promise<void> {
+  if (messageId && (await editBanner(env, chatId, messageId, key, caption, keyboard))) return;
+  await sendBanner(env, chatId, key, caption, keyboard);
+}
+
+export async function handleStart(
+  env: Env,
+  from: TgFrom,
+  payload = "",
+): Promise<void> {
   const tgId = String(from.id);
   const existing = await findUser(env, tgId);
 
@@ -81,10 +121,10 @@ export async function handleStart(env: Env, from: TgFrom): Promise<void> {
       return;
     }
     if (existing.status === "pending") {
-      await sendMessage(env, tgId, "Заявка уже отправлена админу. Подождите ответа.");
+      await sendChannelGate(env, tgId, true);
       return;
     }
-    await sendMessage(env, tgId, "Срок истёк. Напишите администратору, чтобы продлить.");
+    await sendMessage(env, tgId, "Срок истёк. Заберите бонус дня или напишите администратору.");
     return;
   }
 
@@ -110,17 +150,17 @@ export async function handleStart(env: Env, from: TgFrom): Promise<void> {
   const userId = Number(result.meta.last_row_id ?? 0);
 
   await logEvent(env, "register", userId, "заявка на регистрацию");
-  await sendMessage(env, tgId, WELCOME, mainKeyboard());
-  await sendMessage(
-    env,
-    tgId,
-    "Заявка отправлена админу. Как только её одобрят, пришлю вашу ссылку для Happ.",
-  );
+
+  if (payload && userId) {
+    await attachReferral(env, userId, payload);
+  }
+
+  await sendChannelGate(env, tgId, false);
 
   const name = escapeHtml(from.username ? `@${from.username}` : `id ${tgId}`);
   await sendMessage(
     env,
-    String(env.ADMIN_TG_ID ?? "8938447065"),
+    String(env.ADMIN_TG_ID ?? "5680608085"),
     `<b>Новая заявка</b>\n${name}\nВсего пользователей: ${(total?.n ?? 0) + 1}`,
     {
       inline_keyboard: [
@@ -134,6 +174,34 @@ export async function handleStart(env: Env, from: TgFrom): Promise<void> {
   );
 }
 
+/** Экран «подпишитесь на канал» — баннер 3. */
+export async function sendChannelGate(
+  env: Env,
+  chatId: number | string,
+  withMenu: boolean,
+): Promise<void> {
+  const channel = channelId(env);
+  if (!channel) {
+    await sendMessage(
+      env,
+      chatId,
+      "Заявка отправлена админу. Как только её одобрят, пришлю вашу ссылку для Happ.",
+      withMenu ? mainKeyboard({ referral: true }) : undefined,
+    );
+    return;
+  }
+
+  // Канал может быть @username или -100…; для ссылки нужен username.
+  const url = /^-?\d+$/.test(channel)
+    ? `https://t.me/c/${channel.replace(/^-100/, "")}`
+    : `https://t.me/${channel.replace(/^@/, "")}`;
+  const caption =
+    `<b>Один шаг до подписки</b>\n` +
+    `Подпишитесь на канал и нажмите «Проверить» — начислим день доступа.\n\n` +
+    `Заявка уже у администратора.`;
+  await sendBanner(env, chatId, "channel", caption, channelKeyboard(url));
+}
+
 export async function approveUser(
   env: Env,
   userId: number,
@@ -142,6 +210,7 @@ export async function approveUser(
   const user = await one<UserRow>(env, "SELECT * FROM users WHERE id = ?", userId);
   if (!user) return null;
 
+  const firstTime = user.status !== "active";
   const expires = daysFromNowIso(days);
   await run(
     env,
@@ -166,6 +235,10 @@ export async function approveUser(
 
   const assigned = await assignForUser(env, userId, serversPerUser(env));
   await invalidateSubscription(env, user.sub_token);
+
+  // Реферальная награда — только в момент первой активации.
+  if (firstTime) await rewardReferral(env, userId);
+
   await logEvent(
     env,
     "approve",
@@ -178,18 +251,22 @@ export async function approveUser(
     ? `Серверов выдано: ${assigned.length}.`
     : "Свободных серверов нет — админ добавит их в ближайшее время.";
 
-  await sendMessage(
+  const caption = [
+    `<b>Подписка активирована!</b>`,
+    `Срок: ${expires.slice(0, 10)} (${days} дн.)`,
+    served,
+    "",
+    `<code>${escapeHtml(link)}</code>`,
+    "",
+    "Скопируйте ссылку и добавьте её в Happ.",
+  ].join("\n");
+
+  await sendBanner(
     env,
     user.tg_id,
-    [
-      "<b>Доступ открыт</b>",
-      `Срок: ${expires.slice(0, 10)} (${days} дн.)`,
-      served,
-      "",
-      `<code>${escapeHtml(link)}</code>`,
-      "",
-      howToConnect(),
-    ].join("\n"),
+    firstTime ? "activated" : "account",
+    caption,
+    cabinetKeyboard({ referral: true, promo: true, active: true }),
   );
 
   if (!assigned.length) {
@@ -198,15 +275,31 @@ export async function approveUser(
   return user;
 }
 
-/** Главное меню — тот же экран, что на макете. */
-export async function sendMenu(env: Env, chatId: number | string): Promise<void> {
-  await sendMessage(env, chatId, WELCOME, mainKeyboard());
+/** Главное меню — баннер 1 и тот же набор кнопок, что на макете. */
+export async function sendMenu(
+  env: Env,
+  chatId: number | string,
+  messageId?: number,
+): Promise<void> {
+  const settings = await loadSettings(env);
+  const options = {
+    daily: flag(settings, "daily_enabled", true),
+    referral: flag(settings, "referral_enabled", true),
+    promo: flag(settings, "promo_enabled", true),
+  };
+  await screen(env, chatId, messageId, "start", WELCOME, mainKeyboard(options));
 }
 
-export async function sendDevices(env: Env, chatId: number | string): Promise<void> {
-  await sendMessage(
+export async function sendDevices(
+  env: Env,
+  chatId: number | string,
+  messageId?: number,
+): Promise<void> {
+  await screen(
     env,
     chatId,
+    messageId,
+    "devices",
     "<b>Включить VPN</b>\nВыберите устройство, на котором хотите пользоваться VPN:",
     deviceKeyboard(),
   );
@@ -226,15 +319,8 @@ export async function sendInstruction(
   );
 }
 
-export async function sendCabinet(
-  env: Env,
-  chatId: number | string,
-  user: UserRow | null,
-): Promise<void> {
-  if (!user) {
-    await sendMessage(env, chatId, "Заявки пока нет. Нажмите /start.");
-    return;
-  }
+export async function cabinetBody(env: Env, user: UserRow): Promise<string> {
+  const settings = await loadSettings(env);
   const until = user.expires_at ? user.expires_at.slice(0, 10) : "не задан";
   const status =
     user.status === "active"
@@ -244,30 +330,221 @@ export async function sendCabinet(
         : user.status === "banned"
           ? "закрыт"
           : "истёк";
-  const link = linkFor(env, user.sub_token);
-  const body =
-    `<b>${BRAND} · кабинет</b>\n` +
-    `Статус: ${status}\n` +
-    `Доступ до: ${until}\n` +
-    `Устройств: до ${user.device_limit}\n\n` +
-    (user.status === "active"
-      ? `<code>${escapeHtml(link)}</code>`
-      : "Ссылка станет активной после одобрения.");
 
-  await sendMessage(env, chatId, body, {
-    inline_keyboard: [
-      [{ text: "⚡️ Как подключить", callback_data: "act:devices" }],
-      user.status === "active"
-        ? [{ text: "♻️ Новая ссылка", callback_data: "act:newkey" }]
-        : [],
-      [{ text: "← В меню", callback_data: "act:menu" }],
-    ].filter((row) => row.length > 0),
-  });
+  const lines = [
+    `<b>${BRAND} · кабинет</b>`,
+    `Статус: ${status}`,
+    `Доступ до: ${until} · ${expiryNote(user)}`,
+    `Устройств: до ${user.device_limit}`,
+    `Трафик: ${user.traffic_gb ? `${user.traffic_gb} ГБ` : "без лимита"}`,
+  ];
+
+  if (flag(settings, "daily_enabled", true)) {
+    const daily = await dailyStatus(env, user);
+    const capText = `${round2(daily.usedHours)} из ${daily.capHours} ч`;
+    lines.push(
+      "",
+      `<b>Бонус дня</b>`,
+      daily.claimedToday
+        ? `Серия: ${daily.streak} ${plural(daily.streak, "день", "дня", "дней")} · сегодня получен`
+        : `Серия: ${daily.streak} ${plural(daily.streak, "день", "дня", "дней")} · бонус доступен`,
+      `За месяц: ${capText}`,
+    );
+  }
+
+  if (flag(settings, "referral_enabled", true)) {
+    const refs = await referralStats(env, user.id);
+    lines.push(
+      "",
+      `<b>Друзья</b>: ${refs.invited} ${plural(refs.invited, "приглашение", "приглашения", "приглашений")}` +
+        ` · награда ${humanDuration(refs.days)}`,
+    );
+  }
+
+  const squads = await squadsOf(env, user.id);
+  if (squads.length) {
+    lines.push(`<b>Группы</b>: ${squads.map((item) => escapeHtml(item.squad)).join(", ")}`);
+  }
+
+  lines.push(
+    "",
+    user.status === "active"
+      ? `<code>${escapeHtml(linkFor(env, user.sub_token))}</code>`
+      : "Ссылка станет активной после одобрения.",
+  );
+
+  return lines.join("\n");
+}
+
+export async function sendCabinet(
+  env: Env,
+  chatId: number | string,
+  user: UserRow | null,
+  messageId?: number,
+): Promise<void> {
+  if (!user) {
+    await sendMessage(env, chatId, "Заявки пока нет. Нажмите /start.");
+    return;
+  }
+  const settings = await loadSettings(env);
+  const body = await cabinetBody(env, user);
+  await screen(
+    env,
+    chatId,
+    messageId,
+    "account",
+    body,
+    cabinetKeyboard({
+      daily: flag(settings, "daily_enabled", true),
+      referral: flag(settings, "referral_enabled", true),
+      promo: flag(settings, "promo_enabled", true),
+      bypass: flag(settings, "squads_enabled", false) && user.status === "active",
+      active: user.status === "active",
+    }),
+  );
 }
 
 export async function sendHelp(env: Env, chatId: number | string): Promise<void> {
-  await sendMessage(env, chatId, HELP, mainKeyboard());
+  await sendMessage(env, chatId, HELP, mainKeyboard({ referral: true }));
 }
+
+/* ── бонус дня ─────────────────────────────────────────────────────────── */
+
+export async function claimBonusText(env: Env, user: UserRow): Promise<string> {
+  const settings = await loadSettings(env);
+  const result = await claimDaily(env, user);
+
+  if (result.ok) {
+    const until = result.expiresAt?.slice(0, 10) ?? "—";
+    return (
+      `🎁 +${humanDuration(result.hours)}\n` +
+      `Серия: ${result.streak} ${plural(result.streak, "день", "дня", "дней")}\n` +
+      `Доступ до ${until}.`
+    );
+  }
+
+  switch (result.reason) {
+    case "already": {
+      const waitMs = Math.max(0, nextMskMidnight() - Date.now());
+      const hours = Math.floor(waitMs / 3600_000);
+      const minutes = Math.round((waitMs % 3600_000) / 60_000);
+      return `Бонус на сегодня уже получен.\nСледующий через ${hours} ч ${minutes} мин.`;
+    }
+    case "month_cap":
+      return `Месячный лимит бонусов выбран (${num(settings, "daily_month_cap_hours", 48)} ч). В следующем месяце — снова.`;
+    case "inactive":
+      return "Бонусы станут доступны после одобрения доступа.";
+    case "disabled":
+      return "Бонусы временно выключены.";
+    default:
+      return "Не получилось начислить бонус. Попробуйте позже.";
+  }
+}
+
+/* ── рефералы ──────────────────────────────────────────────────────────── */
+
+export async function sendReferral(env: Env, chatId: number | string, user: UserRow): Promise<void> {
+  const settings = await loadSettings(env);
+  const stats = await referralStats(env, user.id);
+  const reward = num(settings, "referral_reward_days", 1);
+
+  const text = [
+    `<b>Пригласите друга</b>`,
+    `Он получает ${humanDuration(reward * 24)}, вы — столько же, когда он активирует доступ.`,
+    "",
+    `Приглашено: ${stats.invited}`,
+    `Награждено: ${stats.rewarded}`,
+    `Заработано: ${humanDuration(stats.days)}`,
+    "",
+    `<code>${escapeHtml(stats.link)}</code>`,
+  ].join("\n");
+
+  await sendMessage(env, chatId, text, referralKeyboard(stats.link));
+}
+
+/* ── промокоды ─────────────────────────────────────────────────────────── */
+
+export async function handlePromoCode(env: Env, user: UserRow, code: string): Promise<string> {
+  const result = await redeemPromo(env, user, code);
+  if (!result.ok) {
+    switch (result.reason) {
+      case "empty":
+        return "Пустой код. Пример: <code>/promo ORANGE2026</code>";
+      case "not_found":
+        return "Такого промокода нет.";
+      case "expired":
+        return "Промокод истёк.";
+      case "limit":
+        return "Лимит активаций исчерпан.";
+      case "used":
+        return "Вы уже использовали этот код.";
+      case "disabled":
+        return "Промокоды временно выключены.";
+      default:
+        return "Не получилось активировать код.";
+    }
+  }
+
+  const parts: string[] = [];
+  if (result.days) parts.push(`+${humanDuration(result.days * 24)}`);
+  if (result.hours) parts.push(`+${humanDuration(result.hours)}`);
+  if (result.gb) parts.push(`+${result.gb} ГБ`);
+  if (result.squad) parts.push(`группа ${escapeHtml(result.squad)}`);
+
+  const fresh = await findUser(env, user.tg_id);
+  return (
+    `🎟 Промокод активирован: ${parts.join(", ") || "бонус"}\n` +
+    `Доступ до ${fresh?.expires_at?.slice(0, 10) ?? "—"}.`
+  );
+}
+
+/* ── обход белых списков (Bypass) ──────────────────────────────────────── */
+
+export async function handleBypass(
+  env: Env,
+  user: UserRow,
+): Promise<{ text: string; changed: boolean }> {
+  const settings = await loadSettings(env);
+  if (!flag(settings, "squads_enabled", false)) {
+    return { text: "Обход белых списков пока недоступен.", changed: false };
+  }
+  const squads = await squadsOf(env, user.id);
+  const active = squads.some((item) => item.squad === "Bypass");
+
+  if (active) {
+    await revokeSquad(env, user.id, "Bypass");
+    await logEvent(env, "squad_off", user.id, "Bypass снят");
+    return { text: "Обход белых списков выключен.", changed: true };
+  }
+
+  await grantSquad(env, user.id, "Bypass", 30);
+  await logEvent(env, "squad_on", user.id, "Bypass на 30 дней");
+  return { text: "Обход белых списков включён на 30 дней.", changed: true };
+}
+
+/* ── проверка канала ───────────────────────────────────────────────────── */
+
+export async function checkChannel(
+  env: Env,
+  user: UserRow,
+): Promise<{ ok: boolean; text: string }> {
+  const result = await claimChannel(env, user);
+  if (result.ok) {
+    return { ok: true, text: "Спасибо за подписку! День доступа уже на счету." };
+  }
+  switch (result.reason) {
+    case "no_channel":
+      return { ok: true, text: "Проверка канала не настроена." };
+    case "not_member":
+      return { ok: false, text: "Подписки пока не видно. Подпишитесь и нажмите ещё раз." };
+    case "already":
+      return { ok: true, text: "Награда за канал уже получена." };
+    default:
+      return { ok: false, text: "Не получилось проверить. Попробуйте позже." };
+  }
+}
+
+/* ── команды ───────────────────────────────────────────────────────────── */
 
 export async function handleKey(env: Env, user: UserRow): Promise<void> {
   if (user.status !== "active") {
@@ -344,9 +621,17 @@ export async function handleHelp(env: Env, user: UserRow | null): Promise<void> 
       "/key — моя ссылка",
       "/status — срок и устройства",
       "/newkey — перевыпустить ссылку",
+      "/bonus — бонус дня",
+      "/promo КОД — активировать промокод",
       "/help — эта справка",
       "",
       "Если ничего не работает — напишите админу, он проверит серверы.",
     ].join("\n"),
+    mainKeyboard({ referral: true }),
   );
+}
+
+/** Подпись «сегодня 21 октября» — для уведомлений. */
+export function todayLabel(): string {
+  return mskDate();
 }

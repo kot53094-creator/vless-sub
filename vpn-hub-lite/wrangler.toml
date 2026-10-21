@@ -47,6 +47,19 @@ SUB_CACHE_TTL = "600"
 # webhook — обычный режим; polling — если Telegram не видит ваш домен
 BOT_TRANSPORT = "polling"
 
+# ── Бонусы и рефералы ──────────────────────────────────────────────────────
+# Канал для награды за подписку: @username или -100… . Пусто — экран канала
+# и награда выключены, бот работает без них.
+CHANNEL_ID = ""
+# Username бота без @. Пусто — определим сами через getMe и закэшируем.
+BOT_USERNAME = "ApelsinkaVpn1_bot"
+
+# ── Remnawave (необязательно) ──────────────────────────────────────────────
+# Пока панели нет — группы работают только в нашей D1, ничего не падает.
+# REMNAWAVE_URL и REMNAWAVE_TOKEN задаются секретами:
+#   wrangler secret put REMNAWAVE_URL
+#   wrangler secret put REMNAWAVE_TOKEN
+
 # --- Наблюдаемость --------------------------------------------------------
 [observability]
 enabled = true

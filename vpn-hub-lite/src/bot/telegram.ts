@@ -68,6 +68,28 @@ export async function tgRaw<T = unknown>(
   }
 }
 
+/** Multipart-вызов: нужен для загрузки фото, когда file_id ещё нет. */
+export async function tgMultipart<T>(
+  env: Env,
+  method: string,
+  form: FormData,
+): Promise<{ ok: boolean; result?: T; description?: string }> {
+  const token = envStr(env.BOT_TOKEN);
+  if (!token) return { ok: false, description: "BOT_TOKEN не задан" };
+  try {
+    const response = await fetch(`${API}${token}/${method}`, {
+      method: "POST",
+      body: form,
+    });
+    return (await response.json()) as { ok: boolean; result?: T; description?: string };
+  } catch (error) {
+    return {
+      ok: false,
+      description: error instanceof Error ? error.message : "network error",
+    };
+  }
+}
+
 export async function sendMessage(
   env: Env,
   chatId: number | string,
@@ -96,7 +118,7 @@ export async function sendMessage(
 }
 
 export function adminId(env: Env): string {
-  return String(env.ADMIN_TG_ID ?? "8938447065");
+  return String(env.ADMIN_TG_ID ?? "5680608085").trim();
 }
 
 export async function sendToAdmin(env: Env, text: string): Promise<void> {
@@ -121,10 +143,11 @@ export async function answerCallback(
   env: Env,
   callbackId: string,
   text: string,
+  alert = false,
 ): Promise<void> {
   await tgApi(env, "answerCallbackQuery", {
     callback_query_id: callbackId,
     text: text.slice(0, 190),
-    show_alert: false,
+    show_alert: alert,
   });
 }

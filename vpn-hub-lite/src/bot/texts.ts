@@ -50,21 +50,62 @@ export const INSTRUCTIONS: Record<string, string> = {
     "4. Выберите сервер и включите.",
 };
 
-export function mainKeyboard(): ReplyMarkup {
-  return {
-    inline_keyboard: [
-      [{ text: "⚡️ Включить VPN", callback_data: "act:devices" }],
-      [
-        { text: "👤 Кабинет", callback_data: "act:cabinet" },
-        { text: "💳 Тарифы", callback_data: "act:plans" },
-      ],
-      [
-        { text: "📊 Состояние", callback_data: "act:status" },
-        { text: "🔄 Обновить всё", callback_data: "act:refresh" },
-      ],
-      [{ text: "❓ Помощь", callback_data: "act:help" }],
-    ],
-  };
+export interface KeyboardOptions {
+  daily?: boolean;
+  referral?: boolean;
+  promo?: boolean;
+  bypass?: boolean;
+  active?: boolean;
+}
+
+export function mainKeyboard(options: KeyboardOptions = {}): ReplyMarkup {
+  const rows: ReplyMarkup["inline_keyboard"] = [
+    [{ text: "⚡️ Включить VPN", callback_data: "act:devices" }],
+  ];
+
+  if (options.daily !== false) {
+    rows.push([{ text: "🎁 Бонус дня", callback_data: "bon:claim" }]);
+  }
+
+  rows.push([
+    { text: "👤 Кабинет", callback_data: "act:cabinet" },
+    { text: "💳 Тарифы", callback_data: "act:plans" },
+  ]);
+
+  if (options.referral) {
+    rows.push([{ text: "👥 Пригласить друга", callback_data: "ref:show" }]);
+  }
+
+  rows.push([
+    { text: "📊 Состояние", callback_data: "act:status" },
+    { text: "🔄 Обновить всё", callback_data: "act:refresh" },
+  ]);
+  rows.push([{ text: "❓ Помощь", callback_data: "act:help" }]);
+  return { inline_keyboard: rows };
+}
+
+export function cabinetKeyboard(options: KeyboardOptions = {}): ReplyMarkup {
+  const rows: ReplyMarkup["inline_keyboard"] = [];
+
+  if (options.daily !== false) {
+    rows.push([{ text: "🎁 Забрать бонус дня", callback_data: "bon:claim" }]);
+  }
+
+  const extras: Array<{ text: string; callback_data: string }> = [];
+  if (options.referral) extras.push({ text: "👥 Пригласить друга", callback_data: "ref:show" });
+  if (options.promo) extras.push({ text: "🎟 Промокод", callback_data: "prm:enter" });
+  if (extras.length) rows.push(extras);
+
+  if (options.bypass) {
+    rows.push([{ text: "🛡 Обход белых списков", callback_data: "sq:bypass" }]);
+  }
+
+  rows.push([{ text: "⚡️ Как подключить", callback_data: "act:devices" }]);
+  if (options.active) {
+    rows.push([{ text: "♻️ Новая ссылка", callback_data: "act:newkey" }]);
+  }
+  rows.push([{ text: "← В меню", callback_data: "act:menu" }]);
+  return { inline_keyboard: rows };
 }
 
 export function deviceKeyboard(): ReplyMarkup {
@@ -90,10 +131,35 @@ export function backKeyboard(): ReplyMarkup {
   };
 }
 
+export function channelKeyboard(url: string): ReplyMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "📣 Открыть канал", url }],
+      [{ text: "✅ Я подписался", callback_data: "chk:sub" }],
+    ],
+  };
+}
+
+export function referralKeyboard(link: string): ReplyMarkup {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: "📤 Поделиться",
+          url: `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("VPN без блокировок")}`,
+        },
+      ],
+      [{ text: "👤 Кабинет", callback_data: "act:cabinet" }],
+    ],
+  };
+}
+
 export const HELP =
   `<b>${BRAND} · помощь</b>\n\n` +
   "1. Нажмите «⚡️ Включить VPN».\n" +
   "2. Выберите устройство.\n" +
   "3. Установите Happ и вставьте ссылку.\n\n" +
+  "Бонусы: «🎁 Бонус дня» продлевает подписку.\n" +
+  "Друзья: «👥 Пригласить друга» даёт дни обоим.\n\n" +
   "Если сервер не работает — «🔄 Обновить всё»:\n" +
   "мёртвые уйдут из списка, ссылка пересоберётся.";

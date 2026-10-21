@@ -3,6 +3,7 @@
 import { handleAdmin } from "./admin";
 import { handleUpdate, type TgUpdate } from "./bot";
 import { runHealth } from "./health";
+import { runNotifications } from "./notify";
 import { runPoll } from "./polling";
 import { envStr, timingSafeEqual } from "./security";
 import { handleSubscription } from "./sub";
@@ -91,6 +92,12 @@ export default {
       ctx.waitUntil(
         runHealth(env).catch((error) => {
           console.error("health failed", error instanceof Error ? error.message : error);
+        }),
+      );
+      // Уведомления о сроке + снятие истёкших групп живут в этом же тике.
+      ctx.waitUntil(
+        runNotifications(env).catch((error) => {
+          console.error("notify failed", error instanceof Error ? error.message : error);
         }),
       );
       return;

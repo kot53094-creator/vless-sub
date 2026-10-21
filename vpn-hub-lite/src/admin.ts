@@ -15,6 +15,22 @@ import {
   timingSafeEqual,
 } from "./security";
 import type { Env, SourceRow, UserRow } from "./types";
+import {
+  cancelAccrual,
+  grantSquad,
+  loadSettings,
+  revokeSquad,
+  saveSetting,
+  SQUADS,
+} from "./bonus";
+import {
+  BANNER_KEYS,
+  BANNER_LABELS,
+  isBannerKey,
+  resetBannerFile,
+  saveBannerFile,
+} from "./banners";
+import { normalizePromo, randomPromoCode } from "./promotions";
 
 const COOKIE = "vh_admin";
 const GB = 1024 ** 3;
@@ -227,6 +243,11 @@ const NAV: Array<[string, string, string, string]> = [
   ["Дашборд", "/admin/users", "Пользователи", "users"],
   ["Данные", "/admin/servers", "Серверы", "servers"],
   ["Данные", "/admin/sources", "Источники", "sources"],
+  ["Маркетинг", "/admin/bonuses", "Настройки бонусов", "bonuses"],
+  ["Маркетинг", "/admin/promos", "Промокоды", "promos"],
+  ["Маркетинг", "/admin/accruals", "Начисления", "accruals"],
+  ["Маркетинг", "/admin/banners", "Баннеры", "banners"],
+  ["Маркетинг", "/admin/squads", "Группы", "squads"],
   ["Журнал", "/admin/events", "События", "events"],
 ];
 
@@ -356,6 +377,14 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   if (path === "/admin/users") return await usersPage(env, url);
   if (path === "/admin/servers") return await serversPage(env);
   if (path === "/admin/sources") return await sourcesPage(env, url);
+  if (path === "/admin/bonuses") return await bonusesPage(env, url);
+  if (path === "/admin/promos") return await promosPage(env, url);
+  if (path === "/admin/accruals") return await accrualsPage(env, url);
+  if (path === "/admin/banners") return await bannersPage(env, url);
+  if (path === "/admin/squads") return await squadsPage(env, url);
+  if (path.startsWith("/admin/banner-file/")) {
+    return await bannerFileResponse(env, path.slice("/admin/banner-file/".length));
+  }
   if (path === "/admin/events") return await eventsPage(env);
 
   return new Response("Не найдено", { status: 404 });
@@ -624,9 +653,10 @@ async function usersPage(env: Env, url: URL): Promise<Response> {
                   .map((item) => `<option value="${item.id}">${esc(item.name)} (${item.max_devices})</option>`)
                   .join("") || `<option value="0">лимитов нет</option>`}
               </select>
-              <button class="btn">Дать слот</button>
-            </form>
-          </details>
+               <button class="btn">Дать слот</button>
+             </form>
+             <a class="btn" href="/admin/accruals?user=${user.id}" style="display:inline-block;margin-top:8px;text-decoration:none">Журнал начислений</a>
+           </details>
           <form method="post" action="/admin/action" class="inline" style="margin-top:6px">
             <input type="hidden" name="csrf" value="${csrf}">
             <input type="hidden" name="action" value="${user.status === "banned" ? "unban" : "ban"}">
@@ -902,6 +932,131 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
         location: `${path}${ok ? `?ok=${encodeURIComponent(ok)}` : err ? `?err=${encodeURIComponent(err)}` : ""}`,
       },
     });
+
+  /* ── маркетинг: настройки, промокоды, баннеры, группы ── */
+
+  if (action === "save_settings") {
+    for (const key of SETTING_KEYS) {
+      const raw = form.get(key);
+      if (raw === null) continue;
+      await saveSetting(env, key, String(raw).slice(0, 40));
+    }
+    await logEvent(env, "settings", null, "настройки бонусов обновлены");
+    return back("/admin/bonuses", "Настройки сохранены");
+  }
+
+  if (action === "add_promo") {
+    const rawCode = String(form.get("code") ?? "").trim();
+    const code = rawCode ? normalizePromo(rawCode) : randomPromoCode();
+    if (!code) return back("/admin/promos", "", "Код не подходит: только A-Z, 0-9, - и _");
+
+    const exists = await one<{ code: string }>(env, "SELECT code FROM promos WHERE code = ?", code);
+    if (exists) return back("/admin/promos", "", `Код ${code} уже существует`);
+
+    const squad = String(form.get("squad") ?? "").trim() || null;
+    const expires = String(form.get("expires") ?? "").trim();
+    await run(
+      env,
+      `INSERT INTO promos (code, days, hours, gb, squad, squad_days, max_uses, per_user_limit, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+      code,
+      Math.max(0, Number(form.get("days") ?? 0)),
+      Math.max(0, Number(form.get("hours") ?? 0)),
+      Math.max(0, Number(form.get("gb") ?? 0)),
+      squad,
+      Math.max(0, Number(form.get("squad_days") ?? 0)),
+      Math.max(0, Number(form.get("max_uses") ?? 0)),
+      expires ? `${expires} 23:59:59` : null,
+    );
+    await logEvent(env, "promo_create", null, code);
+    return back("/admin/promos", `Код ${code} создан`);
+  }
+
+  if (action === "toggle_promo") {
+    const code = String(form.get("code") ?? "");
+    await run(env, "UPDATE promos SET active = 1 - active WHERE code = ?", code);
+    return back("/admin/promos", `Код ${code}: статус изменён`);
+  }
+
+  if (action === "cancel_accrual") {
+    const done = await cancelAccrual(env, id);
+    return done
+      ? back("/admin/accruals", `Начисление #${id} отменено`)
+      : back("/admin/accruals", "", "Уже отменено или не найдено");
+  }
+
+  if (action === "upload_banner") {
+    const key = String(form.get("key") ?? "");
+    if (!isBannerKey(key)) return back("/admin/banners", "", "Неизвестный баннер");
+    const entry = form.get("file");
+    if (!entry || typeof entry === "string") {
+      return back("/admin/banners", "", "Файл не выбран");
+    }
+    const file = entry as File;
+    if (!file.size) return back("/admin/banners", "", "Пустой файл");
+    if (file.size > 5 * 1024 * 1024) {
+      return back("/admin/banners", "", "Файл больше 5 МБ — сожмите PNG");
+    }
+    await saveBannerFile(env, key, await file.arrayBuffer(), file.type || "image/png");
+    return back("/admin/banners", `Баннер «${BANNER_LABELS[key]}» загружен`);
+  }
+
+  if (action === "preview_banner") {
+    const key = String(form.get("key") ?? "");
+    if (!isBannerKey(key)) return back("/admin/banners", "", "Неизвестный баннер");
+    const { sendBanner } = await import("./banners");
+    const sent = await sendBanner(
+      env,
+      envStr(env.ADMIN_TG_ID),
+      key,
+      `<b>${BANNER_LABELS[key]}</b>\nПредпросмотр баннера.`,
+    );
+    return back(
+      "/admin/banners",
+      sent ? `Баннер «${BANNER_LABELS[key]}» отправлен в Telegram` : "",
+      sent ? "" : "Telegram не принял файл",
+    );
+  }
+
+  if (action === "reset_banner") {
+    const key = String(form.get("key") ?? "");
+    if (!isBannerKey(key)) return back("/admin/banners", "", "Неизвестный баннер");
+    await resetBannerFile(env, key);
+    return back("/admin/banners", "file_id сброшен: следующая отправка загрузит фото заново");
+  }
+
+  if (action === "run_notify") {
+    const { runNotifications } = await import("./notify");
+    const result = await runNotifications(env);
+    return back(
+      "/admin/bonuses",
+      `Уведомлений отправлено: ${result.sent}, групп снято: ${result.squads}`,
+    );
+  }
+
+  if (action === "set_squad_pool") {
+    const squad = String(form.get("squad") ?? "").trim();
+    const pool = String(form.get("pool") ?? "").trim();
+    if (!squad) return back("/admin/squads", "", "Не указана группа");
+    await saveSetting(env, `squad_pool:${squad}`, pool);
+    return back("/admin/squads", pool ? `${squad} → ${pool}` : `${squad}: привязка снята`);
+  }
+
+  if (action === "grant_squad" || action === "revoke_squad") {
+    const tgId = String(form.get("tg_id") ?? "").trim();
+    const squad = String(form.get("squad") ?? "").trim();
+    if (!tgId || !squad) return back("/admin/squads", "", "Нужны Telegram ID и группа");
+    const target = await one<UserRow>(env, "SELECT * FROM users WHERE tg_id = ?", tgId);
+    if (!target) return back("/admin/squads", "", "Пользователь не найден");
+    if (action === "revoke_squad") {
+      await revokeSquad(env, target.id, squad);
+      await logEvent(env, "squad_revoke", target.id, squad);
+      return back("/admin/squads", `Группа ${squad} забрана`);
+    }
+    await grantSquad(env, target.id, squad, Math.max(0, Number(form.get("days") ?? 0)));
+    await logEvent(env, "squad_grant", target.id, squad);
+    return back("/admin/squads", `Группа ${squad} выдана`);
+  }
 
   if (action === "update_user") {
     const user = await one<UserRow>(env, "SELECT * FROM users WHERE id = ?", id);
@@ -1187,4 +1342,435 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
   }
 
   return back("/admin/users", "", "Неизвестное действие");
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Маркетинг: настройки бонусов, промокоды, журнал начислений, баннеры, группы
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const SETTING_KEYS = [
+  "daily_enabled",
+  "daily_bonus_hours",
+  "daily_streak3_hours",
+  "daily_streak7_hours",
+  "daily_month_cap_hours",
+  "referral_enabled",
+  "referral_reward_days",
+  "referral_reward_inviter",
+  "referral_month_cap_days",
+  "channel_reward_days",
+  "promo_enabled",
+  "squads_enabled",
+  "notify_expiring",
+  "notify_days_before",
+  "notify_comeback",
+  "comeback_days",
+  "clicker_enabled",
+  "clicker_daily_cap_hours",
+];
+
+function settingField(key: string, label: string, value: string, hint = ""): string {
+  return `<div>
+    <label class="muted">${esc(label)}</label><br>
+    <input name="${key}" value="${esc(value)}" inputmode="decimal" style="width:120px">
+    ${hint ? `<div class="muted" style="font-size:12px">${esc(hint)}</div>` : ""}
+  </div>`;
+}
+
+function settingToggle(key: string, label: string, value: string): string {
+  return `<div>
+    <label class="muted">${esc(label)}</label><br>
+    <select name="${key}">
+      <option value="1"${value === "1" ? " selected" : ""}>вкл</option>
+      <option value="0"${value === "1" ? "" : " selected"}>выкл</option>
+    </select>
+  </div>`;
+}
+
+async function bonusesPage(env: Env, url: URL): Promise<Response> {
+  const csrf = await csrfToken(env);
+  const settings = await loadSettings(env);
+  const ok = url.searchParams.get("ok");
+  const err = url.searchParams.get("err");
+  const value = (key: string, fallback = "") => settings[key] ?? fallback;
+
+  const body = `
+<h1>Настройки бонусов</h1>
+<div class="sub">Все числа правятся здесь и действуют сразу, без деплоя</div>
+${ok ? `<div class="notice">${esc(ok)}</div>` : ""}
+${err ? `<div class="err">${esc(err)}</div>` : ""}
+
+<form method="post" action="/admin/action">
+  <input type="hidden" name="csrf" value="${csrf}">
+  <input type="hidden" name="action" value="save_settings">
+
+  <div class="card">
+    <div class="head"><h2>Ежедневный бонус</h2></div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+      ${settingToggle("daily_enabled", "Бонус дня", value("daily_enabled", "1"))}
+      ${settingField("daily_bonus_hours", "Часов за день", value("daily_bonus_hours", "1"))}
+      ${settingField("daily_streak3_hours", "Часов на 3-й день", value("daily_streak3_hours", "2"))}
+      ${settingField("daily_streak7_hours", "Часов на 7-й день", value("daily_streak7_hours", "3"))}
+      ${settingField("daily_month_cap_hours", "Потолок в месяц, ч", value("daily_month_cap_hours", "48"))}
+    </div>
+    <p class="muted" style="margin:10px 0 0">Сутки считаются по Москве, сброс в 00:00.</p>
+  </div>
+
+  <div class="card">
+    <div class="head"><h2>Рефералы и канал</h2></div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+      ${settingToggle("referral_enabled", "Реферальная программа", value("referral_enabled", "1"))}
+      ${settingToggle("referral_reward_inviter", "Награждать пригласившего", value("referral_reward_inviter", "1"))}
+      ${settingField("referral_reward_days", "Дней за друга", value("referral_reward_days", "1"))}
+      ${settingField("referral_month_cap_days", "Потолок дней в месяц", value("referral_month_cap_days", "30"))}
+      ${settingField("channel_reward_days", "Дней за подписку на канал", value("channel_reward_days", "1"))}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="head"><h2>Уведомления и группы</h2></div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+      ${settingToggle("notify_expiring", "Напоминать о конце срока", value("notify_expiring", "1"))}
+      ${settingField("notify_days_before", "За сколько дней", value("notify_days_before", "1"))}
+      ${settingToggle("notify_comeback", "Возврат после истечения", value("notify_comeback", "1"))}
+      ${settingField("comeback_days", "Через сколько дней", value("comeback_days", "3"))}
+      ${settingToggle("squads_enabled", "Группы (Bypass)", value("squads_enabled", "0"))}
+      ${settingToggle("promo_enabled", "Промокоды", value("promo_enabled", "1"))}
+      ${settingToggle("clicker_enabled", "Кликер (Mini App)", value("clicker_enabled", "0"))}
+    </div>
+  </div>
+
+  <button class="btn primary" type="submit">Сохранить настройки</button>
+</form>
+
+<form method="post" action="/admin/action" style="margin-top:10px">
+  <input type="hidden" name="csrf" value="${csrf}">
+  <input type="hidden" name="action" value="run_notify">
+  <button class="btn">Прогнать уведомления сейчас</button>
+  <span class="muted">проверит сроки и отправит напоминания, не дожидаясь cron</span>
+</form>`;
+
+  return page("Настройки бонусов", body, "bonuses", env);
+}
+
+async function promosPage(env: Env, url: URL): Promise<Response> {
+  const csrf = await csrfToken(env);
+  const ok = url.searchParams.get("ok");
+  const err = url.searchParams.get("err");
+  const promos = await many<{
+    code: string;
+    days: number;
+    hours: number;
+    gb: number;
+    squad: string | null;
+    squad_days: number;
+    max_uses: number;
+    used: number;
+    expires_at: string | null;
+    active: number;
+  }>(env, "SELECT * FROM promos ORDER BY created_at DESC LIMIT 200");
+
+  const rows = promos
+    .map((promo) => {
+      const reward = [
+        promo.days ? `${promo.days} дн.` : "",
+        promo.hours ? `${promo.hours} ч` : "",
+        promo.gb ? `${promo.gb} ГБ` : "",
+        promo.squad ? `${esc(promo.squad)} на ${promo.squad_days} дн.` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      return `<tr data-row="${esc(promo.code)}">
+        <td class="mono">${esc(promo.code)}</td>
+        <td>${reward || "—"}</td>
+        <td>${promo.used}${promo.max_uses ? ` / ${promo.max_uses}` : ""}</td>
+        <td>${esc(promo.expires_at?.slice(0, 10) ?? "бессрочно")}</td>
+        <td><span class="pill ${promo.active ? "ok" : "bad"}">${promo.active ? "активен" : "выкл"}</span></td>
+        <td>
+          <form method="post" action="/admin/action" class="inline">
+            <input type="hidden" name="csrf" value="${csrf}">
+            <input type="hidden" name="action" value="toggle_promo">
+            <input type="hidden" name="code" value="${esc(promo.code)}">
+            <button class="btn">${promo.active ? "Выключить" : "Включить"}</button>
+          </form>
+        </td>
+      </tr>`;
+    })
+    .join("");
+
+  const body = `
+<h1>Промокоды</h1>
+<div class="sub">Дни, гигабайты и группа Bypass. Активация — /promo КОД в боте</div>
+${ok ? `<div class="notice">${esc(ok)}</div>` : ""}
+${err ? `<div class="err">${esc(err)}</div>` : ""}
+
+<div class="card">
+  <div class="head"><h2>Новый код</h2></div>
+  <form method="post" action="/admin/action" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <input type="hidden" name="csrf" value="${csrf}">
+    <input type="hidden" name="action" value="add_promo">
+    <div><label class="muted">Код (пусто — сгенерируем)</label><br><input name="code" placeholder="ORANGE2026" style="width:150px"></div>
+    <div><label class="muted">Дней</label><br><input name="days" value="7" inputmode="numeric" style="width:80px"></div>
+    <div><label class="muted">Часов</label><br><input name="hours" value="0" inputmode="numeric" style="width:80px"></div>
+    <div><label class="muted">ГБ</label><br><input name="gb" value="0" inputmode="numeric" style="width:80px"></div>
+    <div><label class="muted">Группа</label><br>
+      <select name="squad">
+        <option value="">нет</option>
+        ${SQUADS.map((squad) => `<option value="${squad}">${squad}</option>`).join("")}
+      </select>
+    </div>
+    <div><label class="muted">Дней группы</label><br><input name="squad_days" value="0" inputmode="numeric" style="width:90px"></div>
+    <div><label class="muted">Лимит активаций (0 — без)</label><br><input name="max_uses" value="0" inputmode="numeric" style="width:120px"></div>
+    <div><label class="muted">Действует до</label><br><input type="date" name="expires"></div>
+    <button class="btn primary">Создать</button>
+  </form>
+</div>
+
+<div class="card">
+  <table>
+    <thead><tr><th>Код</th><th>Награда</th><th>Активаций</th><th>До</th><th>Статус</th><th></th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="6" class="muted">Пока нет кодов</td></tr>`}</tbody>
+  </table>
+</div>`;
+
+  return page("Промокоды", body, "promos", env);
+}
+
+async function accrualsPage(env: Env, url: URL): Promise<Response> {
+  const csrf = await csrfToken(env);
+  const userId = Number(url.searchParams.get("user") ?? 0);
+  const ok = url.searchParams.get("ok");
+
+  const rowsData = await many<{
+    id: number;
+    user_id: number;
+    tg_id: string;
+    kind: string;
+    hours: number;
+    gb: number;
+    note: string;
+    status: string;
+    created_at: string;
+  }>(
+    env,
+    `SELECT a.id, a.user_id, u.tg_id, a.kind, a.hours, a.gb, a.note, a.status, a.created_at
+       FROM accruals a JOIN users u ON u.id = a.user_id
+      ${userId ? "WHERE a.user_id = ?" : ""}
+      ORDER BY a.id DESC LIMIT 200`,
+    ...(userId ? [userId] : []),
+  );
+
+  const rows = rowsData
+    .map(
+      (row) => `<tr data-row="${esc(row.tg_id)} ${esc(row.kind)}">
+      <td class="mono">${row.id}</td>
+      <td>${esc(row.tg_id)}</td>
+      <td>${esc(row.kind)}</td>
+      <td>${row.hours ? `+${row.hours} ч` : ""}${row.gb ? ` +${row.gb} ГБ` : ""}</td>
+      <td class="muted">${esc(row.note)}</td>
+      <td>${esc(row.created_at)}</td>
+      <td><span class="pill ${row.status === "applied" ? "ok" : "bad"}">${esc(row.status)}</span></td>
+      <td>${
+        row.status === "applied"
+          ? `<form method="post" action="/admin/action" class="inline">
+               <input type="hidden" name="csrf" value="${csrf}">
+               <input type="hidden" name="action" value="cancel_accrual">
+               <input type="hidden" name="id" value="${row.id}">
+               <button class="btn danger">Отменить</button>
+             </form>`
+          : "—"
+      }</td>
+    </tr>`,
+    )
+    .join("");
+
+  const body = `
+<h1>Начисления</h1>
+<div class="sub">Единый журнал: бонусы, рефералы, промокоды, канал${userId ? ` · фильтр по пользователю #${userId}` : ""}</div>
+${ok ? `<div class="notice">${esc(ok)}</div>` : ""}
+<div class="card">
+  <table>
+    <thead><tr><th>#</th><th>Кто</th><th>Тип</th><th>Начислено</th><th>Комментарий</th><th>Когда</th><th>Статус</th><th></th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="8" class="muted">Начислений пока нет</td></tr>`}</tbody>
+  </table>
+</div>`;
+
+  return page("Начисления", body, "accruals", env);
+}
+
+async function bannersPage(env: Env, url: URL): Promise<Response> {
+  const csrf = await csrfToken(env);
+  const ok = url.searchParams.get("ok");
+  const err = url.searchParams.get("err");
+  const rows = await many<{ key: string; file_id: string; updated_at: string }>(
+    env,
+    "SELECT key, file_id, updated_at FROM banners",
+  );
+  const byKey = new Map(rows.map((row) => [row.key, row]));
+
+  const cards = BANNER_KEYS.map((key) => {
+    const row = byKey.get(key);
+    const ready = Boolean(row?.file_id);
+    return `<div class="card" style="min-width:280px">
+      <div class="head"><h2 style="font-size:15px">${esc(BANNER_LABELS[key])}</h2></div>
+      <img src="/admin/banner-file/${key}?v=${encodeURIComponent(row?.updated_at ?? "")}"
+           alt="${key}" style="width:100%;border-radius:10px;display:block;background:#0f1115">
+      <div class="muted" style="margin:6px 0">
+        ${ready ? "file_id сохранён — отправляется без повторной загрузки" : "файл ещё не загружен"}
+      </div>
+      <form method="post" action="/admin/action" enctype="multipart/form-data" style="display:grid;gap:6px">
+        <input type="hidden" name="csrf" value="${csrf}">
+        <input type="hidden" name="action" value="upload_banner">
+        <input type="hidden" name="key" value="${key}">
+        <input type="file" name="file" accept="image/png,image/jpeg,image/webp" required>
+        <button class="btn primary">Загрузить PNG</button>
+      </form>
+      <form method="post" action="/admin/action" style="margin-top:6px">
+        <input type="hidden" name="csrf" value="${csrf}">
+        <input type="hidden" name="action" value="reset_banner">
+        <input type="hidden" name="key" value="${key}">
+        <button class="btn">Сбросить file_id</button>
+      </form>
+      <form method="post" action="/admin/action" style="margin-top:6px">
+        <input type="hidden" name="csrf" value="${csrf}">
+        <input type="hidden" name="action" value="preview_banner">
+        <input type="hidden" name="key" value="${key}">
+        <button class="btn">Проверить в Telegram</button>
+      </form>
+    </div>`;
+  }).join("");
+
+  const body = `
+<h1>Баннеры</h1>
+<div class="sub">1280×720 PNG. Каждый экран бота отправляется фото с подписью</div>
+${ok ? `<div class="notice">${esc(ok)}</div>` : ""}
+${err ? `<div class="err">${esc(err)}</div>` : ""}
+<div style="display:flex;gap:14px;flex-wrap:wrap">${cards}</div>`;
+
+  return page("Баннеры", body, "banners", env);
+}
+
+async function bannerFileResponse(env: Env, rawKey: string): Promise<Response> {
+  const key = decodeURIComponent(rawKey).replace(/\?.*$/, "");
+  if (!isBannerKey(key)) return new Response("Не найдено", { status: 404 });
+  const bytes = await env.CACHE.get(`banner:${key}`, "arrayBuffer");
+  if (!bytes) return new Response("Файл не загружен", { status: 404 });
+  return new Response(bytes, {
+    headers: { "content-type": "image/png", "cache-control": "private, max-age=60" },
+  });
+}
+
+async function squadsPage(env: Env, url: URL): Promise<Response> {
+  const csrf = await csrfToken(env);
+  const ok = url.searchParams.get("ok");
+  const err = url.searchParams.get("err");
+
+  const pools = await many<{ id: number; name: string; servers: number; users: number }>(
+    env,
+    `SELECT p.id, p.name,
+       (SELECT COUNT(*) FROM pool_servers ps WHERE ps.pool_id = p.id) AS servers,
+       (SELECT COUNT(*) FROM user_pools up WHERE up.pool_id = p.id) AS users
+     FROM pools p ORDER BY p.id`,
+  );
+
+  const assigned = await many<{ user_id: number; tg_id: string; squad: string; expires_at: string | null }>(
+    env,
+    `SELECT us.user_id, u.tg_id, us.squad, us.expires_at
+       FROM user_squads us JOIN users u ON u.id = us.user_id
+      ORDER BY us.created_at DESC LIMIT 100`,
+  );
+
+  const poolRows = pools
+    .map(
+      (pool) => `<tr data-row="${esc(pool.name)}">
+      <td>${esc(pool.name)}</td>
+      <td>${pool.servers}</td>
+      <td>${pool.users}</td>
+    </tr>`,
+    )
+    .join("");
+
+  const assignedRows = assigned
+    .map(
+      (row) => `<tr data-row="${esc(row.tg_id)} ${esc(row.squad)}">
+      <td>${esc(row.tg_id)}</td>
+      <td>${esc(row.squad)}</td>
+      <td>${esc(row.expires_at?.slice(0, 10) ?? "бессрочно")}</td>
+      <td>
+        <form method="post" action="/admin/action" class="inline">
+          <input type="hidden" name="csrf" value="${csrf}">
+          <input type="hidden" name="action" value="revoke_squad">
+          <input type="hidden" name="tg_id" value="${esc(row.tg_id)}">
+          <input type="hidden" name="squad" value="${esc(row.squad)}">
+          <button class="btn danger">Забрать</button>
+        </form>
+      </td>
+    </tr>`,
+    )
+    .join("");
+
+  const settings = await loadSettings(env);
+  const mapping = SQUADS.map((squad) => {
+    const current = settings[`squad_pool:${squad}`] ?? "";
+    return `<form method="post" action="/admin/action" class="inline" style="display:inline-flex;gap:8px;align-items:center;margin-right:16px">
+      <input type="hidden" name="csrf" value="${csrf}">
+      <input type="hidden" name="action" value="set_squad_pool">
+      <input type="hidden" name="squad" value="${squad}">
+      <b>${squad}</b> →
+      <select name="pool">
+        <option value="">не привязан</option>
+        ${pools
+          .map(
+            (pool) =>
+              `<option value="${esc(pool.name)}"${current === pool.name ? " selected" : ""}>${esc(pool.name)}</option>`,
+          )
+          .join("")}
+      </select>
+      <button class="btn">Сохранить</button>
+    </form>`;
+  }).join("");
+
+  const body = `
+<h1>Группы серверов</h1>
+<div class="sub">Default — обычные серверы, Bypass — обход белых списков</div>
+${ok ? `<div class="notice">${esc(ok)}</div>` : ""}
+${err ? `<div class="err">${esc(err)}</div>` : ""}
+
+<div class="card">
+  <div class="head"><h2>Пулы</h2></div>
+  <table>
+    <thead><tr><th>Группа</th><th>Серверов</th><th>Пользователей</th></tr></thead>
+    <tbody>${poolRows || `<tr><td colspan="3" class="muted">Пулов нет</td></tr>`}</tbody>
+  </table>
+</div>
+
+<div class="card">
+  <div class="head"><h2>Привязка групп к пулам</h2></div>
+  <p class="muted" style="margin-top:0">Bypass должен вести на пул с серверами для белых списков, Default — на обычный.</p>
+  ${mapping}
+</div>
+
+<div class="card">
+  <div class="head"><h2>Выдать группу</h2></div>
+  <form method="post" action="/admin/action" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <input type="hidden" name="csrf" value="${csrf}">
+    <input type="hidden" name="action" value="grant_squad">
+    <div><label class="muted">Telegram ID</label><br><input name="tg_id" placeholder="5680608085" required></div>
+    <div><label class="muted">Группа</label><br>
+      <select name="squad">${SQUADS.map((squad) => `<option value="${squad}">${squad}</option>`).join("")}</select>
+    </div>
+    <div><label class="muted">Дней (0 — бессрочно)</label><br><input name="days" value="0" inputmode="numeric" style="width:120px"></div>
+    <button class="btn primary">Выдать</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="head"><h2>Кому выдано</h2></div>
+  <table>
+    <thead><tr><th>Кто</th><th>Группа</th><th>До</th><th></th></tr></thead>
+    <tbody>${assignedRows || `<tr><td colspan="4" class="muted">Пока никому</td></tr>`}</tbody>
+  </table>
+</div>`;
+
+  return page("Группы", body, "squads", env);
 }

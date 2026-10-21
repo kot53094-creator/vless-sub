@@ -25,11 +25,16 @@ describe("приватность подписки", () => {
     ).toBe(false);
   });
 
-  it("не отдаёт мёртвый или непроверенный сервер", () => {
+  it("не отдаёт мёртвый сервер", () => {
     expect(isDeliverable({ status: "dead", visibility: "shareable", source_kind: "public" })).toBe(false);
+  });
+
+  it("отдаёт непроверенный сервер: у Cloudflare-нод TCP-проба не работает", () => {
+    // Осознанное решение: «нет ответа» не равно «мёртвый». Иначе ноды за
+    // Cloudflare (162.159.x, saas.sin.fan) навсегда выпадают из подписки.
     expect(
       isDeliverable({ status: "unknown", visibility: "shareable", source_kind: "public" }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("при отсутствии полей считает сервер небезопасным", () => {
