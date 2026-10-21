@@ -43,7 +43,8 @@ const SERVER_SQL = `
       OR EXISTS (SELECT 1 FROM user_sources us
                   WHERE us.user_id = a.user_id AND us.source_id = src.id)
     )
-  ORDER BY (s.latency_ms IS NULL), s.latency_ms, s.id
+  -- Лучшие сверху: сначала проверенные живые, потом по задержке.
+  ORDER BY (s.status = 'alive') DESC, (s.latency_ms IS NULL), s.latency_ms, s.id
 `;
 
 /** Защита в глубину: даже если SQL что-то пропустит, приватное не уйдёт. */
@@ -155,7 +156,8 @@ export async function handleSubscription(
   deliverable.forEach((server, index) => {
     const key = parseUri(server.link);
     if (!key) return;
-    uris.push(withLabel(server.link, serverLabel(server.pool_name, key, index + 1)));
+    const own = server.visibility === "private" ? server.remark : "";
+    uris.push(withLabel(server.link, serverLabel(server.pool_name, key, index + 1, own)));
   });
 
   const body =

@@ -12,7 +12,7 @@ import type { Env } from "./types";
 import { BRAND } from "./brand";
 
 const SYNC_CRON = "0 */6 * * *";
-const HEALTH_CRON = "*/30 * * * *";
+const HEALTH_CRON = "*/20 * * * *";
 
 function landing(env: Env): Response {
   const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8">

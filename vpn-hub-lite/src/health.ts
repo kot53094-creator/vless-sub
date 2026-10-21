@@ -16,7 +16,7 @@ import type { Env, Health } from "./types";
 
 // 24 вместо 8: после загрузки больших источников пул иначе проверяется сутками.
 // 24 проверки + уведомления укладываются в лимит 50 подзапросов на вызов.
-const BATCH = 24;
+const BATCH = 30;
 const TIMEOUT_MS = 1500;
 
 interface CheckRow {
