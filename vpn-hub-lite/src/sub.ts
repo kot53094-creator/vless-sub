@@ -22,6 +22,7 @@ import {
 import type { DeliverableServer, Env, UserRow } from "./types";
 import { BRAND } from "./brand";
 import { assignIfEmpty } from "./balance";
+import { compareServers, isModern } from "./ranking";
 
 export const PROFILE_REFRESH_HOURS = 6;
 
@@ -131,11 +132,13 @@ export async function handleSubscription(
     );
   }
 
-  const cacheKey = `sub:v1:${token}`;
+  const cacheKey = `sub:v2:${token}`;
   const cached = await env.CACHE.get(cacheKey);
   if (cached) {
-    const parsed = JSON.parse(cached) as { body: string; userinfo: string };
-    return plain(parsed.body, parsed.userinfo, user);
+    const parsed = JSON.parse(cached) as { body: string };
+    // Заголовок считаем заново из БД: в кэше он устаревает и Happ
+    // показывает «безлимит», если срок или лимит поменяли.
+    return plain(parsed.body, await buildUserinfo(env, user), user);
   }
 
   // Платные и приватные источники видит только админ — «моя подписка».
@@ -151,6 +154,9 @@ export async function handleSubscription(
       deliverable = rows.filter((row) => isDeliverable(row, isAdmin));
     }
   }
+
+  // Только то, что реально пробивает блокировки, и лучшее — вверх.
+  deliverable = deliverable.filter(isModern).sort(compareServers);
 
   const uris: string[] = [];
   deliverable.forEach((server, index) => {
@@ -169,7 +175,7 @@ export async function handleSubscription(
   await touchFetchLog(env, user, request);
 
   if (uris.length > 0) {
-    await env.CACHE.put(cacheKey, JSON.stringify({ body, userinfo }), {
+    await env.CACHE.put(cacheKey, JSON.stringify({ body }), {
       expirationTtl: Number(env.SUB_CACHE_TTL ?? "600"),
     });
   }
