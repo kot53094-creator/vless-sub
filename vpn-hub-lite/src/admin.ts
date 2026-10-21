@@ -1,6 +1,7 @@
 /** Админка: каркас дашборда — сайдбар, топбар, KPI, график, «бублик», кольца. */
 
-import { rebalance, serverLoads } from "./balance";
+import { assignForUser, rebalance, serverLoads } from "./balance";
+import { invalidateSubscription } from "./sub";
 import { logEvent, many, one, run } from "./db";
 import { syncOneSource } from "./sync";
 import { maskLink, maskToken } from "./labels";
@@ -751,6 +752,11 @@ async function serversPage(env: Env): Promise<Response> {
     </form>
     <form method="post" action="/admin/action" class="inline">
       <input type="hidden" name="csrf" value="${csrf}">
+      <input type="hidden" name="action" value="refill">
+      <button class="btn">Добрать серверы всем</button>
+    </form>
+    <form method="post" action="/admin/action" class="inline">
+      <input type="hidden" name="csrf" value="${csrf}">
       <input type="hidden" name="action" value="rebalance">
       <button class="btn">Выровнять</button>
     </form>
@@ -1302,6 +1308,22 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
     const { runHealth } = await import("./health");
     const result = await runHealth(env);
     return back("/admin/servers", `Проверено ${result.checked}, мёртвых ${result.dead}`);
+  }
+
+  if (action === "refill") {
+    const targets = await many<{ id: number; sub_token: string }>(
+      env,
+      "SELECT id, sub_token FROM users WHERE status = 'active' LIMIT 100",
+    );
+    const per = Math.max(1, Number(env.SERVERS_PER_USER ?? "15") || 15);
+    let added = 0;
+    for (const target of targets) {
+      const picked = await assignForUser(env, target.id, per);
+      added += picked.length;
+      await invalidateSubscription(env, target.sub_token);
+    }
+    await logEvent(env, "refill", null, `добрано серверов: ${added}`);
+    return back("/admin/servers", `Добрано серверов: ${added}`);
   }
 
   if (action === "rebalance") {

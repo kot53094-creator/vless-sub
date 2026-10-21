@@ -14,7 +14,9 @@ import { notifyUser, sendToAdmin } from "./bot/telegram";
 import { dailyDigest } from "./reports";
 import type { Env, Health } from "./types";
 
-const BATCH = 8;
+// 24 вместо 8: после загрузки больших источников пул иначе проверяется сутками.
+// 24 проверки + уведомления укладываются в лимит 50 подзапросов на вызов.
+const BATCH = 24;
 const TIMEOUT_MS = 1500;
 
 interface CheckRow {
@@ -64,7 +66,9 @@ export async function runHealth(env: Env): Promise<HealthResult> {
     `SELECT s.id, s.host, s.port, s.status, s.status AS server_status,
             src.kind AS source_kind, src.name AS source_name
      FROM servers s JOIN sources src ON src.id = s.source_id
-     ORDER BY (s.last_check_at IS NOT NULL), s.last_check_at
+     -- Сначала те, что уже выданы людям: их состояние важнее всего.
+     ORDER BY EXISTS (SELECT 1 FROM assignments a WHERE a.server_id = s.id) DESC,
+              (s.last_check_at IS NOT NULL), s.last_check_at
      LIMIT ?`,
     BATCH,
   );
