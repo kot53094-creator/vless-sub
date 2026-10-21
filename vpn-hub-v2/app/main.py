@@ -13,7 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .config import settings
 from .db import SessionLocal, init_db
-from .routers import pages, sub
+from .routers import pages, people, sub
 from .services import detector, sync
 from .services.bus import bus
 
@@ -62,6 +62,7 @@ STATIC = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 
 app.include_router(pages.router)
+app.include_router(people.router)
 app.include_router(sub.router)
 
 

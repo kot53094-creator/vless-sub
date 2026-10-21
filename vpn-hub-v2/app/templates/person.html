@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% set active = 'people' %}
+{% block title %}Человек · VPN Hub{% endblock %}
+{% block body %}
+
+<a href="/people" class="muted">← к списку</a>
+
+<div class="topbar" style="margin-top:12px">
+  <div>
+    <h1>{% if person.username %}@{{ person.username }}{% else %}id {{ person.tg_id }}{% endif %}</h1>
+    <div class="muted">
+      <span class="status">
+        <span class="dot {{ 'alive' if person.status == 'active' else 'dead' if person.status == 'banned' else 'warn' }}"></span>
+        {{ 'активен' if person.status == 'active' else 'триал' if person.status == 'trial' else 'забанен' if person.status == 'banned' else 'истёк' }}
+      </span>
+      · {{ person.expires_at | dt }} · {{ person.days_left | days }}
+    </div>
+  </div>
+</div>
+
+{% if ok %}<div class="card tight" style="border-color:var(--signal)">{{ ok }}</div>{% endif %}
+{% if err %}<div class="card tight" style="border-color:var(--danger);color:var(--danger)">{{ err }}</div>{% endif %}
+{% if panel_error %}<div class="card tight" style="border-color:var(--warn)">Панель: {{ panel_error }}</div>{% endif %}
+
+<div class="card">
+  <h2>Выдать доступ</h2>
+  <p class="muted">Сколько дней, сколько гигабайт и сколько устройств — вручную.</p>
+  <form method="post" action="/people/{{ person.id }}/grant" class="btn-row" style="align-items:flex-end">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div style="flex:1;min-width:90px">
+      <label class="muted">Дней</label>
+      <input name="days" value="30" inputmode="numeric">
+    </div>
+    <div style="flex:1;min-width:90px">
+      <label class="muted">ГБ</label>
+      <input name="gb" placeholder="как есть" inputmode="numeric">
+    </div>
+    <div style="flex:1;min-width:90px">
+      <label class="muted">Устройств</label>
+      <input name="devices" value="{{ person.device_limit }}" inputmode="numeric">
+    </div>
+    <button class="btn">Выдать</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Срок</h2>
+  <div class="btn-row">
+    {% for days in [7, 30, 90] %}
+    <form method="post" action="/people/{{ person.id }}/action">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="action" value="extend">
+      <input type="hidden" name="value" value="{{ days }}">
+      <button class="btn small">+{{ days }} дн</button>
+    </form>
+    {% endfor %}
+    <form method="post" action="/people/{{ person.id }}/action">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="action" value="shorten">
+      <input type="hidden" name="value" value="1">
+      <button class="btn ghost small">−1 день</button>
+    </form>
+  </div>
+  <form method="post" action="/people/{{ person.id }}/action" class="btn-row" style="margin-top:12px">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="action" value="date">
+    <input type="date" name="value" required aria-label="Новая дата" style="max-width:200px">
+    <button class="btn ghost small">Поставить дату</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Лимиты</h2>
+  <form method="post" action="/people/{{ person.id }}/action" class="btn-row">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="action" value="traffic">
+    <input name="value" inputmode="numeric" value="{{ ((person.traffic_limit or 0) / gb) | round(0, 'floor') | int }}" style="max-width:120px" aria-label="ГБ">
+    <button class="btn ghost small">Лимит трафика, ГБ</button>
+  </form>
+  <form method="post" action="/people/{{ person.id }}/action" class="btn-row" style="margin-top:10px">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="action" value="devices">
+    <input name="value" inputmode="numeric" value="{{ person.device_limit }}" style="max-width:100px" aria-label="Устройств">
+    <button class="btn ghost small">Лимит устройств</button>
+  </form>
+  <form method="post" action="/people/{{ person.id }}/action" class="btn-row" style="margin-top:10px">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="action" value="squad">
+    <input name="value" value="{{ person.squad }}" placeholder="squad uuid" style="max-width:260px" aria-label="Группа серверов">
+    <button class="btn ghost small">Группа серверов</button>
+  </form>
+  <div class="muted" style="margin-top:8px">
+    Использовано: {{ person.traffic_used | bytes }}{% if person.traffic_limit %} из {{ person.traffic_limit | bytes }}{% endif %}.
+  </div>
+</div>
+
+<div class="card">
+  <h2>Действия</h2>
+  <div class="btn-row">
+    <form method="post" action="/people/{{ person.id }}/action">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="action" value="reset">
+      <button class="btn ghost small">Сбросить трафик</button>
+    </form>
+    <form method="post" action="/people/{{ person.id }}/action">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="action" value="revoke">
+      <button class="btn ghost small">Перевыпустить ссылку</button>
+    </form>
+    <form method="post" action="/people/{{ person.id }}/action">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="action" value="{{ 'enable' if person.status == 'banned' else 'disable' }}">
+      <button class="btn {{ 'ghost' if person.status == 'banned' else 'danger' }} small">
+        {{ 'Включить' if person.status == 'banned' else 'Отключить' }}
+      </button>
+    </form>
+  </div>
+
+  {% if tariffs %}
+  <form method="post" action="/people/{{ person.id }}/action" class="btn-row" style="margin-top:12px">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="action" value="tariff">
+    <select name="value" aria-label="Тариф">
+      {% for t in tariffs %}
+        <option value="{{ t.id }}">{{ t.name }} — {{ t.days }} дн., {{ t.gb }} ГБ</option>
+      {% endfor %}
+    </select>
+    <button class="btn small">Применить тариф</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Устройства ({{ devices|length }} из {{ person.device_limit }})</h2>
+  {% if not devices %}
+    <div class="muted">Пока не подключался.</div>
+  {% else %}
+    {% for device in devices %}
+      <div class="source-row">
+        <div>
+          <div class="row-title">{{ device.model or device.platform or 'Устройство' }}</div>
+          <div class="row-meta">
+            <span>{{ device.platform or '—' }}</span>
+            <span>{{ device.ip or '—' }}</span>
+            <span>{{ device.last_at | dt }}</span>
+            <span class="muted">{{ device.hwid[:16] }}…</span>
+          </div>
+        </div>
+        <form method="post" action="/people/{{ person.id }}/action">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="action" value="delete_device">
+          <input type="hidden" name="value" value="{{ device.hwid }}">
+          <button class="btn danger small">Удалить</button>
+        </form>
+      </div>
+    {% endfor %}
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Заметка</h2>
+  <form method="post" action="/people/{{ person.id }}/action">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="action" value="note">
+    <textarea name="value" style="min-height:80px">{{ person.note }}</textarea>
+    <button class="btn ghost small" style="margin-top:8px">Сохранить заметку</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Написать через бота</h2>
+  <form method="post" action="/people/{{ person.id }}/action">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="action" value="notify">
+    <textarea name="value" style="min-height:80px" placeholder="Короткое сообщение"></textarea>
+    <button class="btn ghost small" style="margin-top:8px">Отправить</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Журнал</h2>
+  {% if not events %}<div class="muted">Изменений пока не было.</div>{% endif %}
+  {% for e in events %}
+    <div class="row-meta" style="border-bottom:1px solid var(--line);padding:6px 0">
+      <span>{{ e.action }}</span>
+      <span class="muted">{{ e.before }} → {{ e.after }}</span>
+      <span class="muted">{{ e.ts | dt }}</span>
+    </div>
+  {% endfor %}
+</div>
+
+{% endblock %}

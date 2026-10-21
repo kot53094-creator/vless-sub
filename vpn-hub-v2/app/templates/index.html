@@ -42,9 +42,11 @@
       <textarea id="add-text" placeholder="vless://… или https://…/sub/…&#10;Можно несколько строк" aria-label="Ссылка или ключ"></textarea>
       <div class="btn-row" style="margin-top:12px">
         <button class="btn" type="submit" id="add-btn">Добавить</button>
-        <span class="muted" style="align-self:center">Проверю сразу после добавления</span>
+        <button class="btn ghost" type="button" onclick="hubPreview(this)">Проверить без сохранения</button>
+        <span class="muted" style="align-self:center">Сначала можно посмотреть, что найдётся</span>
       </div>
     </form>
+    <div class="log" id="preview-log" hidden></div>
   </div>
 
   <div class="card" x-show="results.length" x-cloak>

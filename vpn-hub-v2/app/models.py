@@ -167,6 +167,7 @@ class Person(Base):
     remnawave_uuid: Mapped[str] = mapped_column(String(64), default="")
     trial_used: Mapped[int] = mapped_column(Integer, default=0)
     note: Mapped[str] = mapped_column(Text, default="")
+    sub_url: Mapped[str] = mapped_column(String(400), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     @property
@@ -174,6 +175,12 @@ class Person(Base):
         if not self.expires_at:
             return None
         return math.ceil((as_utc(self.expires_at) - utcnow()).total_seconds() / 86400)
+
+    @property
+    def traffic_pct(self) -> float | None:
+        if not self.traffic_limit:
+            return None
+        return min(100.0, 100.0 * (self.traffic_used or 0) / self.traffic_limit)
 
 
 class Tariff(Base):

@@ -2,15 +2,102 @@
 {% set active = 'people' %}
 {% block title %}Люди · VPN Hub{% endblock %}
 {% block body %}
+
 <div class="topbar">
   <div>
     <h1>Люди</h1>
-    <div class="muted">Панель подключена. Полный раздел появится на следующем этапе.</div>
+    <div class="muted">всего {{ stats.total }} · активных {{ stats.active }} · триал {{ stats.trial }} · истекают {{ stats.expiring }}</div>
   </div>
+  <div class="spacer"></div>
+  <a class="btn ghost small" href="/tariffs">Тарифы</a>
+  <a class="btn ghost small" href="/broadcasts">Рассылка</a>
 </div>
+
+{% if ok %}<div class="card tight" style="border-color:var(--signal)">{{ ok }}</div>{% endif %}
+{% if err %}<div class="card tight" style="border-color:var(--danger);color:var(--danger)">{{ err }}</div>{% endif %}
+
 <div class="card">
-  <h2>Что уже готово</h2>
-  <p class="muted">Хаб видит панель и умеет с ней работать. Список людей, карточка, тарифы и рассылки — следующий этап сборки.</p>
-  <a class="btn ghost" href="/">На главную</a>
+  <form method="get" action="/people" class="btn-row" style="align-items:flex-end">
+    <div style="flex:1;min-width:200px">
+      <label class="muted" for="q">Поиск</label>
+      <input id="q" name="q" value="{{ q }}" placeholder="tg_id, username, заметка">
+    </div>
+    <div>
+      <label class="muted" for="status">Статус</label>
+      <select id="status" name="status">
+        {% for value, label in [('all','Любой'), ('active','Активный'), ('trial','Триал'), ('expired','Истёк'), ('banned','Забанен')] %}
+          <option value="{{ value }}" {{ 'selected' if status == value }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="muted" for="filter">Показать</label>
+      <select id="filter" name="filter">
+        {% for value, label in [('all','Всех'), ('expiring','Срок на исходе'), ('traffic','Трафик на исходе'), ('trial','Только триалы'), ('paid','Только платные')] %}
+          <option value="{{ value }}" {{ 'selected' if filter == value }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn" type="submit">Найти</button>
+  </form>
 </div>
+
+{% if not people %}
+  <div class="card"><div class="empty"><b>Пока никого</b>Человек появится здесь, когда напишет боту /start и получит пробный доступ.</div></div>
+{% else %}
+<form method="post" action="/people/bulk">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="card">
+    <div class="card-head">
+      <h2>Список</h2>
+      <div class="spacer"></div>
+      <div class="btn-row">
+        <select name="action" style="min-height:40px">
+          <option value="extend">Продлить</option>
+          <option value="reset">Сбросить трафик</option>
+          <option value="ban">Забанить</option>
+          <option value="unban">Разбанить</option>
+        </select>
+        <input name="days" value="30" inputmode="numeric" style="width:80px;min-height:40px" aria-label="Дней">
+        <button class="btn small" type="submit">Применить к выбранным</button>
+      </div>
+    </div>
+
+    <table style="width:100%;border-collapse:collapse;font-size:14px">
+      <thead>
+        <tr class="muted" style="text-align:left">
+          <th style="width:28px"></th><th>Человек</th><th>Статус</th><th>Срок</th><th>Трафик</th><th>Устройства</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for p in people %}
+        <tr style="border-top:1px solid var(--line)">
+          <td><input type="checkbox" name="ids" value="{{ p.id }}" aria-label="Выбрать"></td>
+          <td>
+            <div>{% if p.username %}@{{ p.username }}{% else %}id {{ p.tg_id }}{% endif %}</div>
+            <div class="muted">{{ p.tg_id }}</div>
+          </td>
+          <td>
+            <span class="status">
+              <span class="dot {{ 'alive' if p.status == 'active' else 'dead' if p.status == 'banned' else 'warn' }}"></span>
+              {{ 'активен' if p.status == 'active' else 'триал' if p.status == 'trial' else 'забанен' if p.status == 'banned' else 'истёк' }}
+            </span>
+          </td>
+          <td>{{ p.days_left | days }}</td>
+          <td>
+            {% if p.traffic_limit %}
+              {% set pct = (p.traffic_used or 0) / p.traffic_limit * 100 %}
+              {{ p.traffic_used | bytes }} / {{ p.traffic_limit | bytes }}
+              <div class="bar"><i class="{{ 'dead' if pct >= 100 else 'warn' if pct >= 80 else '' }}" style="width:{{ [pct, 100]|min }}%"></i></div>
+            {% else %}<span class="muted">без лимита</span>{% endif %}
+          </td>
+          <td>{{ p.device_limit }}</td>
+          <td><a class="btn ghost small" href="/people/{{ p.id }}">Открыть</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</form>
+{% endif %}
 {% endblock %}

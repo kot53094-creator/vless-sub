@@ -20,6 +20,7 @@ from aiogram.types import BotCommand
 from ..config import settings
 from ..db import init_db
 from .handlers import router
+from .people_handlers import router as people_router
 
 log = logging.getLogger("vpnhub.bot")
 
@@ -31,6 +32,8 @@ COMMANDS = [
     BotCommand(command="addkey", description="Добавить ключ"),
     BotCommand(command="mode", description="Режим сети"),
     BotCommand(command="report", description="Список источников"),
+    BotCommand(command="users", description="Люди"),
+    BotCommand(command="stats", description="Сводка"),
     BotCommand(command="help", description="Помощь"),
 ]
 
@@ -38,6 +41,7 @@ COMMANDS = [
 def build_dispatcher() -> Dispatcher:
     dp = Dispatcher()
     dp.include_router(router)
+    dp.include_router(people_router)
     return dp
 
 

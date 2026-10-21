@@ -65,11 +65,13 @@ def test_instruction_override_from_settings(db):
 
 def test_device_menu_has_all_buttons():
     buttons = [label for row in device_menu() for label, _ in row]
-    assert len(buttons) == len(DEVICE_TITLES)
-    assert "Android" in buttons
+    # пять устройств + «Назад»
+    assert len(buttons) == len(DEVICE_TITLES) + 1
+    assert "Android" in buttons and "← Назад" in buttons
 
 
 def test_welcome_buttons_are_actions():
     callbacks = [data for row in WELCOME_BUTTONS for _, data in row]
     assert all(data.startswith("act:") for data in callbacks)
-    assert "act:link" in callbacks
+    assert "act:devices" in callbacks
+    assert "act:cabinet" in callbacks

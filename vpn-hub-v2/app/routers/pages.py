@@ -137,6 +137,44 @@ def api_add(request: Request, payload: dict, db: Session = Depends(get_db)):
     return JSONResponse({"results": results})
 
 
+@router.post("/api/sources/preview")
+def api_preview(request: Request, payload: dict, db: Session = Depends(get_db)):
+    """Разобрать строки и показать, что найдётся — без сохранения."""
+    security.require_user(request)
+    security.check_csrf(request, str(payload.get("csrf", "")))
+    raw = str(payload.get("text", ""))
+    normalized = raw.replace(chr(13), chr(10))
+    lines = [line.strip() for line in normalized.split(chr(10)) if line.strip()][:40]
+    if not lines:
+        return JSONResponse({"error": "Вставьте ссылку или ключ"}, status_code=400)
+
+    from ..services.parser import is_subscription_url, parse_subscription, parse_uri
+    from ..services.sources import fetch_subscription, guess_kind
+
+    items = []
+    for line in lines:
+        item = {"line": line[:120], "kind": guess_kind(line), "found": 0, "hosts": [], "error": ""}
+        if is_subscription_url(line):
+            try:
+                body, _info = fetch_subscription(line, "preview")
+                keys = parse_subscription(body)
+                item["found"] = len(keys)
+                item["hosts"] = [f"{k.host}:{k.port}" for k in keys[:5]]
+                if not keys:
+                    item["error"] = "в подписке нет ключей"
+            except Exception as exc:  # noqa: BLE001
+                item["error"] = f"не скачалась: {type(exc).__name__}"
+        else:
+            parsed = parse_uri(line)
+            if parsed:
+                item["found"] = 1
+                item["hosts"] = [f"{parsed.host}:{parsed.port}"]
+            else:
+                item["error"] = "не похоже на ключ"
+        items.append(item)
+    return JSONResponse({"items": items})
+
+
 @router.post("/api/sources/{source_id}/delete")
 def api_delete(source_id: int, request: Request, payload: dict, db: Session = Depends(get_db)):
     security.require_user(request)

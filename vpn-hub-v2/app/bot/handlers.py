@@ -37,7 +37,10 @@ class AddKey(StatesGroup):
 
 
 def keyboard(rows: list[list[tuple[str, str]]] | None = None) -> InlineKeyboardMarkup:
-    rows = rows or WELCOME_BUTTONS
+    if rows is None:
+        rows = list(WELCOME_BUTTONS)
+        if settings.people_enabled:
+            rows = [[("Пробный доступ", "p:trial"), ("Кабинет", "p:cabinet")]] + rows
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=label, callback_data=data) for label, data in row]
         for row in rows
@@ -215,6 +218,14 @@ async def cb_open(callback: CallbackQuery) -> None:
     await callback.message.answer(f'happ://add/{sub_link()}')
 
 
+@router.callback_query(F.data == "act:cabinet")
+async def cb_cabinet(callback: CallbackQuery) -> None:
+    await callback.answer()
+    from .people_handlers import send_cabinet
+
+    await send_cabinet(callback.message, str(callback.from_user.id))
+
+
 @router.callback_query(F.data == "act:status")
 async def cb_status(callback: CallbackQuery) -> None:
     await callback.answer()
@@ -238,6 +249,21 @@ async def cb_refresh(callback: CallbackQuery) -> None:
     await callback.answer("Запустил")
     start_refresh("bot")
     await callback.message.answer("Обновляю. Итог пришлю сюда же.")
+
+
+@router.callback_query(F.data == "act:back")
+async def cb_back(callback: CallbackQuery) -> None:
+    await callback.answer()
+    await callback.message.answer(WELCOME, reply_markup=keyboard())
+
+
+@router.callback_query(F.data == "act:plans")
+async def cb_plans(callback: CallbackQuery) -> None:
+    await callback.answer()
+    await callback.message.answer(
+        "Тарифы и оплата — у администратора.\n"
+        "Пробный доступ выдаётся один раз."
+    )
 
 
 @router.callback_query(F.data == "act:help")
@@ -306,25 +332,4 @@ async def cmd_report(message: Message) -> None:
     await message.answer("\n".join(lines))
 
 
-@router.message(Command("users"))
-async def cmd_users(message: Message) -> None:
-    """Без Remnawave людей нет — честно говорим об этом."""
-    if not is_admin(message.from_user.id):
-        return
-    if not settings.people_enabled:
-        await message.answer(
-            "Раздел «Люди» выключен: не подключена панель Remnawave.\n"
-            "Сайт и подписка работают без неё."
-        )
-        return
-    await message.answer("Список людей появится вместе с разделом «Люди» на сайте.")
-
-
-@router.message(Command("broadcast"))
-async def cmd_broadcast(message: Message) -> None:
-    if not is_admin(message.from_user.id):
-        return
-    await message.answer(
-        "Рассылка появится вместе с разделом «Люди».\n"
-        "Сейчас бот обслуживает только ваш хаб."
-    )
+# Команды для людей (/users, /grant, /broadcast, /stats) — в people_handlers.py

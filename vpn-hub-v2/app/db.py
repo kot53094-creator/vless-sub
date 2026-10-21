@@ -36,6 +36,7 @@ EXTRA_COLUMNS: dict[str, dict[str, str]] = {
         "squad": "VARCHAR(80) DEFAULT ''",
         "remnawave_uuid": "VARCHAR(64) DEFAULT ''",
         "trial_used": "INTEGER DEFAULT 0",
+        "sub_url": "VARCHAR(400) DEFAULT ''",
     },
 }
 

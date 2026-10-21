@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% set active = 'audit' %}
+{% block title %}Журнал · VPN Hub{% endblock %}
+{% block body %}
+<div class="topbar"><div><h1>Журнал</h1><div class="muted">кто, что и когда менял</div></div></div>
+
+<div class="card">
+  {% if not items %}<div class="muted">Пока пусто.</div>{% endif %}
+  {% for item in items %}
+    <div class="row-meta" style="border-bottom:1px solid var(--line);padding:8px 0;gap:12px">
+      <span style="color:var(--text)">{{ item.action }}</span>
+      <span class="muted">{{ item.target }}</span>
+      {% if item.before or item.after %}<span class="muted">{{ item.before }} → {{ item.after }}</span>{% endif %}
+      <span class="muted" style="margin-left:auto">{{ item.ts | dt }}</span>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

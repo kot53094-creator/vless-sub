@@ -32,6 +32,20 @@ async def send(text: str) -> bool:
         return False
 
 
+async def send_to(tg_id: str, text: str) -> bool:
+    """Сообщение конкретному человеку (не админу)."""
+    if not settings.bot_token or not tg_id:
+        return False
+    payload = {"chat_id": tg_id, "text": text[:4000], "parse_mode": "HTML",
+               "disable_web_page_preview": True}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(API.format(token=settings.bot_token), json=payload)
+            return response.status_code == 200
+    except httpx.HTTPError:
+        return False
+
+
 def _e(value: str) -> str:
     return html.escape(value or "")
 

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% set active = 'people' %}
+{% block title %}Тарифы · VPN Hub{% endblock %}
+{% block body %}
+<div class="topbar">
+  <div><h1>Тарифы</h1><div class="muted">шаблоны, чтобы выдавать доступ в один клик</div></div>
+  <div class="spacer"></div>
+  <a class="btn ghost small" href="/people">← Люди</a>
+</div>
+
+{% if not people_enabled %}
+  <div class="card" style="border-color:var(--warn)">Панель Remnawave не подключена: тарифы можно создать, но применить их пока не к кому.</div>
+{% endif %}
+{% if ok %}<div class="card tight" style="border-color:var(--signal)">{{ ok }}</div>{% endif %}
+{% if err %}<div class="card tight" style="border-color:var(--danger);color:var(--danger)">{{ err }}</div>{% endif %}
+
+<div class="card">
+  <h2>Список</h2>
+  {% if not tariffs %}<div class="muted">Пока нет тарифов.</div>{% endif %}
+  {% for t in tariffs %}
+    <div class="source-row">
+      <div>
+        <div class="row-title">{{ t.name }}</div>
+        <div class="row-meta"><span>{{ t.days }} дн.</span><span>{{ t.gb }} ГБ</span><span>{{ t.devices }} устройств</span>
+          {% if t.squad %}<span class="muted">{{ t.squad }}</span>{% endif %}</div>
+      </div>
+      <form method="post" action="/tariffs/{{ t.id }}/delete"
+            onsubmit="return confirm('Удалить тариф «{{ t.name }}»?')">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn danger small">Удалить</button>
+      </form>
+    </div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h2>Новый тариф</h2>
+  <form method="post" action="/tariffs/create">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label class="muted">Название</label>
+    <input name="name" placeholder="Месяц">
+    <div class="btn-row" style="margin-top:10px">
+      <div style="flex:1"><label class="muted">Дней</label><input name="days" value="30" inputmode="numeric"></div>
+      <div style="flex:1"><label class="muted">ГБ</label><input name="gb" value="100" inputmode="numeric"></div>
+      <div style="flex:1"><label class="muted">Устройств</label><input name="devices" value="3" inputmode="numeric"></div>
+    </div>
+    <label class="muted" style="display:block;margin-top:10px">Группа серверов (необязательно)</label>
+    <input name="squad" placeholder="uuid группы">
+    <button class="btn" style="margin-top:12px">Добавить тариф</button>
+  </form>
+</div>
+{% endblock %}

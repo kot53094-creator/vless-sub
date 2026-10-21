@@ -79,6 +79,40 @@ function hubAdd(event) {
     .finally(() => { button.disabled = false; button.innerHTML = original; });
 }
 
+function hubPreview(button) {
+  const textarea = document.getElementById("add-text");
+  const log = document.getElementById("preview-log");
+  const text = textarea.value.trim();
+  if (!text) { hubToast("Вставьте ссылку или ключ", "warn"); return; }
+
+  button.disabled = true;
+  const label = button.textContent;
+  button.textContent = "Смотрю…";
+  log.hidden = false;
+  log.textContent = "";
+
+  fetch("/api/sources/preview", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ text: text, csrf: hubCsrf() })
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      if (data.error) { hubToast(data.error, "error"); return; }
+      const items = data.items || [];
+      log.textContent = items.map((item) => {
+        if (item.error) return "✕ " + item.line + " — " + item.error;
+        const hosts = item.hosts.length ? " (" + item.hosts.join(", ") + ")" : "";
+        const kind = item.kind === "public" ? "подписка" : "ключ";
+        return "✓ " + kind + ": найдено " + item.found + hosts;
+      }).join("\n");
+      const total = items.reduce((sum, item) => sum + (item.found || 0), 0);
+      hubToast("Найдётся ключей: " + total + ". Ничего не сохранено.");
+    })
+    .catch(() => hubToast("Не удалось проверить. Проверьте связь.", "error"))
+    .finally(() => { button.disabled = false; button.textContent = label; });
+}
+
 function hubDelete(id, name) {
   if (!confirm(`Удалить источник «${name}»?`)) return;
   fetch(`/api/sources/${id}/delete`, {
