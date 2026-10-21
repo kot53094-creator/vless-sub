@@ -2,6 +2,7 @@
 
 import { rebalance, serverLoads } from "./balance";
 import { logEvent, many, one, run } from "./db";
+import { syncOneSource } from "./sync";
 import { maskLink, maskToken } from "./labels";
 import {
   adminCookieValue,
@@ -650,7 +651,8 @@ async function sourcesPage(env: Env, url: URL): Promise<Response> {
         : "—";
       return `<tr data-row="${esc(source.name)}">
         <td>${source.id}. ${esc(source.name)}
-          <div class="muted">${esc(source.kind)} · ${esc(source.visibility)}</div></td>
+          <div class="muted">${esc(source.kind)} · ${esc(source.visibility)}</div>
+          ${source.last_error ? `<div class="muted" style="color:#FFB454">${esc(source.last_error.slice(0, 90))}</div>` : ""}</td>
         <td><span class="pill ${cls}">${esc(source.status)}</span></td>
         <td>${esc(source.expires_at?.slice(0, 10) ?? "—")}</td>
         <td>${traffic}<div class="muted">серверов: ${source.servers_count}</div></td>
@@ -669,6 +671,12 @@ async function sourcesPage(env: Env, url: URL): Promise<Response> {
         </td>
         <td><details><summary>ссылка</summary><div class="mono">${esc(maskLink(source.url_or_link))}</div></details></td>
         <td>
+          <form method="post" action="/admin/action" class="inline">
+            <input type="hidden" name="csrf" value="${csrf}">
+            <input type="hidden" name="action" value="sync_source">
+            <input type="hidden" name="id" value="${source.id}">
+            <button class="btn">Скачать сейчас</button>
+          </form>
           <form method="post" action="/admin/action" class="inline">
             <input type="hidden" name="csrf" value="${csrf}">
             <input type="hidden" name="action" value="preview_source">
@@ -902,6 +910,12 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
     return back("/admin/users", "Слот выдан");
   }
 
+  if (action === "sync_source") {
+    const result = await syncOneSource(env, id);
+    if (result.error) return back("/admin/sources", "", `Не скачалось: ${result.error}`);
+    return back("/admin/sources", `Скачано, серверов: ${result.servers}`);
+  }
+
   if (action === "preview_source") {
     const source = await one<SourceRow>(env, "SELECT * FROM sources WHERE id = ?", id);
     if (!source) return back("/admin/sources", "", "Источник не найден");
@@ -940,7 +954,22 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
       link,
       visibility,
     );
+    const created = await one<{ id: number }>(
+      env,
+      "SELECT id FROM sources WHERE name = ? AND kind = ? ORDER BY id DESC LIMIT 1",
+      name.slice(0, 80),
+      kind,
+    );
     await logEvent(env, "source_add", null, `${kind}: ${name}`);
+
+    // Не ждём cron: сразу качаем и проверяем, чтобы человек увидел серверы.
+    if (created) {
+      const result = await syncOneSource(env, created.id);
+      if (result.error) {
+        return back("/admin/sources", "", `Источник добавлен, но не скачался: ${result.error}`);
+      }
+      return back("/admin/sources", `Источник «${name}» добавлен, серверов: ${result.servers}`);
+    }
     return back("/admin/sources", `Источник «${name}» добавлен`);
   }
 

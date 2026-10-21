@@ -34,6 +34,8 @@ const SERVER_SQL = `
   JOIN servers s ON s.id = a.server_id
   JOIN sources src ON src.id = s.source_id
   WHERE a.user_id = ?1 AND s.status = 'alive'
+    AND (src.visibility = 'shareable' OR ?2 = 1)
+    AND (src.kind <> 'paid_private' OR ?2 = 1)
     AND (
       src.max_devices = 0
       OR EXISTS (SELECT 1 FROM user_sources us
@@ -116,7 +118,9 @@ export async function handleSubscription(
     return plain(parsed.body, parsed.userinfo, user);
   }
 
-  const rows = await many<DeliverableServer>(env, SERVER_SQL, user.id);
+  // Платные и приватные источники видит только админ — «моя подписка».
+  const isAdmin = String(user.tg_id) === envStr(env.ADMIN_TG_ID);
+  const rows = await many<DeliverableServer>(env, SERVER_SQL, user.id, isAdmin ? 1 : 0);
   const deliverable = rows.filter(isDeliverable);
 
   const uris: string[] = [];

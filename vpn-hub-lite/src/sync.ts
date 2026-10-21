@@ -21,6 +21,28 @@ interface CachedSource {
   userinfo: ReturnType<typeof parseUserinfo>;
 }
 
+/** Синхронизировать один источник прямо сейчас (после добавления или по кнопке). */
+export async function syncOneSource(
+  env: Env,
+  sourceId: number,
+): Promise<{ servers: number; error: string }> {
+  const source = await one<SourceRow>(env, "SELECT * FROM sources WHERE id = ?", sourceId);
+  if (!source) return { servers: 0, error: "источник не найден" };
+  try {
+    const count = await syncOne(env, source);
+    return { servers: count, error: "" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await run(
+      env,
+      "UPDATE sources SET last_sync_at = datetime('now'), last_error = ? WHERE id = ?",
+      message.slice(0, 200),
+      sourceId,
+    );
+    return { servers: 0, error: message.slice(0, 160) };
+  }
+}
+
 export interface SyncResult {
   sources: number;
   servers: number;
@@ -68,6 +90,17 @@ export async function runSync(env: Env): Promise<SyncResult> {
     );
   }
   return result;
+}
+
+
+/** Что пришло от источника — без раскрытия самих ключей. */
+function describeBody(text: string): string {
+  const head = text.trim().slice(0, 200);
+  if (!head) return "пустой ответ";
+  if (head.startsWith("<")) return "HTML-страница вместо подписки";
+  if (/^[A-Za-z0-9+/=_-\s]+$/.test(head) && !head.includes("://")) return "base64 (не разобрался)";
+  if (head.includes("://")) return "текст без поддерживаемых схем";
+  return "неизвестный формат";
 }
 
 async function syncOne(env: Env, source: SourceRow): Promise<number> {
@@ -119,7 +152,15 @@ async function syncOne(env: Env, source: SourceRow): Promise<number> {
     source.id,
   );
 
-  if (!keys.length) return 0;
+  if (!keys.length) {
+    await run(
+      env,
+      "UPDATE sources SET status='dead', last_error=? WHERE id=?",
+      `нет ключей: ${describeBody(payload.text)}, ${payload.text.length} байт`,
+      source.id,
+    );
+    return 0;
+  }
 
   const stamp = new Date().toISOString().slice(0, 19).replace("T", " ");
   const statements = keys.map((key) =>
