@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% set active = 'people' %}
+{% block title %}Люди · VPN Hub{% endblock %}
+{% block body %}
+<div class="topbar"><h1>Люди</h1></div>
+<div class="card">
+  <h2>Подключите панель, чтобы выдавать подписки людям</h2>
+  <p class="muted">Раздел работает через Remnawave. Пока панели нет, всё остальное на сайте работает как обычно: источники, проверка, ваша ссылка для Happ.</p>
+  <p class="muted">Когда будете готовы, добавьте в <code>.env</code> две строки и перезапустите хаб:</p>
+  <div class="log">REMNAWAVE_URL=https://panel.example.com
+REMNAWAVE_TOKEN=ваш_токен</div>
+  <div class="btn-row" style="margin-top:16px">
+    <a class="btn ghost" href="/">Вернуться на главную</a>
+  </div>
+</div>
+{% endblock %}

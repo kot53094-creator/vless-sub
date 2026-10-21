@@ -1,0 +1,5 @@
+# Замените hub.example.com на свой домен и направьте A-запись на IP сервера.
+hub.example.com {
+	encode zstd gzip
+	reverse_proxy app:8000
+}

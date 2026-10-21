@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Вход · VPN Hub</title>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&family=Unbounded:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<main class="content" style="max-width:420px;margin:12vh auto">
+  <div class="card">
+    <div class="brand" style="font-family:var(--f-head);font-size:22px;margin-bottom:4px">VPN <span style="color:var(--signal)">Hub</span></div>
+    <p class="muted">Вход в панель. Пароль — из файла .env.</p>
+    {% if error %}<div class="card tight" style="border-color:var(--danger);color:var(--danger)">{{ error }}</div>{% endif %}
+    <form method="post" action="/login">
+      <label class="muted" for="username">Логин</label>
+      <input id="username" name="username" autocomplete="username" autofocus>
+      <label class="muted" for="password" style="display:block;margin-top:12px">Пароль</label>
+      <input id="password" name="password" type="password" autocomplete="current-password">
+      {% if totp %}
+        <label class="muted" for="totp" style="display:block;margin-top:12px">Код из приложения</label>
+        <input id="totp" name="totp" inputmode="numeric" autocomplete="one-time-code" maxlength="7">
+      {% endif %}
+      <button class="btn" type="submit" style="width:100%;margin-top:16px">Войти</button>
+    </form>
+  </div>
+</main>
+</body>
+</html>

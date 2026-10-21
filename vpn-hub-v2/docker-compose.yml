@@ -1,0 +1,44 @@
+services:
+  app:
+    build: .
+    container_name: vpn-hub
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+    ports:
+      - "8080:8000"
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"
+
+  # Бот появится на этапе 4. Пока контейнер выключен профилем:
+  #   docker compose --profile bot up -d
+  bot:
+    build: .
+    container_name: vpn-hub-bot
+    restart: unless-stopped
+    profiles: ["bot"]
+    env_file: .env
+    volumes:
+      - ./data:/data
+    depends_on:
+      - app
+    command: python -m app.bot.main
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
