@@ -15,7 +15,9 @@ import { logEvent } from "./db";
 import type { Env } from "./types";
 
 const OFFSET_KEY = "tg_offset";
-const MAX_UPDATES = 10;
+// 5, а не 10: обработка одного апдейта теперь делает больше запросов к D1
+// (бонус, кабинет, группы), а лимит — 50 запросов на инвокацию.
+const MAX_UPDATES = 5;
 
 export async function runPoll(env: Env): Promise<number> {
   const row = await one<{ value: string }>(

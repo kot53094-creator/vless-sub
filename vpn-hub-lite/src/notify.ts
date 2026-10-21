@@ -13,7 +13,9 @@ import { escapeHtml, sendToAdmin } from "./bot/telegram";
 import { mskDate, parseTs, plural } from "./promotions";
 import type { Env, UserRow } from "./types";
 
-const MAX_SENDS = 12;
+// Держим запас по лимиту бесплатного плана: 50 подзапросов на инвокацию,
+// из них часть уже съедает проверка серверов в том же тике cron.
+const MAX_SENDS = 8;
 
 function expiryKeyboard(): { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } {
   return {
