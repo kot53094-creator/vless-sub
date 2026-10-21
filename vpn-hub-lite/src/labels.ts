@@ -26,7 +26,15 @@ export function protocolLabel(key: ParsedKey): string {
  * Имя пула — единственная «география», которую видит пользователь;
  * название источника (сервиса) не раскрывается никогда.
  */
-export function serverLabel(poolName: string | null, key: ParsedKey, index: number): string {
+export function serverLabel(
+  poolName: string | null,
+  key: ParsedKey,
+  index: number,
+  custom?: string,
+): string {
+  // Своим ключам оставляем человеческое имя: человек должен узнать свой сервер.
+  const own = custom?.trim();
+  if (own) return own.slice(0, 40);
   const place = poolName && poolName.trim() ? poolName.trim() : "Node";
   return `${place} · ${protocolLabel(key)} #${index}`;
 }
