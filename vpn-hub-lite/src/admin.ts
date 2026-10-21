@@ -160,6 +160,8 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
       url.searchParams.get("tg"),
       url.searchParams.get("why"),
       url.searchParams.get("poll"),
+      url.searchParams.get("diag"),
+      url.searchParams.get("ping"),
     );
   }
   if (path === "/admin/servers") return await serversPage(env);
@@ -178,6 +180,8 @@ async function usersPage(
   tgResult: string | null = null,
   why: string | null = null,
   pollResult: string | null = null,
+  diag: string | null = null,
+  ping: string | null = null,
 ): Promise<Response> {
   const users = await many<
     UserRow & { devices: number; servers: number }
@@ -237,7 +241,17 @@ async function usersPage(
       : `<div class="card" style="border-color:#1f4a33"><b>Опрос Telegram выполнен.</b>
          <span class="muted">Новых обновлений: ${esc(pollResult)}. Если вы только что написали боту — обновите страницу.</span></div>`;
 
-  const notice = pollNotice + (tgResult === "ok"
+  const diagNotice = diag
+    ? `<div class="card"><b>Диагностика Telegram</b><pre class="mono" style="white-space:pre-wrap;margin:8px 0 0">${esc(
+        diag,
+      )}</pre></div>`
+    : "";
+
+  const pingNotice = ping
+    ? `<div class="card"><b>Проверка отправки:</b> <span class="mono">${esc(ping)}</span></div>`
+    : "";
+
+  const notice = diagNotice + pollNotice + pingNotice + (tgResult === "ok"
       ? `<div class="card" style="border-color:#1f4a33"><b>Вебхук установлен.</b> <span class="muted">Бот готов принимать команды — напишите ему /start.</span></div>`
       : tgResult === "fail"
         ? `<div class="err">Telegram не принял вебхук. Проверьте BOT_TOKEN и повторите.${
@@ -252,6 +266,18 @@ async function usersPage(
       <input type="hidden" name="action" value="webhook">
       <button class="btn">Подключить бота (setWebhook)</button>
       <span class="muted">если бот молчит: установит вебхук на ${esc(env.PUBLIC_BASE_URL)}/webhook</span>
+    </form>
+    <form method="post" action="/admin/action" style="margin-top:8px">
+      <input type="hidden" name="csrf" value="${csrf}">
+      <input type="hidden" name="action" value="diag">
+      <button class="btn">Диагностика Telegram</button>
+      <span class="muted">getMe, getWebhookInfo, снять вебхук, getUpdates</span>
+    </form>
+    <form method="post" action="/admin/action" style="margin-top:8px">
+      <input type="hidden" name="csrf" value="${csrf}">
+      <input type="hidden" name="action" value="ping">
+      <button class="btn">Проверить отправку</button>
+      <span class="muted">пришлёт тестовое сообщение админу (${esc(envStr(env.ADMIN_TG_ID))})</span>
     </form>
     <form method="post" action="/admin/action" style="margin-top:8px">
       <input type="hidden" name="csrf" value="${csrf}">
@@ -462,6 +488,78 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
       status: 303,
       headers: {
         location: `/admin/users?tg=${ok ? "ok" : "fail"}&why=${encodeURIComponent(detail.slice(0, 120))}`,
+      },
+    });
+  } else if (action === "diag") {
+    const { tgRaw } = await import("./bot/telegram");
+    const me = await tgRaw<{ username?: string; id?: number }>(env, "getMe");
+    const info = await tgRaw<{ url?: string; pending_update_count?: number }>(
+      env,
+      "getWebhookInfo",
+    );
+    // Снимаем вебхук: иначе getUpdates отдаёт 409 Conflict.
+    const cleared = await tgRaw(env, "deleteWebhook", { drop_pending_updates: false });
+    const updates = await tgRaw<unknown[]>(env, "getUpdates", {
+      timeout: 0,
+      limit: 5,
+      allowed_updates: ["message", "callback_query"],
+    });
+
+    const list = Array.isArray(updates.result)
+      ? (updates.result as Array<Record<string, unknown>>)
+      : [];
+    const first = list[0] as
+      | {
+          message?: {
+            text?: string;
+            chat?: { id?: number; type?: string };
+            from?: { id?: number; username?: string };
+          };
+        }
+      | undefined;
+
+    const summary = {
+      me_ok: me.ok,
+      last_from: first?.message?.from?.id ?? null,
+      last_username: first?.message?.from?.username ?? null,
+      last_chat_type: first?.message?.chat?.type ?? null,
+      last_text: first?.message?.text?.slice(0, 40) ?? null,
+      bot: me.result?.username ?? null,
+      me_error: me.description ?? null,
+      webhook: info.result?.url ?? null,
+      pending: info.result?.pending_update_count ?? null,
+      webhook_cleared: cleared.ok,
+      updates_ok: updates.ok,
+      updates: Array.isArray(updates.result) ? updates.result.length : null,
+      updates_error: updates.description ?? null,
+    };
+    await logEvent(env, "tg_diag", null, JSON.stringify(summary).slice(0, 300));
+    return new Response(null, {
+      status: 303,
+      headers: {
+        location: `/admin/users?diag=${encodeURIComponent(JSON.stringify(summary))}`,
+      },
+    });
+  } else if (action === "ping") {
+    const { tgRaw } = await import("./bot/telegram");
+    const chat = envStr(env.ADMIN_TG_ID);
+    const sent = await tgRaw(env, "sendMessage", {
+      chat_id: chat,
+      text: "<b>VPN Hub</b>: связь с ботом есть.",
+      parse_mode: "HTML",
+    });
+    await logEvent(
+      env,
+      sent.ok ? "tg_ping_ok" : "tg_ping_fail",
+      null,
+      `chat ${chat}: ${sent.description ?? "ok"}`.slice(0, 300),
+    );
+    return new Response(null, {
+      status: 303,
+      headers: {
+        location: `/admin/users?ping=${encodeURIComponent(
+          `${sent.ok ? "ok" : "fail"}: ${sent.description ?? sent.error_code ?? ""}`.slice(0, 120),
+        )}`,
       },
     });
   } else if (action === "poll") {

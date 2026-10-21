@@ -277,6 +277,25 @@ export async function addKeys(env: Env, raw: string): Promise<string> {
      SELECT (SELECT id FROM pools ORDER BY id LIMIT 1), id FROM servers WHERE source_id = ?`,
     sourceId,
   );
+
+  // Новым серверам нужны люди: выдаём их тем, кому ещё ничего не досталось.
+  await run(
+    env,
+    `INSERT OR IGNORE INTO user_pools (user_id, pool_id)
+     SELECT u.id, p.id FROM users u, pools p
+     WHERE u.status = 'active'
+       AND NOT EXISTS (SELECT 1 FROM user_pools up WHERE up.user_id = u.id)`,
+  );
+  const waiting = await many<{ id: number }>(
+    env,
+    `SELECT u.id FROM users u
+     WHERE u.status = 'active'
+       AND NOT EXISTS (SELECT 1 FROM assignments a WHERE a.user_id = u.id)
+     LIMIT 20`,
+  );
+  for (const person of waiting) {
+    await assignForUser(env, person.id, Number(env.SERVERS_PER_USER ?? "3"));
+  }
   await logEvent(env, "addkey", null, `источник #${sourceId}, ключей ${keys.length}`);
   return `Добавлено ключей: ${keys.length} (источник #${sourceId}).`;
 }

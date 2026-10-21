@@ -1,6 +1,6 @@
 /** Минимальный клиент Bot API. Каждый вызов — один подзапрос (лимит 50). */
 
-import { one } from "../db";
+import { logEvent, one } from "../db";
 import { envStr } from "../security";
 import type { Env } from "../types";
 
@@ -40,19 +40,58 @@ export async function tgApi<T>(
   }
 }
 
+/** Сырой ответ Bot API — нужен для диагностики (getMe, getWebhookInfo). */
+export async function tgRaw<T = unknown>(
+  env: Env,
+  method: string,
+  payload?: Record<string, unknown>,
+): Promise<{ ok: boolean; result?: T; description?: string; error_code?: number }> {
+  const token = envStr(env.BOT_TOKEN);
+  if (!token) return { ok: false, description: "BOT_TOKEN не задан" };
+  try {
+    const response = await fetch(`${API}${token}/${method}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload ?? {}),
+    });
+    return (await response.json()) as {
+      ok: boolean;
+      result?: T;
+      description?: string;
+      error_code?: number;
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      description: error instanceof Error ? error.message : "network error",
+    };
+  }
+}
+
 export async function sendMessage(
   env: Env,
   chatId: number | string,
   text: string,
   keyboard?: ReplyMarkup,
 ): Promise<boolean> {
-  const result = await tgApi(env, "sendMessage", {
+  const payload = {
     chat_id: chatId,
     text: text.slice(0, 4000),
     parse_mode: "HTML",
     disable_web_page_preview: true,
     ...(keyboard ? { reply_markup: keyboard } : {}),
-  });
+  };
+  const result = await tgApi(env, "sendMessage", payload);
+  if (result === null) {
+    // Молчаливое «бот не ответил» — худший вид бага: пишем причину в журнал.
+    const raw = await tgRaw(env, "sendMessage", payload);
+    await logEvent(
+      env,
+      "tg_send_fail",
+      null,
+      `chat ${chatId}: ${raw.description ?? "unknown"}`.slice(0, 300),
+    );
+  }
   return result !== null;
 }
 
