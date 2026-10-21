@@ -12,13 +12,12 @@ services:
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"
 
-  # Бот появится на этапе 4. Пока контейнер выключен профилем:
-  #   docker compose --profile bot up -d
+  # Бот работает на том же токене, что уже есть. Без BOT_TOKEN контейнер
+  # просто завершится с кодом 0 и не будет перезапускаться.
   bot:
     build: .
     container_name: vpn-hub-bot
     restart: unless-stopped
-    profiles: ["bot"]
     env_file: .env
     volumes:
       - ./data:/data
