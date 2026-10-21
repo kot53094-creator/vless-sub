@@ -1,17 +1,23 @@
 {% extends "base.html" %}
 {% set active = 'home' %}
-{% block title %}Главная · VPN Hub{% endblock %}
+{% block title %}Дашборд · VPN Hub{% endblock %}
 {% block body %}
 
-<div class="topbar">
+<div x-data="hub({csrf: '{{ csrf }}', hasSources: {{ 'true' if sources else 'false' }}, mode: '{{ mode }}'})">
+
+<div class="topbar dash-top">
   <div>
-    <h1>{% if sources %}Ваш хаб{% else %}Начнём{% endif %}</h1>
+    <h1>{% if sources %}Дашборд{% else %}Начнём{% endif %}</h1>
     <div class="muted">
       {% if mode == 'whitelist' %}Режим «белые списки»{% else %}Обычный режим{% endif %}
       {% if probe %} · RU {{ 'открыт' if probe.ru_ok else 'закрыт' }}, зарубеж {{ 'открыт' if probe.foreign_ok else 'закрыт' }}{% endif %}
     </div>
   </div>
   <div class="spacer"></div>
+  <div class="search">
+    <input id="filter" placeholder="Поиск по источникам" aria-label="Поиск по источникам"
+           oninput="hubFilter(this.value)">
+  </div>
   <div class="status" title="Состояние сети">
     <span class="signal {{ 'dead' if probe and not probe.foreign_ok }}"><i></i></span>
     <span>{{ 'Канал жив' if probe and probe.foreign_ok else 'Проверяю' if not probe else 'Зарубеж закрыт' }}</span>
@@ -25,25 +31,141 @@
 </div>
 {% endif %}
 
-<div x-data="hub({csrf: '{{ csrf }}', hasSources: {{ 'true' if sources else 'false' }}, mode: '{{ mode }}'})">
+{% if sources %}
+<div class="kpis">
+  <div class="kpi">
+    <div class="kpi-top"><span class="kpi-num">{{ alive_keys }}</span><span class="kpi-ico">⚡</span></div>
+    <div class="kpi-bar"><i style="width:{{ (100 * alive_keys / total_keys) | round if total_keys else 0 }}%"></i></div>
+    <div class="kpi-foot"><span>Живые ключи</span><span class="muted">из {{ total_keys }}</span></div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-top"><span class="kpi-num">{{ alive_sources }}<small>/{{ sources|length }}</small></span><span class="kpi-ico">🛰</span></div>
+    <div class="kpi-bar"><i style="width:{{ (100 * alive_sources / (sources|length)) | round if sources else 0 }}%"></i></div>
+    <div class="kpi-foot"><span>Источники</span><span class="muted">живых</span></div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-top"><span class="kpi-num">{{ traffic_used | bytes }}</span><span class="kpi-ico">📈</span></div>
+    <div class="kpi-bar"><i style="width:{{ (100 * traffic_used / traffic_total) | round if traffic_total else 20 }}%"></i></div>
+    <div class="kpi-foot"><span>Трафик</span><span class="muted">{% if traffic_total %}из {{ traffic_total | bytes }}{% else %}лимит не задан{% endif %}</span></div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-top"><span class="kpi-num">{% if nearest is none %}—{% else %}{{ nearest }}<small> дн.</small>{% endif %}</span><span class="kpi-ico">⏳</span></div>
+    <div class="kpi-bar"><i class="warn" style="width:{{ 100 if nearest is not none and nearest <= 3 else 45 }}%"></i></div>
+    <div class="kpi-foot"><span>Ближайший срок</span><span class="muted">{{ expiring_count }} скоро</span></div>
+  </div>
+</div>
 
-  {% if not sources %}
+<div class="dash-grid">
+  <div class="card chart-card">
+    <div class="card-head"><h2>Задержка серверов</h2><div class="spacer"></div>
+      <span class="muted">миллисекунды, меньше — лучше</span></div>
+    {% if chart.area %}
+      <svg viewBox="0 0 620 190" class="chart" preserveAspectRatio="none" role="img"
+           aria-label="Задержка живых источников">
+        <defs>
+          <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#7C8CFF" stop-opacity=".55"/>
+            <stop offset="100%" stop-color="#7C8CFF" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d="{{ chart.area }}" fill="url(#fill)"/>
+        <polyline points="{{ chart.line }}" fill="none" stroke="#B9C4FF" stroke-width="2.5"
+                  stroke-linejoin="round" stroke-linecap="round"/>
+        {% for x, y in chart.dots %}
+          <circle cx="{{ x | round(1) }}" cy="{{ y | round(1) }}" r="3" fill="#EAF2FF"/>
+        {% endfor %}
+      </svg>
+      <div class="chart-labels">
+        {% for label in chart.labels %}<span>{{ label }}</span>{% endfor %}
+      </div>
+    {% else %}
+      <div class="empty" style="padding:36px 10px"><b>Пока нечего рисовать</b>График появится, когда у источников будет задержка.</div>
+    {% endif %}
+    <div class="chart-foot">
+      <div><b>{{ alive_keys }}</b><span class="muted">ключей в подписке</span></div>
+      <div><b>{{ sources|length }}</b><span class="muted">источников</span></div>
+      <div><b>{{ expiring_count }}</b><span class="muted">истекают</span></div>
+    </div>
+  </div>
+
+  <div class="card donut-card">
+    <div class="card-head"><h2>Ключи по типам</h2></div>
+    <div class="donut-wrap">
+      <svg viewBox="0 0 180 180" class="donut" role="img" aria-label="Ключи по типам">
+        <circle cx="90" cy="90" r="70" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="18"/>
+        <g transform="rotate(-90 90 90)">
+          {% for seg in segments %}
+            <circle cx="90" cy="90" r="70" fill="none" stroke="{{ seg.color }}" stroke-width="18"
+                    stroke-dasharray="{{ seg.dash }} {{ seg.gap }}" stroke-dashoffset="{{ seg.offset }}"
+                    stroke-linecap="butt"/>
+          {% endfor %}
+        </g>
+        <text x="90" y="86" text-anchor="middle" class="donut-num">{{ donut_total }}</text>
+        <text x="90" y="106" text-anchor="middle" class="donut-sub">ключей</text>
+      </svg>
+    </div>
+    <div class="legend">
+      {% for seg in segments %}
+        <div class="legend-row">
+          <span class="dot" style="background:{{ seg.color }}"></span>
+          <span>{{ seg.label }}</span>
+          <span class="muted">{{ seg.count }}</span>
+          <span class="legend-pct">{{ seg.pct }}%</span>
+        </div>
+      {% endfor %}
+      {% if not segments %}<div class="muted">Пока нет ключей.</div>{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="minis">
+  <div class="card mini">
+    <div class="ring" style="--p:{{ 100 if mode == 'whitelist' else 40 }}">
+      <span>{{ '100' if mode == 'whitelist' else '40' }}%</span>
+    </div>
+    <div>
+      <b>Режим сети</b>
+      <div class="muted">{{ 'Белые списки: сначала мосты' if mode == 'whitelist' else 'Обычный: свои VPS первыми' }}</div>
+    </div>
+  </div>
+  <div class="card mini">
+    <div class="ring" style="--p:{{ 100 if alive_keys else 0 }}">
+      <span>{{ 100 if alive_keys else 0 }}%</span>
+    </div>
+    <div>
+      <b>Подписка</b>
+      <div class="muted">{{ alive_keys }} ключей · обновление раз в {{ settings.fetch_interval_hours }} ч</div>
+    </div>
+  </div>
+  <div class="card mini">
+    <div class="ring" style="--p:{{ (100 - (100 * alive_keys / total_keys | round)) if total_keys else 0 }}">
+      <span>{{ (100 - (100 * alive_keys / total_keys) | round) if total_keys else 0 }}%</span>
+    </div>
+    <div>
+      <b>Мёртвые ключи</b>
+      <div class="muted">{{ total_keys - alive_keys }} из {{ total_keys }} не отвечают</div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if not sources %}
   <div class="steps"><span class="on"></span><span></span><span></span></div>
   <div class="card">
     <div class="step-title">Шаг 1 из 3: вставьте ссылку или ключ</div>
     <p class="muted">Скопируйте ссылку подписки в кабинете вашего VPN-бота или возьмите один ключ вида <code>vless://…</code>. Можно вставить несколько строк сразу.</p>
-  {% else %}
-  <div class="card">
-    <h2>Вставьте ссылку или ключ</h2>
-    <p class="muted">Несколько строк сразу — можно. Тип определю сам.</p>
-  {% endif %}
+{% else %}
+  <div class="card" id="sources-form">
+    <div class="card-head"><h2>Вставьте ссылку или ключ</h2><div class="spacer"></div>
+      <span class="muted">тип определю сам</span></div>
+{% endif %}
 
     <form onsubmit="hubAdd(event)" id="add-form">
       <textarea id="add-text" placeholder="vless://… или https://…/sub/…&#10;Можно несколько строк" aria-label="Ссылка или ключ"></textarea>
       <div class="btn-row" style="margin-top:12px">
         <button class="btn" type="submit" id="add-btn">Добавить</button>
         <button class="btn ghost" type="button" onclick="hubPreview(this)">Проверить без сохранения</button>
-        <span class="muted" style="align-self:center">Сначала можно посмотреть, что найдётся</span>
+        <span class="muted" style="align-self:center">Откуда взять: кабинет VPN-бота или ваш VPS</span>
       </div>
     </form>
     <div class="log" id="preview-log" hidden></div>
@@ -55,7 +177,7 @@
       <div class="spacer"></div>
       <span class="muted" x-text="summary()"></span>
     </div>
-    <template x-for="item in results" :key="item.line + Math.random()">
+    <template x-for="item in results" :key="item.line">
       <div class="result-row">
         <span class="dot" :class="item.ok ? 'alive' : 'dead'"></span>
         <div style="flex:1;min-width:0">
@@ -90,13 +212,11 @@
   </div>
 
   {% for s in sources %}
-  <div class="source-row" id="source-{{ s.id }}">
+  <div class="source-row" id="source-{{ s.id }}" data-name="{{ s.name|lower }}">
     <div style="min-width:0">
       <div class="row-title">{{ s.name }}</div>
       <div class="row-meta">
-        <span class="status">
-          <span class="dot {{ s.status }}"></span>{{ status_text(s.status, s.days_left) }}
-        </span>
+        <span class="status"><span class="dot {{ s.status }}"></span>{{ status_text(s.status, s.days_left) }}</span>
         <span>{{ s.kind | kind }}</span>
         <span>{{ s.days_left | days }}</span>
         {% if s.traffic_total %}<span>{{ s.traffic_used | bytes }} из {{ s.traffic_total | bytes }}</span>{% endif %}
@@ -146,7 +266,7 @@
 </div>
 
 {% if hint %}
-<div class="card" id="help" style="border-color:var(--line)">
+<div class="card" id="help">
   <h3>Что делать дальше</h3>
   <p class="muted" style="margin:0">{{ hint }}</p>
 </div>
@@ -172,4 +292,5 @@
 </div>
 {% endif %}
 
+</div>
 {% endblock %}

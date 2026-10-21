@@ -36,6 +36,25 @@ def _ensure_token(db: Session) -> str:
     return token
 
 
+def _area(points: list[int], labels: list[str]) -> dict:
+    """Готовый SVG-путь: без библиотек и JS, только реальные числа."""
+    if len(points) < 2:
+        return {"area": "", "line": "", "labels": labels, "max": 0, "dots": []}
+    width, height, pad = 620, 190, 16
+    top = max(points) or 1
+    step = (width - pad * 2) / (len(points) - 1)
+    coords = []
+    for index, value in enumerate(points):
+        x = pad + index * step
+        y = height - pad - (value / top) * (height - pad * 3)
+        coords.append((x, y))
+    line = " ".join(f"{x:.1f},{y:.1f}" for x, y in coords)
+    area = f"M{coords[0][0]:.1f},{height - pad} L" + " L".join(
+        f"{x:.1f},{y:.1f}" for x, y in coords
+    ) + f" L{coords[-1][0]:.1f},{height - pad} Z"
+    return {"area": area, "line": line, "labels": labels, "max": top, "dots": coords}
+
+
 @router.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     return templates.TemplateResponse(
@@ -111,6 +130,43 @@ def index(request: Request, db: Session = Depends(get_db)):
         hint = "Включён режим «белые списки»: первыми идут мосты и CDN."
 
     _, keys = build(db, mode)
+
+    # ── цифры для дашборда: только реальные данные ──────────────────────────
+    alive_sources = [s for s in sources if s.status == "alive"]
+    alive_keys = sum(1 for s in sources for k in s.keys if k.alive)
+    total_keys = sum(len(s.keys) for s in sources)
+    by_kind: dict[str, int] = {}
+    for source in sources:
+        by_kind[source.kind] = by_kind.get(source.kind, 0) + sum(1 for k in source.keys if k.alive)
+    traffic_used = sum(s.traffic_used or 0 for s in sources)
+    traffic_total = sum(s.traffic_total or 0 for s in sources)
+    deadlines = [s.days_left for s in sources if s.days_left is not None]
+    nearest = min(deadlines) if deadlines else None
+    expiring_count = sum(1 for s in sources if s.days_left is not None and s.days_left <= 3)
+
+    chart_sources = [s for s in alive_sources if s.latency_ms][:9]
+    chart = _area([s.latency_ms or 0 for s in chart_sources],
+                  [s.name[:12] for s in chart_sources])
+
+    palette = {"own_vps": "#4FE3C1", "trial": "#7C8CFF",
+               "public": "#FFB454", "paid_private": "#FF6B6B"}
+    titles = {"own_vps": "Мои VPS", "trial": "Триалы",
+              "public": "Публичные", "paid_private": "Личные"}
+    total_for_donut = sum(by_kind.values()) or 1
+    segments, offset = [], 0.0
+    for kind, count in sorted(by_kind.items(), key=lambda item: -item[1]):
+        length = 2 * 3.14159 * 70 * count / total_for_donut
+        segments.append({
+            "label": titles.get(kind, kind),
+            "count": count,
+            "pct": round(100 * count / total_for_donut),
+            "color": palette.get(kind, "#7C8CFF"),
+            "dash": round(length, 1),
+            "gap": round(439.8 - length, 1),
+            "offset": round(-offset, 1),
+        })
+        offset += length
+
     return templates.TemplateResponse("index.html", {
         "request": request,
         "sources": sources,
@@ -123,6 +179,16 @@ def index(request: Request, db: Session = Depends(get_db)):
         "people_enabled": settings.people_enabled,
         "warnings": settings.warnings(),
         "events": db.execute(select(Event).order_by(Event.ts.desc()).limit(6)).scalars().all(),
+        "alive_sources": len(alive_sources),
+        "alive_keys": alive_keys,
+        "total_keys": total_keys,
+        "traffic_used": traffic_used,
+        "traffic_total": traffic_total,
+        "nearest": nearest,
+        "expiring_count": expiring_count,
+        "chart": chart,
+        "segments": segments,
+        "donut_total": sum(by_kind.values()),
     })
 
 

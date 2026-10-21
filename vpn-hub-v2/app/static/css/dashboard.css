@@ -1,0 +1,152 @@
+/* Дашборд: тёмный градиент, стеклянные карточки. Подключается после app.css. */
+
+:root {
+  --bg: #0b1b3a;
+  --surface: rgba(255, 255, 255, .055);
+  --surface-2: rgba(255, 255, 255, .10);
+  --line: rgba(255, 255, 255, .12);
+  --text: #EAF2FF;
+  --muted: #9FB3D1;
+  --signal: #4FE3C1;
+}
+
+body {
+  background:
+    radial-gradient(1100px 600px at 15% -10%, #23336f 0%, transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, #2a1f63 0%, transparent 55%),
+    linear-gradient(160deg, #0b1b3a 0%, #101c46 45%, #16204f 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: rgba(9, 20, 44, .55);
+  backdrop-filter: blur(12px);
+  border-right-color: var(--line);
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 18px 40px rgba(3, 9, 25, .28);
+}
+.topbar h1 { font-size: 28px; }
+.dash-top { align-items: center; gap: 16px; }
+.search { flex: 0 1 320px; }
+.search input { min-height: 44px; background: rgba(8, 18, 40, .55); border-color: var(--line); }
+
+/* ── KPI ─────────────────────────────────────────────────────────────────── */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.kpi {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 16px 18px;
+  backdrop-filter: blur(14px);
+}
+.kpi-top { display: flex; align-items: baseline; justify-content: space-between; }
+.kpi-num {
+  font-family: var(--f-head);
+  font-size: 30px;
+  line-height: 1.1;
+  letter-spacing: -.02em;
+}
+.kpi-num small { font-size: 15px; color: var(--muted); font-family: var(--f-body); }
+.kpi-ico { font-size: 18px; opacity: .7; }
+.kpi-bar {
+  height: 3px;
+  background: rgba(255, 255, 255, .14);
+  border-radius: 999px;
+  margin: 12px 0 10px;
+  overflow: hidden;
+}
+.kpi-bar i { display: block; height: 100%; background: #cfd8ff; border-radius: inherit; }
+.kpi-bar i.warn { background: var(--warn); }
+.kpi-foot { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+.kpi-foot span:first-child { color: var(--text); }
+
+/* ── График и бублик ─────────────────────────────────────────────────────── */
+.dash-grid {
+  display: grid;
+  grid-template-columns: 1.75fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.chart-card, .donut-card { margin-bottom: 0; }
+.chart { width: 100%; height: 210px; display: block; margin-top: 6px; }
+.chart-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.chart-labels span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chart-foot {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+.chart-foot b { display: block; font-family: var(--f-head); font-size: 20px; }
+.chart-foot span { font-size: 12px; color: var(--muted); }
+
+.donut-wrap { display: grid; place-items: center; padding: 4px 0 10px; }
+.donut { width: 100%; max-width: 220px; }
+.donut-num { fill: var(--text); font-family: var(--f-head); font-size: 30px; }
+.donut-sub { fill: var(--muted); font-size: 12px; }
+.legend { display: grid; gap: 8px; }
+.legend-row {
+  display: grid;
+  grid-template-columns: 12px 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 14px;
+}
+.legend-pct { color: var(--signal); font-variant-numeric: tabular-nums; }
+
+/* ── Три мини-карточки с кольцами ────────────────────────────────────────── */
+.minis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.mini { display: flex; align-items: center; gap: 14px; margin-bottom: 0; }
+.ring {
+  width: 62px;
+  height: 62px;
+  flex: none;
+  border-radius: 50%;
+  background: conic-gradient(var(--signal) calc(var(--p) * 1%), rgba(255, 255, 255, .12) 0);
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+.ring::after {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  background: #16224b;
+}
+.ring span { position: relative; z-index: 1; font-size: 13px; font-weight: 600; }
+
+@media (max-width: 980px) {
+  .kpis { grid-template-columns: repeat(2, 1fr); }
+  .dash-grid { grid-template-columns: 1fr; }
+  .minis { grid-template-columns: 1fr; }
+}
+@media (max-width: 520px) {
+  .kpis { grid-template-columns: 1fr 1fr; }
+  .kpi-num { font-size: 24px; }
+}

@@ -79,6 +79,14 @@ function hubAdd(event) {
     .finally(() => { button.disabled = false; button.innerHTML = original; });
 }
 
+/* Фильтр источников в шапке: ничего не грузит, просто скрывает строки. */
+function hubFilter(value) {
+  const needle = (value || "").trim().toLowerCase();
+  document.querySelectorAll("[data-name]").forEach((row) => {
+    row.style.display = !needle || row.dataset.name.includes(needle) ? "" : "none";
+  });
+}
+
 function hubPreview(button) {
   const textarea = document.getElementById("add-text");
   const log = document.getElementById("preview-log");
