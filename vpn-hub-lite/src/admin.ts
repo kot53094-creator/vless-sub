@@ -25,40 +25,54 @@ function esc(value: unknown): string {
 }
 
 const CSS = `
-:root{--bg:#0f1115;--card:#171a21;--line:#262b36;--text:#e8ecf3;--muted:#8b95a7;--accent:#ff8a3d;--ok:#41c98a;--bad:#f2555a;--warn:#f5b84d}
+:root{--bg:#0b1b3a;--card:rgba(255,255,255,.06);--line:rgba(255,255,255,.13);--text:#EAF2FF;--muted:#9FB3D1;--accent:#4FE3C1;--ok:#4FE3C1;--bad:#FF6B6B;--warn:#FFB454}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+body{margin:0;color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+ background:radial-gradient(1100px 600px at 15% -10%,#23336f 0,transparent 60%),
+            radial-gradient(900px 500px at 100% 0,#2a1f63 0,transparent 55%),
+            linear-gradient(160deg,#0b1b3a 0,#101c46 45%,#16204f 100%);
+ background-attachment:fixed;min-height:100vh}
 a{color:var(--accent);text-decoration:none}
-header{position:sticky;top:0;background:#12151bdd;backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:10px 14px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;z-index:5}
-header b{font-size:15px}
-nav{display:flex;gap:10px;flex-wrap:wrap}
-nav a{color:var(--muted);padding:4px 8px;border-radius:8px}
-nav a.active{color:var(--text);background:#222834}
-main{padding:14px;max-width:1100px;margin:0 auto}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
-h2{font-size:15px;margin:0 0 10px}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
-th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+header{position:sticky;top:0;z-index:5;display:flex;gap:18px;align-items:center;flex-wrap:wrap;
+ padding:12px 18px;background:rgba(9,20,44,.6);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+header b{font-size:16px;letter-spacing:-.01em}
+nav{display:flex;gap:6px;flex-wrap:wrap}
+nav a{color:var(--muted);padding:6px 10px;border-radius:10px;font-size:13px}
+nav a.active,nav a:hover{color:var(--text);background:rgba(255,255,255,.08)}
+main{padding:18px;max-width:1120px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:16px 18px;margin-bottom:14px;
+ backdrop-filter:blur(14px);box-shadow:0 18px 40px rgba(3,9,25,.28)}
+h2{font-size:15px;margin:0 0 12px;letter-spacing:-.01em}
+table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:500;font-size:12px}
 tr:last-child td{border-bottom:0}
-.pill{display:inline-block;padding:2px 7px;border-radius:999px;background:#222834;color:var(--muted);font-size:11px;white-space:nowrap}
-.pill.ok{background:#14351f;color:var(--ok)}
-.pill.bad{background:#3a1d20;color:var(--bad)}
-.pill.warn{background:#3a2f16;color:var(--warn)}
-.btn{display:inline-block;padding:6px 10px;border-radius:9px;border:1px solid var(--line);background:#1d222b;color:var(--text);font-size:12px;cursor:pointer}
+tbody tr:hover{background:rgba(79,227,193,.04)}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.09);color:var(--muted);font-size:11px;white-space:nowrap}
+.pill.ok{background:rgba(79,227,193,.16);color:var(--ok)}
+.pill.bad{background:rgba(255,107,107,.16);color:var(--bad)}
+.pill.warn{background:rgba(255,180,84,.16);color:var(--warn)}
+.btn{display:inline-block;padding:7px 12px;border-radius:10px;border:1px solid var(--line);
+ background:rgba(255,255,255,.06);color:var(--text);font-size:12px;cursor:pointer}
 .btn:hover{border-color:var(--accent)}
-.btn.danger{color:var(--bad);border-color:#40232a}
+.btn.danger{color:var(--bad);border-color:rgba(255,107,107,.5);background:transparent}
 form.inline{display:inline}
-input,select{padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:#12151b;color:var(--text)}
+input,select,textarea{padding:9px 11px;border-radius:10px;border:1px solid var(--line);
+ background:rgba(8,18,40,.55);color:var(--text);font:inherit}
 .muted{color:var(--muted);font-size:12px}
 .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px}
-.bar{height:6px;background:#222834;border-radius:4px;overflow:hidden;margin-top:4px}
-.bar i{display:block;height:100%;background:var(--accent)}
-.err{background:#3a1d20;color:#ffb3b7;padding:9px 12px;border-radius:10px;margin-bottom:12px}
-.login{max-width:340px;margin:10vh auto}
+.bar{height:3px;background:rgba(255,255,255,.14);border-radius:999px;overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:#cfd8ff}
+.err{background:rgba(255,107,107,.14);color:#ffb3b7;padding:10px 12px;border-radius:12px;margin-bottom:12px}
+.login{max-width:360px;margin:12vh auto}
 .login input{width:100%;margin:8px 0 12px}
-.login button{width:100%;padding:10px;border:0;border-radius:10px;background:var(--accent);color:#101318;font-weight:700;font-size:14px;cursor:pointer}
+.login button{width:100%;padding:11px;border:0;border-radius:12px;background:var(--accent);color:#08211c;font-weight:700;font-size:14px;cursor:pointer}
 details summary{cursor:pointer;color:var(--muted);font-size:12px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:14px 16px;backdrop-filter:blur(14px)}
+.kpi .n{font-size:28px;font-weight:600;letter-spacing:-.02em;line-height:1.1}
+.kpi .l{color:var(--muted);font-size:12px;margin-top:6px}
+@media (max-width:820px){.kpis{grid-template-columns:repeat(2,1fr)}}
 @media (max-width:700px){th:nth-child(3),td:nth-child(3){display:none}}
 `;
 
@@ -251,6 +265,17 @@ async function usersPage(
     ? `<div class="card"><b>Проверка отправки:</b> <span class="mono">${esc(ping)}</span></div>`
     : "";
 
+  const nowMs = Date.now();
+  const expiring = users.filter(
+    (u) => u.expires_at && Date.parse(u.expires_at.replace(" ", "T") + "Z") - nowMs < 3 * 86400_000,
+  ).length;
+  const kpis = `<div class="kpis">
+    <div class="kpi"><div class="n">${users.length}</div><div class="l">Всего людей</div></div>
+    <div class="kpi"><div class="n">${users.filter((u) => u.status === "active").length}</div><div class="l">Активных</div></div>
+    <div class="kpi"><div class="n">${users.filter((u) => u.status === "pending").length}</div><div class="l">Ждут одобрения</div></div>
+    <div class="kpi"><div class="n">${expiring}</div><div class="l">Срок истекает</div></div>
+  </div>`;
+
   const notice = diagNotice + pollNotice + pingNotice + (tgResult === "ok"
       ? `<div class="card" style="border-color:#1f4a33"><b>Вебхук установлен.</b> <span class="muted">Бот готов принимать команды — напишите ему /start.</span></div>`
       : tgResult === "fail"
@@ -281,12 +306,6 @@ async function usersPage(
     </form>
     <form method="post" action="/admin/action" style="margin-top:8px">
       <input type="hidden" name="csrf" value="${csrf}">
-      <input type="hidden" name="action" value="menu">
-      <button class="btn">Отправить меню в Telegram</button>
-      <span class="muted">пришлёт админу тот же экран, что видят пользователи</span>
-    </form>
-    <form method="post" action="/admin/action" style="margin-top:8px">
-      <input type="hidden" name="csrf" value="${csrf}">
       <input type="hidden" name="action" value="ping">
       <button class="btn">Проверить отправку</button>
       <span class="muted">пришлёт тестовое сообщение админу (${esc(envStr(env.ADMIN_TG_ID))})</span>
@@ -298,7 +317,7 @@ async function usersPage(
       <span class="muted">забрать сообщения через getUpdates (режим ${esc(env.BOT_TRANSPORT ?? "webhook")})</span>
     </form>
   </div>
-  <div class="card"><h2>Пользователи (${users.length})</h2>
+  ${kpis}<div class="card"><h2>Пользователи (${users.length})</h2>
     <table><thead><tr><th>Кто</th><th>Статус</th><th>До</th><th>Устройства</th><th>Подписка</th><th>Действия</th></tr></thead>
     <tbody>${rows || `<tr><td colspan="6" class="muted">Пока никого</td></tr>`}</tbody></table></div>`;
 
