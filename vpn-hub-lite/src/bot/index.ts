@@ -250,6 +250,30 @@ async function handleCallback(
       await user.sendDevices(env, chatId, messageId);
       return;
     }
+    if (data === "dev:kick") {
+      if (!existing || existing.status !== "active") {
+        await answerCallback(env, query.id, "Доступ ещё не активен.", true);
+        return;
+      }
+      await answerCallback(env, query.id, "");
+      await user.confirmKickDevices(env, chatId, existing, messageId);
+      return;
+    }
+
+    if (data === "dev:kick_yes") {
+      if (!existing || existing.status !== "active") {
+        await answerCallback(env, query.id, "Доступ ещё не активен.", true);
+        return;
+      }
+      if (!memRateLimit(`kick:${tgId}`, 2, 300)) {
+        await answerCallback(env, query.id, "Уже отключили. Подождите пару минут.", true);
+        return;
+      }
+      await answerCallback(env, query.id, "Отключаю…");
+      await user.kickDevices(env, chatId, existing, messageId);
+      return;
+    }
+
     if (data.startsWith("dev:")) {
       await answerCallback(env, query.id, "");
       await user.sendInstruction(env, chatId, data.slice(4), messageId);
