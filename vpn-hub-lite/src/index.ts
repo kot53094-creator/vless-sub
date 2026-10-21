@@ -4,7 +4,7 @@ import { handleAdmin } from "./admin";
 import { handleUpdate, type TgUpdate } from "./bot";
 import { runHealth } from "./health";
 import { runNotifications } from "./notify";
-import { runPoll } from "./polling";
+import { runPoll, watchWebhook } from "./polling";
 import { envStr, timingSafeEqual } from "./security";
 import { handleSubscription } from "./sub";
 import { runSync } from "./sync";
@@ -102,11 +102,18 @@ export default {
       );
       return;
     }
-    // Раз в минуту: забираем обновления бота сами (резервный транспорт).
+    // Раз в минуту: либо забираем обновления сами (резервный транспорт),
+    // либо проверяем, что вебхук жив, и падаем в опрос при ошибках доставки.
     if ((env.BOT_TRANSPORT ?? "webhook") === "polling") {
       ctx.waitUntil(
         runPoll(env).catch((error) => {
           console.error("poll failed", error instanceof Error ? error.message : error);
+        }),
+      );
+    } else {
+      ctx.waitUntil(
+        watchWebhook(env).catch((error) => {
+          console.error("watch failed", error instanceof Error ? error.message : error);
         }),
       );
     }

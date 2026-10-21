@@ -70,14 +70,28 @@ const DEFAULTS: Record<string, string> = {
 
 export type Settings = Record<string, string>;
 
+const SETTINGS_CACHE = "settings:v1";
+
+/**
+ * Настройки читаются на каждый экран, поэтому держим их в KV на минуту.
+ * Правка в админке сбрасывает кэш сразу — задержки «до 60 секунд» не будет.
+ */
 export async function loadSettings(env: Env): Promise<Settings> {
+  const cached = await env.CACHE.get<Settings>(SETTINGS_CACHE, "json");
+  if (cached) return { ...DEFAULTS, ...cached };
+
   const rows = await many<{ key: string; value: string }>(
     env,
     "SELECT key, value FROM settings",
   );
   const map: Settings = { ...DEFAULTS };
   for (const row of rows) map[row.key] = row.value;
+  await env.CACHE.put(SETTINGS_CACHE, JSON.stringify(map), { expirationTtl: 60 });
   return map;
+}
+
+export async function invalidateSettings(env: Env): Promise<void> {
+  await env.CACHE.delete(SETTINGS_CACHE);
 }
 
 export function num(settings: Settings, key: string, fallback: number): number {
@@ -160,12 +174,9 @@ export async function applyAccrual(env: Env, input: AccrualInput): Promise<Accru
     await pushToRemnawave(env, user, hours, gb);
   }
 
-  const fresh = await one<{ expires_at: string | null }>(
-    env,
-    "SELECT expires_at FROM users WHERE id = ?",
-    user.id,
-  );
-  return { ok: true, duplicate: false, hours, expiresAt: fresh?.expires_at ?? null };
+  // Срок уже посчитан выше — не делаем лишний SELECT.
+  const expiresAt = hours > 0 ? extendExpiry(user.expires_at, hours) : (user.expires_at ?? null);
+  return { ok: true, duplicate: false, hours, expiresAt };
 }
 
 /* ── ежедневный бонус ──────────────────────────────────────────────────── */
@@ -205,22 +216,22 @@ export function nextMskMidnight(now: number = Date.now()): number {
 export async function dailyStatus(env: Env, user: UserRow): Promise<DailyStatus> {
   const settings = await loadSettings(env);
   const today = mskDate();
-  const claim = await one<{ streak: number }>(
-    env,
-    "SELECT streak FROM daily_claims WHERE user_id = ? AND claim_date = ?",
-    user.id,
-    today,
-  );
+
+  // Один запрос вместо двух: последняя строка уже отвечает, брали ли сегодня.
   const last = await one<{ claim_date: string; streak: number }>(
     env,
     "SELECT claim_date, streak FROM daily_claims WHERE user_id = ? ORDER BY claim_date DESC LIMIT 1",
     user.id,
   );
-  const streak = claim?.streak ?? nextStreak(last?.claim_date ?? null, last?.streak ?? 0, today);
+  const claimedToday = last?.claim_date === today;
+  const streak = claimedToday
+    ? Math.max(1, last?.streak ?? 1)
+    : nextStreak(last?.claim_date ?? null, last?.streak ?? 0, today);
+
   const cap = num(settings, "daily_month_cap_hours", 48);
   const used = await bonusHoursThisMonth(env, user.id);
   return {
-    claimedToday: Boolean(claim),
+    claimedToday,
     streak,
     usedHours: used,
     capHours: cap,
@@ -244,23 +255,17 @@ export async function claimDaily(env: Env, user: UserRow): Promise<DailyResult> 
   if (!status.enabled) return { ok: false, reason: "disabled", status };
   if (status.claimedToday) return { ok: false, reason: "already", status };
 
+  // Всё уже посчитано в status: лишние запросы к D1 не нужны.
   const settings = await loadSettings(env);
   const today = mskDate();
-  const last = await one<{ claim_date: string; streak: number }>(
-    env,
-    "SELECT claim_date, streak FROM daily_claims WHERE user_id = ? ORDER BY claim_date DESC LIMIT 1",
-    user.id,
-  );
-  const streak = nextStreak(last?.claim_date ?? null, last?.streak ?? 0, today);
+  const streak = status.streak;
   const want = streakHours(
     streak,
     num(settings, "daily_bonus_hours", 1),
     num(settings, "daily_streak3_hours", 2),
     num(settings, "daily_streak7_hours", 3),
   );
-  const cap = num(settings, "daily_month_cap_hours", 48);
-  const used = await bonusHoursThisMonth(env, user.id);
-  const hours = clampToCap(used, cap, want);
+  const hours = clampToCap(status.usedHours, status.capHours, want);
   if (hours <= 0) return { ok: false, reason: "month_cap", status };
 
   // Именно INSERT OR IGNORE: два одновременных тапа дадут одну строку.
@@ -455,26 +460,20 @@ export interface ReferralStats {
 }
 
 export async function referralStats(env: Env, userId: number): Promise<ReferralStats> {
-  const total = await one<{ n: number }>(
+  // Один запрос вместо трёх: экран кабинета открывается заметно быстрее.
+  const row = await one<{ invited: number; rewarded: number; hours: number }>(
     env,
-    "SELECT COUNT(*) AS n FROM referrals WHERE inviter_id = ?",
-    userId,
-  );
-  const rewarded = await one<{ n: number }>(
-    env,
-    "SELECT COUNT(*) AS n FROM referrals WHERE inviter_id = ? AND status = 'rewarded'",
-    userId,
-  );
-  const days = await one<{ h: number }>(
-    env,
-    `SELECT COALESCE(SUM(hours), 0) AS h FROM accruals
-      WHERE user_id = ? AND status = 'applied' AND ref LIKE 'ref:i:%'`,
+    `SELECT
+       (SELECT COUNT(*) FROM referrals WHERE inviter_id = ?1) AS invited,
+       (SELECT COUNT(*) FROM referrals WHERE inviter_id = ?1 AND status = 'rewarded') AS rewarded,
+       (SELECT COALESCE(SUM(hours), 0) FROM accruals
+         WHERE user_id = ?1 AND status = 'applied' AND ref LIKE 'ref:i:%') AS hours`,
     userId,
   );
   return {
-    invited: total?.n ?? 0,
-    rewarded: rewarded?.n ?? 0,
-    days: round2((days?.h ?? 0) / 24),
+    invited: row?.invited ?? 0,
+    rewarded: row?.rewarded ?? 0,
+    days: round2((row?.hours ?? 0) / 24),
     link: await referralLink(env, userId),
     code: refCode(userId),
   };

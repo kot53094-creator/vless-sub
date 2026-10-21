@@ -9,7 +9,7 @@
  */
 
 import { one, run } from "./db";
-import { tgApi } from "./bot/telegram";
+import { tgApi, tgRaw } from "./bot/telegram";
 import { handleUpdate, type TgUpdate } from "./bot";
 import { logEvent } from "./db";
 import type { Env } from "./types";
@@ -18,6 +18,28 @@ const OFFSET_KEY = "tg_offset";
 // 5, а не 10: обработка одного апдейта теперь делает больше запросов к D1
 // (бонус, кабинет, группы), а лимит — 50 запросов на инвокацию.
 const MAX_UPDATES = 5;
+
+/**
+ * Страховка вебхука: раз в минуту смотрим, доставляет ли Telegram.
+ * Если копятся необработанные апдейты или есть ошибка доставки — снимаем
+ * вебхук и разбираем очередь опросом, чтобы бот не замолчал совсем.
+ */
+export async function watchWebhook(env: Env): Promise<void> {
+  const info = await tgRaw<{ pending_update_count?: number; last_error_message?: string }>(
+    env,
+    "getWebhookInfo",
+  );
+  if (!info.ok) return;
+
+  const pending = Number(info.result?.pending_update_count ?? 0);
+  const error = info.result?.last_error_message ?? "";
+  // Порог 10, чтобы всплеск сообщений не принимался за поломку доставки.
+  if (!error && pending < 10) return;
+
+  await logEvent(env, "webhook_down", null, `в очереди ${pending}${error ? `, ${error}` : ""}`);
+  await tgRaw(env, "deleteWebhook", { drop_pending_updates: false });
+  await runPoll(env);
+}
 
 export async function runPoll(env: Env): Promise<number> {
   const row = await one<{ value: string }>(

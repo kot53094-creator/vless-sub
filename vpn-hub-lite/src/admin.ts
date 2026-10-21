@@ -18,6 +18,7 @@ import type { Env, SourceRow, UserRow } from "./types";
 import {
   cancelAccrual,
   grantSquad,
+  invalidateSettings,
   loadSettings,
   revokeSquad,
   saveSetting,
@@ -941,6 +942,7 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
       if (raw === null) continue;
       await saveSetting(env, key, String(raw).slice(0, 40));
     }
+    await invalidateSettings(env);
     await logEvent(env, "settings", null, "настройки бонусов обновлены");
     return back("/admin/bonuses", "Настройки сохранены");
   }
@@ -1025,6 +1027,19 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
     return back("/admin/banners", "file_id сброшен: следующая отправка загрузит фото заново");
   }
 
+  if (action === "webhook_info") {
+    const { tgRaw } = await import("./bot/telegram");
+    const info = await tgRaw<Record<string, unknown>>(env, "getWebhookInfo");
+    const result = info.result ?? {};
+    const parts = [
+      `URL: ${String(result.url || "не задан")}`,
+      `в очереди: ${String(result.pending_update_count ?? 0)}`,
+      `ошибка: ${String(result.last_error_message ?? "нет")}`,
+    ];
+    await logEvent(env, "webhook_info", null, parts.join(" · "));
+    return back("/admin/users", parts.join(" · "));
+  }
+
   if (action === "run_notify") {
     const { runNotifications } = await import("./notify");
     const result = await runNotifications(env);
@@ -1039,6 +1054,7 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
     const pool = String(form.get("pool") ?? "").trim();
     if (!squad) return back("/admin/squads", "", "Не указана группа");
     await saveSetting(env, `squad_pool:${squad}`, pool);
+    await invalidateSettings(env);
     return back("/admin/squads", pool ? `${squad} → ${pool}` : `${squad}: привязка снята`);
   }
 
