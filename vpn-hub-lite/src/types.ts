@@ -42,6 +42,7 @@ export interface UserRow {
   device_limit: number;
   sub_token: string;
   last_fetch_at: string | null;
+  traffic_gb?: number;
   note: string;
 }
 
