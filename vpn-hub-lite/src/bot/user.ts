@@ -312,13 +312,22 @@ export async function sendInstruction(
   env: Env,
   chatId: number | string,
   device: string,
+  messageId?: number,
 ): Promise<void> {
   const label = DEVICES.find((item) => item.key === device)?.label ?? device;
-  await sendMessage(
+  // Инструкция остаётся на том же баннере с устройствами: фото не скачет.
+  await screen(
     env,
     chatId,
+    messageId,
+    "devices",
     `<b>${label}</b>\n${INSTRUCTIONS[device] ?? INSTRUCTIONS.android}`,
-    backKeyboard(),
+    {
+      inline_keyboard: [
+        [{ text: "← К устройствам", callback_data: "act:devices" }],
+        [{ text: "👤 Кабинет", callback_data: "act:cabinet" }],
+      ],
+    },
   );
 }
 
@@ -407,8 +416,12 @@ export async function sendCabinet(
   );
 }
 
-export async function sendHelp(env: Env, chatId: number | string): Promise<void> {
-  await sendMessage(env, chatId, HELP, mainKeyboard({ referral: true }));
+export async function sendHelp(
+  env: Env,
+  chatId: number | string,
+  messageId?: number,
+): Promise<void> {
+  await screen(env, chatId, messageId, "start", HELP, mainKeyboard({ referral: true }));
 }
 
 /* ── бонус дня ─────────────────────────────────────────────────────────── */
@@ -446,7 +459,12 @@ export async function claimBonusText(env: Env, user: UserRow): Promise<string> {
 
 /* ── рефералы ──────────────────────────────────────────────────────────── */
 
-export async function sendReferral(env: Env, chatId: number | string, user: UserRow): Promise<void> {
+export async function sendReferral(
+  env: Env,
+  chatId: number | string,
+  user: UserRow,
+  messageId?: number,
+): Promise<void> {
   const settings = await loadSettings(env);
   const stats = await referralStats(env, user.id);
   const reward = num(settings, "referral_reward_days", 1);
@@ -462,7 +480,7 @@ export async function sendReferral(env: Env, chatId: number | string, user: User
     `<code>${escapeHtml(stats.link)}</code>`,
   ].join("\n");
 
-  await sendMessage(env, chatId, text, referralKeyboard(stats.link));
+  await screen(env, chatId, messageId, "account", text, referralKeyboard(stats.link));
 }
 
 /* ── промокоды ─────────────────────────────────────────────────────────── */
@@ -551,7 +569,12 @@ export async function checkChannel(
 
 /* ── чипы с баннера «Ваш аккаунт»: Срок · Трафик · Устройства ─────────── */
 
-export async function sendTerm(env: Env, chatId: number | string, user: UserRow): Promise<void> {
+export async function sendTerm(
+  env: Env,
+  chatId: number | string,
+  user: UserRow,
+  messageId?: number,
+): Promise<void> {
   const until = user.expires_at?.slice(0, 10) ?? "не задан";
   const ts = Date.parse(`${(user.expires_at ?? "").replace(" ", "T")}Z`);
   const days = Number.isFinite(ts) ? Math.ceil((ts - Date.now()) / 86400_000) : 0;
@@ -565,15 +588,22 @@ export async function sendTerm(env: Env, chatId: number | string, user: UserRow)
     "",
     "Продлить можно бонусом дня, промокодом или у администратора.",
   ];
-  await sendMessage(
+  await screen(
     env,
     chatId,
+    messageId,
+    "account",
     lines.join("\n"),
     cabinetKeyboard({ referral: true, promo: true, active: user.status === "active" }),
   );
 }
 
-export async function sendTraffic(env: Env, chatId: number | string, user: UserRow): Promise<void> {
+export async function sendTraffic(
+  env: Env,
+  chatId: number | string,
+  user: UserRow,
+  messageId?: number,
+): Promise<void> {
   const limit = user.traffic_gb ? `${user.traffic_gb} ГБ` : "без лимита";
   const lines = [
     `<b>Трафик</b>`,
@@ -583,13 +613,14 @@ export async function sendTraffic(env: Env, chatId: number | string, user: UserR
       ? "Израсходованное считает сервер: Happ показывает остаток в карточке подписки и обновляет его каждые 6 часов."
       : "Трафик не ограничен — качайте сколько нужно.",
   ];
-  await sendMessage(env, chatId, lines.join("\n"), cabinetKeyboard({ referral: true }));
+  await screen(env, chatId, messageId, "account", lines.join("\n"), cabinetKeyboard({ referral: true }));
 }
 
 export async function sendDevicesInfo(
   env: Env,
   chatId: number | string,
   user: UserRow,
+  messageId?: number,
 ): Promise<void> {
   const used = await devices24h(env, user.id);
   const lines = [
@@ -601,7 +632,7 @@ export async function sendDevicesInfo(
       ? "Лимит выбран. Отключите лишнее устройство или попросите добавить слот."
       : `Свободно: ${user.device_limit - used}`,
   ];
-  await sendMessage(env, chatId, lines.join("\n"), cabinetKeyboard({ referral: true }));
+  await screen(env, chatId, messageId, "account", lines.join("\n"), cabinetKeyboard({ referral: true }));
 }
 
 export async function handleKey(env: Env, user: UserRow): Promise<void> {
@@ -609,14 +640,17 @@ export async function handleKey(env: Env, user: UserRow): Promise<void> {
     await sendMessage(env, user.tg_id, `Ссылка недоступна: ${user.status}.`);
     return;
   }
-  await sendMessage(
+  await screen(
     env,
     user.tg_id,
+    undefined,
+    "account",
     `<b>Ваша ссылка</b>\n<code>${escapeHtml(linkFor(env, user.sub_token))}</code>`,
+    cabinetKeyboard({ referral: true, active: true }),
   );
 }
 
-export async function handleStatus(env: Env, user: UserRow): Promise<void> {
+export async function handleStatus(env: Env, user: UserRow, messageId?: number): Promise<void> {
   const devices = await devices24h(env, user.id);
   const assigned = await assignmentCount(env, user.id);
   const pools = await many<{ name: string }>(
@@ -644,7 +678,14 @@ export async function handleStatus(env: Env, user: UserRow): Promise<void> {
     lines.push("", "Вы на пределе лимита устройств: новое устройство может не подключиться.");
   }
 
-  await sendMessage(env, user.tg_id, lines.join("\n"));
+  await screen(
+    env,
+    user.tg_id,
+    messageId,
+    "account",
+    lines.join("\n"),
+    cabinetKeyboard({ referral: true, promo: true, active: user.status === "active" }),
+  );
 }
 
 export async function handleNewKey(env: Env, user: UserRow): Promise<void> {

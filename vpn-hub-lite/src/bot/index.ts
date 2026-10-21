@@ -252,7 +252,7 @@ async function handleCallback(
     }
     if (data.startsWith("dev:")) {
       await answerCallback(env, query.id, "");
-      await user.sendInstruction(env, chatId, data.slice(4));
+      await user.sendInstruction(env, chatId, data.slice(4), messageId);
       return;
     }
     if (data === "act:cabinet") {
@@ -262,7 +262,7 @@ async function handleCallback(
     }
     if (data === "act:help") {
       await answerCallback(env, query.id, "");
-      await user.sendHelp(env, chatId);
+      await user.sendHelp(env, chatId, messageId);
       return;
     }
     if (data === "act:term" || data === "act:traffic" || data === "act:devs") {
@@ -271,9 +271,9 @@ async function handleCallback(
         return;
       }
       await answerCallback(env, query.id, "");
-      if (data === "act:term") await user.sendTerm(env, chatId, existing);
-      else if (data === "act:traffic") await user.sendTraffic(env, chatId, existing);
-      else await user.sendDevicesInfo(env, chatId, existing);
+      if (data === "act:term") await user.sendTerm(env, chatId, existing, messageId);
+      else if (data === "act:traffic") await user.sendTraffic(env, chatId, existing, messageId);
+      else await user.sendDevicesInfo(env, chatId, existing, messageId);
       return;
     }
     if (data === "act:plans") {
@@ -303,7 +303,7 @@ async function handleCallback(
         return;
       }
       await answerCallback(env, query.id, "");
-      await user.sendReferral(env, chatId, existing);
+      await user.sendReferral(env, chatId, existing, messageId);
       return;
     }
 
@@ -351,7 +351,7 @@ async function handleCallback(
         return;
       }
       await answerCallback(env, query.id, "");
-      await user.handleStatus(env, existing);
+      await user.handleStatus(env, existing, messageId);
       return;
     }
 
