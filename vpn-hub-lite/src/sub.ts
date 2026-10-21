@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Персональная подписка /sub/<token>.
  *
  * Особенности:
@@ -16,6 +16,7 @@ import {
   hashValue,
   memRateLimit,
   randomToken,
+  envStr,
   timingSafeEqual,
 } from "./security";
 import type { DeliverableServer, Env, UserRow } from "./types";
@@ -169,8 +170,8 @@ async function touchFetchLog(env: Env, user: UserRow, request: Request): Promise
     : 0;
   if (Date.now() - last < 3600_000) return;
 
-  const ipHash = await hashValue(clientIp(request), env.SALT);
-  const uaHash = await hashValue(request.headers.get("User-Agent") ?? "-", env.SALT);
+  const ipHash = await hashValue(clientIp(request), envStr(env.SALT));
+  const uaHash = await hashValue(request.headers.get("User-Agent") ?? "-", envStr(env.SALT));
   const tsHour = new Date().toISOString().slice(0, 13);
 
   await run(
@@ -211,3 +212,4 @@ export async function rotateToken(env: Env, user: UserRow): Promise<string> {
 export async function invalidateSubscription(env: Env, token: string): Promise<void> {
   await env.CACHE.delete(`sub:v1:${token}`);
 }
+

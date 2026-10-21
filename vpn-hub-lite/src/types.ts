@@ -17,6 +17,8 @@ export interface Env {
   SERVERS_PER_USER?: string;
   FETCH_UA?: string;
   SUB_CACHE_TTL?: string;
+  /** webhook — Telegram сам присылает обновления; polling — забираем по cron. */
+  BOT_TRANSPORT?: string;
 }
 
 export type UserStatus = "pending" | "active" | "banned" | "expired";

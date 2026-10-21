@@ -1,6 +1,7 @@
 /** Минимальный клиент Bot API. Каждый вызов — один подзапрос (лимит 50). */
 
 import { one } from "../db";
+import { envStr } from "../security";
 import type { Env } from "../types";
 
 const API = "https://api.telegram.org/bot";
@@ -24,9 +25,10 @@ export async function tgApi<T>(
   method: string,
   payload?: Record<string, unknown>,
 ): Promise<T | null> {
-  if (!env.BOT_TOKEN) return null;
+  const token = envStr(env.BOT_TOKEN);
+  if (!token) return null;
   try {
-    const response = await fetch(`${API}${env.BOT_TOKEN}/${method}`, {
+    const response = await fetch(`${API}${token}/${method}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload ?? {}),

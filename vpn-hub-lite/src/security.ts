@@ -4,6 +4,15 @@ import type { Env } from "./types";
 
 const encoder = new TextEncoder();
 
+/**
+ * Значение секрета без хвостовых пробелов и переводов строк.
+ * `wrangler secret put` с пайпом дописывает \n — из-за этого сравнение токенов
+ * и вызовы Bot API ломаются «на ровном месте».
+ */
+export function envStr(value: string | undefined | null): string {
+  return (value ?? "").trim();
+}
+
 export function toBase64Url(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -86,7 +95,7 @@ export function memRateLimit(key: string, limit: number, windowSec: number): boo
 export async function adminCookieValue(env: Env): Promise<string> {
   const key = await crypto.subtle.importKey(
     "raw",
-    encoder.encode(env.ADMIN_TOKEN),
+    encoder.encode(envStr(env.ADMIN_TOKEN)),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],

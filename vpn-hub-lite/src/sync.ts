@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Cron «sync» — раз в 6 часов.
  *
  * Бюджет бесплатного плана: 10 мс CPU, 50 подзапросов, 6 соединений.
@@ -7,6 +7,7 @@
  */
 
 import { batch, logEvent, many, one, prepare, run } from "./db";
+import { envStr } from "./security";
 import { isSingleKey, parseSubscription, parseUri, parseUserinfo } from "./parser";
 import type { Env, SourceRow } from "./types";
 
@@ -218,7 +219,7 @@ async function downloadSource(env: Env, source: SourceRow): Promise<CachedSource
     headers: {
       // Один фиксированный UA и один HWID на источник, как требует ТЗ.
       "User-Agent": env.FETCH_UA ?? "Happ/2.9.1",
-      "x-hwid": `vh-${source.id}-${env.SALT.slice(0, 8)}`,
+      "x-hwid": `vh-${source.id}-${envStr(env.SALT).slice(0, 8)}`,
       Accept: "*/*",
     },
     signal: AbortSignal.timeout(10_000),
@@ -232,3 +233,4 @@ async function downloadSource(env: Env, source: SourceRow): Promise<CachedSource
   const userinfo = parseUserinfo(response.headers.get("subscription-userinfo"));
   return { text, userinfo };
 }
+

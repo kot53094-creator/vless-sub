@@ -1,11 +1,12 @@
 /** Админ-страница: простой HTML, тёмная тема, никаких фреймворков. */
 
 import { rebalance, serverLoads } from "./balance";
-import { many, one, run } from "./db";
+import { logEvent, many, one, run } from "./db";
 import { maskLink, maskToken } from "./labels";
 import {
   adminCookieValue,
   clientIp,
+  envStr,
   kvRateLimit,
   readCookie,
   sha256Hex,
@@ -118,7 +119,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
     }
     const form = await request.formData();
     const token = String(form.get("token") ?? "");
-    if (!timingSafeEqual(token, env.ADMIN_TOKEN)) {
+    if (!timingSafeEqual(token, envStr(env.ADMIN_TOKEN))) {
       return loginPage("Неверный токен");
     }
     const cookie = await adminCookieValue(env);
@@ -153,7 +154,14 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   if (path === "/admin" || path === "/admin/") {
     return new Response(null, { status: 303, headers: { location: "/admin/users" } });
   }
-  if (path === "/admin/users") return await usersPage(env);
+  if (path === "/admin/users") {
+    return await usersPage(
+      env,
+      url.searchParams.get("tg"),
+      url.searchParams.get("why"),
+      url.searchParams.get("poll"),
+    );
+  }
   if (path === "/admin/servers") return await serversPage(env);
   if (path === "/admin/sources") return await sourcesPage(env);
   if (path === "/admin/events") return await eventsPage(env);
@@ -162,10 +170,15 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
 }
 
 async function csrfToken(env: Env): Promise<string> {
-  return (await sha256Hex(env.ADMIN_TOKEN)).slice(0, 24);
+  return (await sha256Hex(envStr(env.ADMIN_TOKEN))).slice(0, 24);
 }
 
-async function usersPage(env: Env): Promise<Response> {
+async function usersPage(
+  env: Env,
+  tgResult: string | null = null,
+  why: string | null = null,
+  pollResult: string | null = null,
+): Promise<Response> {
   const users = await many<
     UserRow & { devices: number; servers: number }
   >(
@@ -218,7 +231,36 @@ async function usersPage(env: Env): Promise<Response> {
     })
     .join("");
 
-  const body = `<div class="card"><h2>Пользователи (${users.length})</h2>
+  const pollNotice =
+    pollResult === null
+      ? ""
+      : `<div class="card" style="border-color:#1f4a33"><b>Опрос Telegram выполнен.</b>
+         <span class="muted">Новых обновлений: ${esc(pollResult)}. Если вы только что написали боту — обновите страницу.</span></div>`;
+
+  const notice = pollNotice + (tgResult === "ok"
+      ? `<div class="card" style="border-color:#1f4a33"><b>Вебхук установлен.</b> <span class="muted">Бот готов принимать команды — напишите ему /start.</span></div>`
+      : tgResult === "fail"
+        ? `<div class="err">Telegram не принял вебхук. Проверьте BOT_TOKEN и повторите.${
+            why ? `<br><span class="mono">${esc(why)}</span>` : ""
+          }</div>`
+        : "");
+
+  const body = `${notice}<div class="card">
+    <h2>Бот</h2>
+    <form method="post" action="/admin/action">
+      <input type="hidden" name="csrf" value="${csrf}">
+      <input type="hidden" name="action" value="webhook">
+      <button class="btn">Подключить бота (setWebhook)</button>
+      <span class="muted">если бот молчит: установит вебхук на ${esc(env.PUBLIC_BASE_URL)}/webhook</span>
+    </form>
+    <form method="post" action="/admin/action" style="margin-top:8px">
+      <input type="hidden" name="csrf" value="${csrf}">
+      <input type="hidden" name="action" value="poll">
+      <button class="btn">Проверить обновления</button>
+      <span class="muted">забрать сообщения через getUpdates (режим ${esc(env.BOT_TRANSPORT ?? "webhook")})</span>
+    </form>
+  </div>
+  <div class="card"><h2>Пользователи (${users.length})</h2>
     <table><thead><tr><th>Кто</th><th>Статус</th><th>До</th><th>Устройства</th><th>Подписка</th><th>Действия</th></tr></thead>
     <tbody>${rows || `<tr><td colspan="6" class="muted">Пока никого</td></tr>`}</tbody></table></div>`;
 
@@ -392,6 +434,43 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
     await run(env, "DELETE FROM sources WHERE id = ?", id);
   } else if (action === "rebalance") {
     await rebalance(env);
+  } else if (action === "webhook") {
+    const target = `${envStr(env.PUBLIC_BASE_URL).replace(/\/$/, "")}/webhook`;
+    let ok = false;
+    let detail = "";
+    try {
+      const response = await fetch(
+        `https://api.telegram.org/bot${envStr(env.BOT_TOKEN)}/setWebhook`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            url: target,
+            secret_token: envStr(env.WEBHOOK_SECRET),
+            allowed_updates: ["message", "callback_query"],
+          }),
+        },
+      );
+      const data = (await response.json()) as { ok?: boolean; description?: string };
+      ok = Boolean(data.ok);
+      detail = String(data.description ?? response.status);
+    } catch (error) {
+      detail = error instanceof Error ? error.message : "network";
+    }
+    await logEvent(env, ok ? "webhook_ok" : "webhook_fail", null, `${target} · ${detail}`.slice(0, 300));
+    return new Response(null, {
+      status: 303,
+      headers: {
+        location: `/admin/users?tg=${ok ? "ok" : "fail"}&why=${encodeURIComponent(detail.slice(0, 120))}`,
+      },
+    });
+  } else if (action === "poll") {
+    const { runPoll } = await import("./polling");
+    const processed = await runPoll(env);
+    return new Response(null, {
+      status: 303,
+      headers: { location: `/admin/users?poll=${processed}` },
+    });
   } else if (action === "sync") {
     const { runSync } = await import("./sync");
     await runSync(env);

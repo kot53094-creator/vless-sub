@@ -3,12 +3,14 @@
 import { handleAdmin } from "./admin";
 import { handleUpdate, type TgUpdate } from "./bot";
 import { runHealth } from "./health";
-import { timingSafeEqual } from "./security";
+import { runPoll } from "./polling";
+import { envStr, timingSafeEqual } from "./security";
 import { handleSubscription } from "./sub";
 import { runSync } from "./sync";
 import type { Env } from "./types";
 
 const SYNC_CRON = "0 */6 * * *";
+const HEALTH_CRON = "*/30 * * * *";
 
 function landing(env: Env): Response {
   const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8">
@@ -48,7 +50,7 @@ export default {
 
     if (path === "/webhook" && request.method === "POST") {
       const provided = request.headers.get("X-Telegram-Bot-Api-Secret-Token") ?? "";
-      if (!env.WEBHOOK_SECRET || !timingSafeEqual(provided, env.WEBHOOK_SECRET)) {
+      if (!envStr(env.WEBHOOK_SECRET) || !timingSafeEqual(provided, envStr(env.WEBHOOK_SECRET))) {
         return new Response("forbidden", { status: 403 });
       }
       let update: TgUpdate;
@@ -84,10 +86,21 @@ export default {
       );
       return;
     }
-    ctx.waitUntil(
-      runHealth(env).catch((error) => {
-        console.error("health failed", error instanceof Error ? error.message : error);
-      }),
-    );
+    if (event.cron === HEALTH_CRON) {
+      ctx.waitUntil(
+        runHealth(env).catch((error) => {
+          console.error("health failed", error instanceof Error ? error.message : error);
+        }),
+      );
+      return;
+    }
+    // Раз в минуту: забираем обновления бота сами (резервный транспорт).
+    if ((env.BOT_TRANSPORT ?? "webhook") === "polling") {
+      ctx.waitUntil(
+        runPoll(env).catch((error) => {
+          console.error("poll failed", error instanceof Error ? error.message : error);
+        }),
+      );
+    }
   },
 };
