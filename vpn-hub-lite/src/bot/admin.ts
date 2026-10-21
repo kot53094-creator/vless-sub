@@ -1,6 +1,7 @@
 /** Админские команды. Любой другой ID игнорируется без ответа. */
 
-import { rebalance, serverLoads, assignForUser } from "../balance";
+import { assignForUser, rebalance, serverLoads } from "../balance";
+import { topUpAllActive } from "../delivery";
 import { daysFromNowIso, logEvent, many, one, run } from "../db";
 import { parseSubscription, parseUri } from "../parser";
 import { buildReport } from "../reports";
@@ -286,18 +287,10 @@ export async function addKeys(env: Env, raw: string): Promise<string> {
      WHERE u.status = 'active'
        AND NOT EXISTS (SELECT 1 FROM user_pools up WHERE up.user_id = u.id)`,
   );
-  const waiting = await many<{ id: number }>(
-    env,
-    `SELECT u.id FROM users u
-     WHERE u.status = 'active'
-       AND NOT EXISTS (SELECT 1 FROM assignments a WHERE a.user_id = u.id)
-     LIMIT 20`,
-  );
-  for (const person of waiting) {
-    await assignForUser(env, person.id, Number(env.SERVERS_PER_USER ?? "3"));
-  }
+  // Доводим выдачу до нормы у всех: иначе новые ключи не попадают в подписку.
+  const delivered = await topUpAllActive(env);
   await logEvent(env, "addkey", null, `источник #${sourceId}, ключей ${keys.length}`);
-  return `Добавлено ключей: ${keys.length} (источник #${sourceId}).`;
+  return `Добавлено ключей: ${keys.length} (источник #${sourceId}), роздано серверам: ${delivered}.`;
 }
 
 export async function peekKey(env: Env, id: number): Promise<string> {

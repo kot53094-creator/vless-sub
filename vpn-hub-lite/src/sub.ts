@@ -47,14 +47,21 @@ const SERVER_SQL = `
 `;
 
 /** Защита в глубину: даже если SQL что-то пропустит, приватное не уйдёт. */
-export function isDeliverable(server: {
-  visibility?: string;
-  source_kind?: string;
-  status?: string;
-}): boolean {
+export function isDeliverable(
+  server: {
+    visibility?: string;
+    source_kind?: string;
+    status?: string;
+  },
+  allowPrivate = false,
+): boolean {
   if (server.status && server.status !== "alive" && server.status !== "unknown") return false;
-  if (server.visibility !== "shareable") return false;
-  if (server.source_kind === "paid_private") return false;
+  // Приватные и оплаченные источники не уходят никому, кроме владельца:
+  // для него allowPrivate=true, для остальных — жёсткий отсев.
+  if (!allowPrivate) {
+    if (server.visibility !== "shareable") return false;
+    if (server.source_kind === "paid_private") return false;
+  }
   return true;
 }
 
@@ -133,14 +140,14 @@ export async function handleSubscription(
   // Платные и приватные источники видит только админ — «моя подписка».
   const isAdmin = String(user.tg_id) === envStr(env.ADMIN_TG_ID);
   let rows = await many<DeliverableServer>(env, SERVER_SQL, user.id, isAdmin ? 1 : 0);
-  let deliverable = rows.filter(isDeliverable);
+  let deliverable = rows.filter((row) => isDeliverable(row, isAdmin));
 
   // Самовосстановление: серверы есть, а человеку ничего не выдано — выдаём сейчас.
   if (deliverable.length === 0) {
     const issued = await assignIfEmpty(env, user.id, Number(env.SERVERS_PER_USER ?? "3"));
     if (issued > 0) {
       rows = await many<DeliverableServer>(env, SERVER_SQL, user.id, isAdmin ? 1 : 0);
-      deliverable = rows.filter(isDeliverable);
+      deliverable = rows.filter((row) => isDeliverable(row, isAdmin));
     }
   }
 

@@ -132,6 +132,19 @@ export async function assignForUser(
   return picked;
 }
 
+/**
+ * Добрать до целевого числа, а не «добавить ещё N».
+ * Нужно после загрузки новых ключей: старые пользователи не должны
+ * оставаться без новых серверов и не должны получать лишние.
+ */
+export async function topUpUser(env: Env, userId: number, target: number): Promise<number> {
+  const current = await assignmentCount(env, userId);
+  const missing = Math.max(0, target - current);
+  if (missing === 0) return 0;
+  const picked = await assignForUser(env, userId, missing);
+  return picked.length;
+}
+
 /** Сколько серверов у пользователя сейчас. */
 export async function assignmentCount(env: Env, userId: number): Promise<number> {
   const row = await many<{ n: number }>(
