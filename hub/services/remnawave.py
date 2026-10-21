@@ -25,6 +25,7 @@ def _now() -> datetime:
 DEFAULT_PATHS = {
     "users": "/api/users",
     "user": "/api/users/{uuid}",
+    "nodes": "/api/nodes",
     "devices": "/api/hwid/devices/{uuid}",
     "delete_device": "/api/hwid/devices/{device_id}",
     "reset_traffic": "/api/users/{uuid}/actions/reset-traffic",
@@ -74,6 +75,16 @@ class RwUser:
                 self.days_left is not None and self.days_left < 7):
             return "warn"
         return "ok"
+
+
+@dataclass
+class RwNode:
+    uuid: str
+    name: str
+    address: str = ""
+    connected: bool = True
+    country: str = ""
+    users_online: int | None = None
 
 
 @dataclass
@@ -205,6 +216,31 @@ class Remnawave:
                 last_seen=_dt(_first(item, "updatedAt", "lastSeen", "lastConnectedAt")),
                 ip=str(_first(item, "ip", "ipAddress", default="")),
                 country=str(_first(item, "country", "countryCode", default="")),
+            ))
+        return out
+
+    async def nodes(self) -> list[RwNode]:
+        """Статус нод панели. Если версия панели не отдаёт ноды — пустой список."""
+        try:
+            payload = await self._request("GET", self.paths["nodes"])
+        except RemnawaveError:
+            return []
+        body = payload.get("response", payload) if isinstance(payload, dict) else payload
+        raw = _first(body, "nodes", "items", default=body if isinstance(body, list) else [])
+        out: list[RwNode] = []
+        for item in raw or []:
+            if not isinstance(item, dict):
+                continue
+            online = _first(item, "isConnected", "connected", "isNodeOnline", default=None)
+            if online is None:
+                online = str(_first(item, "status", default="")).upper() == "CONNECTED"
+            out.append(RwNode(
+                uuid=str(_first(item, "uuid", "id", default="")),
+                name=str(_first(item, "name", "remark", default="")),
+                address=str(_first(item, "address", "host", default="")),
+                connected=bool(online),
+                country=str(_first(item, "countryCode", "country", default="")),
+                users_online=_first(item, "usersOnline", "onlineUsers"),
             ))
         return out
 

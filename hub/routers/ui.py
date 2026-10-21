@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from .. import security
 from ..db import SessionLocal, get_db
 from ..models import Event, Node, Server, Source, SyncRun, utcnow
-from ..services import detector, subscription
+from ..services import detector, health, subscription, traffic
 from ..services.remnawave import Remnawave
 from ..templating import templates
 
@@ -36,11 +36,14 @@ def _detector_state(db: Session) -> dict | None:
 
 @router.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "error": ""})
+    return templates.TemplateResponse("login.html", {
+        "request": request, "error": "", "totp": security.totp_required(),
+    })
 
 
 @router.post("/login")
-def login_submit(request: Request, username: str = Form(""), password: str = Form("")):
+def login_submit(request: Request, username: str = Form(""), password: str = Form(""),
+                 totp: str = Form("")):
     ip = request.client.host if request.client else "?"
     if security.too_many_attempts(ip):
         return templates.TemplateResponse(
@@ -49,7 +52,13 @@ def login_submit(request: Request, username: str = Form(""), password: str = For
     if username.strip() != security.settings.admin_user or not security.verify_password(password):
         security.register_attempt(ip)
         return templates.TemplateResponse(
-            "login.html", {"request": request, "error": "Неверный логин или пароль"}, status_code=401)
+            "login.html", {"request": request, "error": "Неверный логин или пароль",
+                           "totp": security.totp_required()}, status_code=401)
+    if not security.verify_totp(totp):
+        security.register_attempt(ip)
+        return templates.TemplateResponse(
+            "login.html", {"request": request, "error": "Неверный код двухфакторной аутентификации",
+                           "totp": True}, status_code=401)
     response = RedirectResponse("/", status_code=303)
     security.issue_session(response, username.strip())
     return response
@@ -81,6 +90,11 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         key=lambda s: s.days_left or 0,
     )
     servers = db.execute(select(Server)).scalars().all()
+    expiring_servers = sorted(
+        [s for s in servers if s.days_left is not None and s.days_left <= 7
+         and s.status not in ("replaced",)],
+        key=lambda s: s.days_left or 0,
+    )
     events = db.execute(select(Event).order_by(desc(Event.ts)).limit(12)).scalars().all()
     last_run = db.execute(select(SyncRun).order_by(desc(SyncRun.started_at)).limit(1)).scalar_one_or_none()
 
@@ -98,6 +112,9 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         "last_run": last_run,
         "remna_configured": Remnawave().configured,
         "now": utcnow(),
+        "day_used": traffic.day_usage(db),
+        "month_used": traffic.month_usage(db),
+        "expiring_servers": expiring_servers,
     })
 
 
@@ -109,8 +126,10 @@ def sources_page(request: Request, db: Session = Depends(get_db)):
     counts = dict(db.execute(
         select(Node.source_id, func.count()).where(Node.alive.is_(True)).group_by(Node.source_id)
     ).all())
+    ids = [src.id for src in sources]
     return templates.TemplateResponse("sources.html", {
         "request": request, "sources": sources, "alive": counts, "mode": _mode(db),
+        "history": health.seven_days(db, source_ids=ids) if ids else {},
     })
 
 
@@ -127,17 +146,24 @@ def settings_page(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/login", status_code=303)
     from ..config import settings as cfg
 
+    from ..services import notifier
+
     return templates.TemplateResponse("settings.html", {
         "request": request,
         "mode": _mode(db),
         "sub_url": f"{cfg.public_base_url}/sub/{cfg.sub_token}",
+        "routing_url": f"{cfg.public_base_url}/sub/{cfg.sub_token}/routing",
         "warnings": cfg.warnings(),
         "sync_hours": cfg.sync_interval_hours,
         "detector": _detector_state(db),
         "detector_enabled": cfg.detector_enabled,
         "detector_interval": cfg.detector_interval,
         "threshold": 3,
-        "telegram": bool(cfg.telegram_token and cfg.telegram_chat),
+        "telegram": bool(cfg.telegram_token and notifier.chat_id()),
+        "telegram_token": bool(cfg.telegram_token),
+        "telegram_chat": notifier.chat_id(),
+        "totp": bool(cfg.totp_secret),
+        "tg_result": request.query_params.get("tg", ""),
     })
 
 

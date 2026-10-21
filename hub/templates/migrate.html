@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Перенос ноды · VPN Hub{% endblock %}
+{% block body %}
+
+<a href="/servers" class="muted">← к серверам</a>
+
+<div class="card" style="margin-top:12px">
+  <h2>Создать на новом сервере</h2>
+  <div class="muted" style="margin-bottom:10px">
+    Новый VPS получит ту же роль ({{ old.role }}), а после успешной установки
+    старый источник будет отключён — выдача переедет на новую ноду сама.
+  </div>
+
+  <div class="muted">
+    Заменяем: <b>{{ old.name }}</b> · {{ old.ip }}
+    {% if days is not none %} · осталось {{ days }} дн.{% endif %}
+  </div>
+
+  {% if error %}
+    <div class="err" style="margin-top:12px">Нужен IP нового сервера.</div>
+  {% endif %}
+
+  <form method="post" action="/api/servers/{{ old.id }}/migrate" style="margin-top:12px">
+    <input type="hidden" name="csrf" value="{{ request.cookies.get('hub_csrf','') }}">
+
+    <label>Название</label>
+    <input name="name" placeholder="{{ old.name }}-new">
+
+    <label>IP нового сервера</label>
+    <input name="ip" required placeholder="203.0.113.20">
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div>
+        <label>Пользователь</label>
+        <input name="ssh_user" value="{{ old.ssh_user or 'root' }}">
+      </div>
+      <div>
+        <label>SSH-порт</label>
+        <input name="ssh_port" value="{{ old.ssh_port or 22 }}" inputmode="numeric">
+      </div>
+    </div>
+
+    <label>Пароль или приватный ключ (хранится зашифрованным)</label>
+    <textarea name="secret" rows="3" placeholder="пароль или -----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+      <div>
+        <label>VLESS-порт</label>
+        <input name="node_port" value="443" inputmode="numeric">
+      </div>
+      <div>
+        <label>Hysteria2-порт</label>
+        <input name="hy2_port" value="8443" inputmode="numeric">
+      </div>
+      <div>
+        <label>Аренда, дней</label>
+        <input name="rent_days" placeholder="30" inputmode="numeric">
+      </div>
+    </div>
+
+    <div style="margin-top:16px"><button class="btn" type="submit">Создать и перенести</button></div>
+  </form>
+</div>
+
+{% endblock %}

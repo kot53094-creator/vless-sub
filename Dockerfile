@@ -17,7 +17,12 @@ RUN pip install --no-cache-dir -r requirements-hub.txt
 COPY hub ./hub
 COPY scripts ./scripts
 
+# Миграции БД
+COPY alembic.ini ./
+COPY migrations ./migrations
+
 RUN mkdir -p /data
 EXPOSE 8000
 
-CMD ["uvicorn", "hub.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+# Схема обновляется до старта приложения; повторный запуск безопасен.
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn hub.main:app --host 0.0.0.0 --port 8000 --proxy-headers"]

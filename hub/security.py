@@ -41,6 +41,25 @@ def verify_password(plain: str) -> bool:
     return False
 
 
+def totp_required() -> bool:
+    return bool(settings.totp_secret)
+
+
+def verify_totp(code: str) -> bool:
+    """Проверка одноразового кода. Если секрет не задан — второй фактор выключен."""
+    if not settings.totp_secret:
+        return True
+    raw = (code or "").replace(" ", "").strip()
+    if not raw.isdigit():
+        return False
+    try:
+        import pyotp
+
+        return bool(pyotp.TOTP(settings.totp_secret).verify(raw, valid_window=1))
+    except Exception:  # noqa: BLE001 - сломанный секрет не должен пускать внутрь
+        return False
+
+
 def too_many_attempts(ip: str) -> bool:
     now = time.time()
     hits = [t for t in _attempts[ip] if now - t < WINDOW]

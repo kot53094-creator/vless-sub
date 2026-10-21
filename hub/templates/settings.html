@@ -1,45 +1,23 @@
 {% extends "base.html" %}
-{% block title %}Настройки · VPN Hub
-<div class="card" style="margin-top:12px">
-  <h2>Детектор белых списков</h2>
-  <div class="muted" style="margin-bottom:10px">
-    Проверяет, открывается ли российский сайт и зарубежный. Режим включается
-    после {{ threshold }} таких проверок подряд и выключается, когда зарубежный
-    снова работает.
-  </div>
-  {% if detector %}
-    <div class="row" style="border:0;padding-top:0">
-      <div>
-        <span class="pill {{ 'bad' if detector.ru_ok and not detector.foreign_ok else 'ok' }}">
-          RU: {{ 'открыт' if detector.ru_ok else 'закрыт' }}
-        </span>
-        <span class="pill {{ 'bad' if not detector.foreign_ok else 'ok' }}">
-          Зарубеж: {{ 'открыт' if detector.foreign_ok else 'закрыт' }}
-        </span>
-        <span class="pill">серия: {{ detector.fails }}</span>
-        <div class="muted" style="margin-top:6px">{{ detector.checked_at | iso if detector.checked_at else 'проверок ещё не было' }}</div>
-      </div>
-    </div>
-  {% else %}
-    <div class="muted">Проверок ещё не было.</div>
-  {% endif %}
-  <form method="post" action="/api/detector/check" style="margin-top:12px">
-    <input type="hidden" name="csrf" value="{{ request.cookies.get('hub_csrf','') }}">
-    <button class="btn ghost">Проверить сейчас</button>
-  </form>
-  <div class="muted" style="margin-top:10px">
-    Автозапуск: {{ 'включён' if detector_enabled else 'выключен' }} ·
-    интервал {{ detector_interval }} с · Telegram: {{ 'настроен' if telegram else 'не настроен' }}
-  </div>
-</div>
-
-{% endblock %}
+{% block title %}Настройки · VPN Hub{% endblock %}
 {% block body %}
 
 {% if warnings %}
   <div class="card" style="border-color:#5a3a1f;margin-bottom:12px">
     <h2>Требует внимания</h2>
     {% for w in warnings %}<div class="muted">• {{ w }}</div>{% endfor %}
+  </div>
+{% endif %}
+
+{% if tg_result %}
+  <div class="{{ 'notice' if tg_result == 'ok' else 'err' }}" style="margin-bottom:12px">
+    {% if tg_result == 'ok' %}
+      Бот на связи, тестовое сообщение отправлено.
+    {% elif tg_result == 'nochat' %}
+      Бот отвечает, но чат не найден: напишите боту любое сообщение в Telegram и нажмите «Проверить бота» ещё раз.
+    {% else %}
+      Telegram не ответил. Проверьте токен и доступ сервера к api.telegram.org.
+    {% endif %}
   </div>
 {% endif %}
 
@@ -50,6 +28,7 @@
     <input id="sub" readonly value="{{ sub_url }}">
     <button class="btn ghost" onclick="navigator.clipboard.writeText(document.getElementById('sub').value)">Копировать</button>
   </div>
+  <div class="muted" style="margin-top:10px">Профиль маршрутизации: <span style="word-break:break-all">{{ routing_url }}</span></div>
   <div class="muted" style="margin-top:8px">Обновление в клиенте — раз в {{ sync_hours }} ч.</div>
 </div>
 
@@ -71,15 +50,6 @@
 </div>
 
 <div class="card" style="margin-top:12px">
-  <h2>Что дальше</h2>
-  <div class="muted">
-    Этап 1: источники, синхронизация, подписка, главная — работает.<br>
-    Дальше: экран ключей Remnawave, автоустановка ноды по SSH, детектор белых списков.
-  </div>
-</div>
-
-
-<div class="card" style="margin-top:12px">
   <h2>Детектор белых списков</h2>
   <div class="muted" style="margin-bottom:10px">
     Проверяет, открывается ли российский сайт и зарубежный. Режим включается
@@ -107,8 +77,43 @@
     <button class="btn ghost">Проверить сейчас</button>
   </form>
   <div class="muted" style="margin-top:10px">
-    Автозапуск: {{ 'включён' if detector_enabled else 'выключен' }} ·
-    интервал {{ detector_interval }} с · Telegram: {{ 'настроен' if telegram else 'не настроен' }}
+    Автозапуск: {{ 'включён' if detector_enabled else 'выключен' }} · интервал {{ detector_interval }} с
+  </div>
+</div>
+
+<div class="card" style="margin-top:12px">
+  <h2>Telegram</h2>
+  <div class="row" style="border:0;padding-top:0">
+    <div>
+      <b>{{ 'подключён' if telegram else 'не подключён' }}</b>
+      <div class="muted">
+        {% if telegram_token %}
+          токен задан · чат: {{ telegram_chat or 'ещё не определён' }}
+        {% else %}
+          добавьте TELEGRAM_BOT_TOKEN в .env
+        {% endif %}
+      </div>
+    </div>
+    <form method="post" action="/api/telegram/check">
+      <input type="hidden" name="csrf" value="{{ request.cookies.get('hub_csrf','') }}">
+      <button class="btn ghost" type="submit">Проверить бота</button>
+    </form>
+  </div>
+  <div class="muted" style="margin-top:10px">
+    Если chat_id не задан в .env, напишите боту любое сообщение — хаб запомнит чат
+    и будет присылать итоги синхронизации, сроки ключей, аренду серверов,
+    исчерпанный трафик и новые устройства.
+  </div>
+</div>
+
+<div class="card" style="margin-top:12px">
+  <h2>Двухфакторный вход (TOTP)</h2>
+  <div class="muted">
+    Сейчас: <b>{{ 'включён' if totp else 'выключен' }}</b>.
+    Чтобы включить, сгенерируйте секрет командой
+    <code>docker compose exec -T hub python -m hub.cli totp-secret</code>,
+    добавьте его в .env как <code>HUB_TOTP_SECRET</code> и перезапустите хаб.
+    Код подойдёт из любого приложения-аутентификатора.
   </div>
 </div>
 

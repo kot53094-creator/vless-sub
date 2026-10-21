@@ -16,7 +16,7 @@ from .config import settings
 from .db import SessionLocal, init_db
 from .models import Event, Setting
 from .routers import api, remna, routing as routing_router, servers, ui
-from .services import detector, routing, subscription, sync
+from .services import deadlines, detector, routing, subscription, sync
 
 
 def _bootstrap() -> None:
@@ -49,6 +49,17 @@ async def _scheduler() -> None:
             print(f"[scheduler] sync failed: {exc}", flush=True)
 
 
+async def _deadline_loop() -> None:
+    """Раз в час: сроки ключей и аренды, исчерпанный трафик."""
+    interval = max(300, settings.deadline_check_minutes * 60)
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await deadlines.scan()
+        except Exception as exc:  # noqa: BLE001 - напоминания не должны ронять хаб
+            print(f"[deadlines] {type(exc).__name__}: {exc}", flush=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _bootstrap()
@@ -56,6 +67,7 @@ async def lifespan(app: FastAPI):
         print(f"[warn] {warning}", flush=True)
     task = asyncio.create_task(_scheduler()) if settings.scheduler_enabled else None
     detector_task = asyncio.create_task(detector.loop()) if settings.detector_enabled else None
+    deadline_task = asyncio.create_task(_deadline_loop())
     if task is None:
         print("[info] встроенный планировщик выключен (HUB_SCHEDULER_ENABLED=0): "
               "синхронизацию должен запускать systemd-таймер или cron", flush=True)
@@ -66,6 +78,7 @@ async def lifespan(app: FastAPI):
             task.cancel()
         if detector_task:
             detector_task.cancel()
+        deadline_task.cancel()
         if task:
             with contextlib.suppress(asyncio.CancelledError):
                 await task

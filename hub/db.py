@@ -45,6 +45,9 @@ _EXTRA_COLUMNS: dict[str, dict[str, str]] = {
         "log": "TEXT DEFAULT ''",
         "os_info": "VARCHAR(120) DEFAULT ''",
         "provisioned_at": "DATETIME",
+        "panel_url": "VARCHAR(400) DEFAULT ''",
+        "load_pct": "INTEGER",
+        "source_id": "INTEGER",
     },
 }
 

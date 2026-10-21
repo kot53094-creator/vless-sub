@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -71,7 +72,15 @@ class Source(Base):
             return None
         if deadline.tzinfo is None:
             deadline = deadline.replace(tzinfo=timezone.utc)
-        return (deadline - utcnow()).days
+        # ceil: «осталось 3 дня» не должно показываться как 2 сразу после выдачи
+        return math.ceil((deadline - utcnow()).total_seconds() / 86400)
+
+    @property
+    def traffic_pct(self) -> float | None:
+        total = self.total_bytes or self.traffic_limit
+        if not total:
+            return None
+        return min(100.0, 100.0 * (self.used_bytes or 0) / total)
 
 
 class Node(Base):
@@ -114,6 +123,18 @@ class Server(Base):
     os_info: Mapped[str] = mapped_column(String(120), default="")
     provisioned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active")
+    panel_url: Mapped[str] = mapped_column(String(400), default="")        # панель провайдера
+    load_pct: Mapped[int | None] = mapped_column(Integer, nullable=True)   # нагрузка, %
+    source_id: Mapped[int | None] = mapped_column(ForeignKey("sources.id"), nullable=True)
+
+    @property
+    def days_left(self) -> int | None:
+        if not self.rent_until:
+            return None
+        until = self.rent_until
+        if until.tzinfo is None:
+            until = until.replace(tzinfo=timezone.utc)
+        return math.ceil((until - utcnow()).total_seconds() / 86400)
 
 
 class SyncRun(Base):
@@ -161,3 +182,58 @@ class RouteRule(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     sort: Mapped[int] = mapped_column(Integer, default=100)
     note: Mapped[str] = mapped_column(String(300), default="")
+
+class CheckEvent(Base):
+    """История проверок источника — график доступности за 7 дней."""
+
+    __tablename__ = "check_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"),
+                                           index=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    ok: Mapped[bool] = mapped_column(Boolean, default=False)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str] = mapped_column(String(300), default="")
+
+
+class TrafficSample(Base):
+    """Снимок использованного трафика: из них считаются сутки и месяц."""
+
+    __tablename__ = "traffic_samples"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"),
+                                           index=True)
+    used_bytes: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class NotificationSent(Base):
+    """Чтобы одно и то же предупреждение не уходило дважды за день."""
+
+    __tablename__ = "notifications_sent"
+    __table_args__ = (UniqueConstraint("kind", "ref", "bucket", name="uq_notification"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(40))
+    ref: Mapped[str] = mapped_column(String(60))
+    bucket: Mapped[str] = mapped_column(String(24))
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class KnownDevice(Base):
+    """Уже виденные HWID — чтобы поймать новое устройство на ключе."""
+
+    __tablename__ = "known_devices"
+    __table_args__ = (UniqueConstraint("user_ref", "hwid", name="uq_known_device"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_ref: Mapped[str] = mapped_column(String(120), index=True)
+    hwid: Mapped[str] = mapped_column(String(120))
+    platform: Mapped[str] = mapped_column(String(80), default="")
+    model: Mapped[str] = mapped_column(String(120), default="")
+    ip: Mapped[str] = mapped_column(String(64), default="")
+    country: Mapped[str] = mapped_column(String(8), default="")
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

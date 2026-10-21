@@ -1,19 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Главная · VPN Hub
-<div class="card" style="margin-top:12px">
-  <div class="row" style="border:0;padding:0">
-    <div>
-      <b>Remnawave</b>
-      <div class="muted">ключи, трафик и устройства</div>
-    </div>
-    <div style="text-align:right">
-      <span class="pill {{ 'ok' if remna_configured else 'warn' }}">{{ 'подключена' if remna_configured else 'не настроена' }}</span>
-      <div style="margin-top:8px"><a class="btn ghost" href="/keys">Открыть</a></div>
-    </div>
-  </div>
-</div>
-
-{% endblock %}
+{% block title %}Главная · VPN Hub{% endblock %}
 {% block body %}
 
 <div class="grid">
@@ -39,7 +25,19 @@
   </div>
 
   <div class="card">
-    <h2>Трафик всего</h2>
+    <h2>Трафик за сутки</h2>
+    <div class="big">{{ day_used | bytes }}</div>
+    <div class="muted" style="margin-top:6px">по снимкам за 24 часа</div>
+  </div>
+
+  <div class="card">
+    <h2>Трафик за месяц</h2>
+    <div class="big">{{ month_used | bytes }}</div>
+    <div class="muted" style="margin-top:6px">за 30 дней</div>
+  </div>
+
+  <div class="card">
+    <h2>Всего израсходовано</h2>
     <div class="big">{{ total_used | bytes }}</div>
     {% if total_limit %}
       <div class="muted" style="margin-top:6px">из {{ total_limit | bytes }}</div>
@@ -62,27 +60,39 @@
 </div>
 
 <div class="card" style="margin-top:12px">
-  <div class="row" style="border-bottom:1px solid var(--line);padding-bottom:12px">
+  <div class="row" style="border-bottom:0;padding-bottom:0">
     <div>
       <b>Обновить всё</b>
       <div class="muted">скачать подписки, проверить узлы, пересобрать выдачу</div>
     </div>
-    <a class="btn" href="/sync">Запустить</a>
+    <a class="btn" href="/sync?auto=1">Запустить</a>
   </div>
 </div>
 
 <div class="card" style="margin-top:12px">
   <h2>Скоро кончится</h2>
-  {% if expiring %}
+  {% if expiring or expiring_servers %}
     {% for s in expiring %}
       <div class="row">
         <div>
           <b>{{ s.name }}</b>
-          <div class="muted">{{ s.kind }} · {{ s.deadline | dt }}</div>
+          <span class="pill">{{ s.kind }}</span>
+          <div class="muted">ключ · {{ s.deadline | dt }}</div>
         </div>
-        <span class="pill {{ 'bad' if (s.days_left or 0) <= 0 else 'warn' }}">
-          {{ s.days_left }} дн.
-        </span>
+        <span class="pill {{ 'bad' if (s.days_left or 0) <= 0 else 'warn' }}">{{ s.days_left }} дн.</span>
+      </div>
+    {% endfor %}
+    {% for s in expiring_servers %}
+      <div class="row">
+        <div>
+          <b>{{ s.name }}</b>
+          <span class="pill">сервер</span>
+          <div class="muted">аренда · {{ s.rent_until | dt }}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="pill {{ 'bad' if (s.days_left or 0) <= 0 else 'warn' }}">{{ s.days_left }} дн.</span>
+          <a class="btn ghost" style="padding:5px 9px;font-size:12px" href="/servers/{{ s.id }}/migrate">Создать на новом сервере</a>
+        </div>
       </div>
     {% endfor %}
   {% else %}
@@ -106,7 +116,6 @@
     <div class="muted">пока пусто</div>
   {% endif %}
 </div>
-
 
 <div class="card" style="margin-top:12px">
   <div class="row" style="border:0;padding:0">

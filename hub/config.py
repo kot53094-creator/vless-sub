@@ -8,6 +8,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# Локальный запуск без Docker: читаем .env рядом с проектом, если он есть.
+# В Docker переменные приходят из env_file, и это ничего не ломает.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(ROOT / ".env")
+except ImportError:  # python-dotenv необязателен
+    pass
+
 
 def _bool(name: str, default: bool = False) -> bool:
     return os.getenv(name, "1" if default else "0").strip().lower() in {"1", "true", "yes", "on"}
@@ -29,12 +38,15 @@ class Settings:
     admin_password: str = os.getenv("HUB_ADMIN_PASSWORD", "")
     admin_password_hash: str = os.getenv("HUB_ADMIN_PASSWORD_HASH", "")
     session_hours: int = int(os.getenv("HUB_SESSION_HOURS", "72"))
+    # Двухфакторный вход (TOTP). Пусто — вход только по паролю.
+    totp_secret: str = os.getenv("HUB_TOTP_SECRET", "")
 
     # --- синхронизация
     # Встроенный планировщик. Выключите, если синхронизацию запускает
     # systemd-таймер или cron — иначе прогоны будут дублироваться.
     scheduler_enabled: bool = _bool("HUB_SCHEDULER_ENABLED", True)
     sync_interval_hours: int = int(os.getenv("HUB_SYNC_INTERVAL_HOURS", "6"))
+    deadline_check_minutes: int = int(os.getenv("HUB_DEADLINE_CHECK_MINUTES", "60"))
     fetch_timeout: int = int(os.getenv("HUB_FETCH_TIMEOUT", "20"))
     check_timeout: float = float(os.getenv("HUB_CHECK_TIMEOUT", "6"))
     check_attempts: int = int(os.getenv("HUB_CHECK_ATTEMPTS", "3"))

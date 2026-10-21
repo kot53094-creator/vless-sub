@@ -8,13 +8,13 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .. import security
 from ..db import get_db
-from ..models import Event, Server, Setting, Source, utcnow
-from ..services import checker, detector, fetcher, parser, subscription, sync
+from ..models import Event, Node, Server, Setting, Source, utcnow
+from ..services import checker, detector, fetcher, health, parser, subscription, sync
 
 router = APIRouter()
 
@@ -197,3 +197,106 @@ async def detector_check(request: Request, csrf: str = Form(""),
                          f"зарубеж={'да' if result['foreign_ok'] else 'нет'}"))
     db.commit()
     return RedirectResponse("/settings?checked=1", status_code=303)
+
+
+@router.post("/api/sources/{source_id}/check")
+async def check_source(source_id: int, request: Request, csrf: str = Form(""),
+                       db: Session = Depends(get_db)):
+    """Проверить один источник сейчас: скачать, распарсить, проверить узлы."""
+    _guard(request, csrf)
+    src = db.get(Source, source_id)
+    if not src:
+        return RedirectResponse("/sources", status_code=303)
+
+    if parser.is_single_key(src.url):
+        text = src.url
+    else:
+        fetched = await fetcher.fetch_source(src.url)
+        if not fetched.ok:
+            src.status = "dead"
+            src.last_error = (fetched.error or "нет ответа")[:300]
+            src.last_checked_at = utcnow()
+            health.record(db, src.id, False, None, src.last_error)
+            db.add(Event(level="warn", message=f"Проверка «{src.name}»: {src.last_error}"[:400]))
+            db.commit()
+            return RedirectResponse("/sources", status_code=303)
+        text = fetched.text
+        info = parser.parse_userinfo(fetched.header("subscription-userinfo"))
+        if info.get("download"):
+            src.used_bytes = int(info["download"])
+        if info.get("total"):
+            src.total_bytes = int(info["total"])
+        if info.get("expire"):
+            src.expire_at_panel = datetime.fromtimestamp(int(info["expire"]), tz=timezone.utc)
+
+    nodes, _ = parser.parse_subscription(text)
+    results = await checker.check_many(nodes) if nodes else []
+    alive = [item for item in results if item.get("alive")]
+    best = min((r["latency_ms"] for r in alive if r.get("latency_ms")), default=None)
+
+    db.execute(delete(Node).where(Node.source_id == src.id))
+    now = utcnow()
+    for item in results:
+        db.add(Node(
+            source_id=src.id,
+            uri=item["uri"],
+            fingerprint=item["fingerprint"],
+            proto=item.get("proto", "vless"),
+            host=item.get("host", ""),
+            port=int(item.get("port", 443) or 443),
+            remark=(item.get("remark") or "")[:200],
+            alive=bool(item.get("alive")),
+            tcp_ok=bool(item.get("tcp_ok")),
+            tls_ok=bool(item.get("tls_ok")),
+            latency_ms=item.get("latency_ms"),
+            checked_at=now,
+        ))
+
+    src.status = "active" if alive else "dead"
+    src.last_checked_at = now
+    src.last_error = "" if alive else "все узлы мертвы"
+    src.last_report = f"{len(alive)}/{len(results)} живых"
+    health.record(db, src.id, bool(alive), best,
+                  "" if alive else "все узлы мертвы")
+    db.add(Event(level="info" if alive else "warn",
+                 message=f"Проверка «{src.name}»: {len(alive)} из {len(results)} живых"[:400]))
+    db.commit()
+    return RedirectResponse("/sources", status_code=303)
+
+
+@router.post("/api/telegram/check")
+async def telegram_check(request: Request, csrf: str = Form(""), db: Session = Depends(get_db)):
+    """Проверить бота: getMe, найти chat_id из последних сообщений, отправить тест."""
+    _guard(request, csrf)
+    from ..services import notifier
+
+    me = await notifier.api_call("getMe")
+    if not me or not me.get("ok"):
+        db.add(Event(level="error", message="Telegram: бот не отвечает — проверьте токен и доступ к api.telegram.org"))
+        db.commit()
+        return RedirectResponse("/settings?tg=fail", status_code=303)
+
+    chat = ""
+    updates = await notifier.api_call("getUpdates", limit=20) or {}
+    for item in reversed(updates.get("result") or []):
+        message = item.get("message") or item.get("channel_post") or {}
+        cid = (message.get("chat") or {}).get("id")
+        if cid:
+            chat = str(cid)
+            break
+
+    if chat:
+        row = db.get(Setting, "telegram_chat_id") or Setting(key="telegram_chat_id")
+        row.value = chat
+        db.merge(row)
+        db.commit()
+
+    sent = False
+    if chat:
+        sent = await notifier.send("<b>VPN Hub</b>: связь с ботом установлена.")
+
+    db.add(Event(level="info", message=(
+        f"Telegram: @{me['result'].get('username', '?')}, "
+        f"chat={chat or 'не найден'}, тест={'отправлен' if sent else 'не отправлен'}")[:400]))
+    db.commit()
+    return RedirectResponse(f"/settings?tg={'ok' if sent else 'nochat'}", status_code=303)

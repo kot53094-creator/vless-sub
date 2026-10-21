@@ -43,6 +43,10 @@
 const log = document.getElementById('log');
 const start = document.getElementById('start');
 
+{% if request.query_params.get('auto') %}// переход с главной: «Обновить всё» запускает прогон сразу
+setTimeout(() => start?.click(), 50);
+{% endif %}
+
 start?.addEventListener('click', () => {
   log.textContent = '';
   start.disabled = true;

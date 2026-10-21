@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -32,7 +33,7 @@ def _days_left(server: Server) -> int | None:
     until = server.rent_until
     if until.tzinfo is None:
         until = until.replace(tzinfo=timezone.utc)
-    return (until - _now()).days
+    return math.ceil((until - _now()).total_seconds() / 86400)
 
 
 @router.get("/servers", response_class=HTMLResponse)
@@ -61,6 +62,7 @@ def add_server(
     role: str = Form("direct"),
     price: str = Form(""),
     rent_days: str = Form(""),
+    panel_url: str = Form(""),
     csrf: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -81,6 +83,7 @@ def add_server(
         role=role if role in {"direct", "bridge", "cdn"} else "direct",
         price=float(price) if price.strip().replace(".", "", 1).isdigit() else 0.0,
         rent_until=(utcnow() + timedelta(days=int(rent_days))) if rent_days.strip().isdigit() else None,
+        panel_url=panel_url.strip()[:400],
         status="new",
     )
     db.add(server)
@@ -103,8 +106,13 @@ def delete_server(server_id: int, request: Request, csrf: str = Form(""),
     return RedirectResponse("/servers", status_code=303)
 
 
-async def _install(server_id: int, node_name: str, node_port: int, hy2_port: int) -> None:
-    """Фоновая установка: обновляет статус и лог сервера."""
+async def _install(server_id: int, node_name: str, node_port: int, hy2_port: int,
+                   replace_server_id: int | None = None) -> None:
+    """Фоновая установка: обновляет статус и лог сервера.
+
+    `replace_server_id` — перенос с другого сервера: после успеха старый
+    источник отключается, чтобы выдача не тянула мёртвую ноду.
+    """
     _running.add(server_id)
     db = SessionLocal()
     try:
@@ -134,7 +142,20 @@ async def _install(server_id: int, node_name: str, node_port: int, hy2_port: int
                 priority=5,
             )
             db.add(src)
+            db.flush()
+            server.source_id = src.id
             db.add(Event(level="info", message=f"Нода «{server.name}» установлена: {len(result.links)} ссылки"))
+
+            if replace_server_id:
+                old = db.get(Server, replace_server_id)
+                if old:
+                    if old.source_id:
+                        old_src = db.get(Source, old.source_id)
+                        if old_src:
+                            old_src.status = "disabled"
+                    old.status = "replaced"
+                    db.add(Event(level="info",
+                                 message=f"Нода «{server.name}» заменила «{old.name}»"[:400]))
         except prov.ProvisionError as exc:
             server.status = "error"
             server.log = str(exc)[:8000]
@@ -164,4 +185,97 @@ async def install(server_id: int, request: Request, csrf: str = Form(""),
         node_port=int(node_port) if node_port.isdigit() else 443,
         hy2_port=int(hy2_port) if hy2_port.isdigit() else 8443,
     ))
+    return RedirectResponse("/servers", status_code=303)
+
+
+@router.get("/servers/{server_id}/migrate", response_class=HTMLResponse)
+def migrate_page(server_id: int, request: Request, db: Session = Depends(get_db)):
+    """Форма «Создать на новом сервере»: перенос ноды на другую машину."""
+    if not security.current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    old = db.get(Server, server_id)
+    if not old:
+        return RedirectResponse("/servers", status_code=303)
+    return templates.TemplateResponse("migrate.html", {
+        "request": request,
+        "old": old,
+        "days": _days_left(old),
+        "error": request.query_params.get("error", ""),
+    })
+
+
+@router.post("/api/servers/{server_id}/migrate")
+async def migrate(
+    server_id: int,
+    request: Request,
+    ip: str = Form(""),
+    ssh_user: str = Form("root"),
+    ssh_port: str = Form("22"),
+    secret: str = Form(""),
+    name: str = Form(""),
+    rent_days: str = Form(""),
+    node_port: str = Form("443"),
+    hy2_port: str = Form("8443"),
+    csrf: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    security.require_user(request)
+    security.check_csrf(request, csrf)
+
+    old = db.get(Server, server_id)
+    if not old:
+        return RedirectResponse("/servers", status_code=303)
+    if not ip.strip():
+        return RedirectResponse(f"/servers/{server_id}/migrate?error=ip", status_code=303)
+
+    fresh = Server(
+        name=name.strip() or f"{old.name}-new",
+        ip=ip.strip(),
+        ssh_user=ssh_user.strip() or "root",
+        ssh_port=int(ssh_port) if ssh_port.strip().isdigit() else 22,
+        ssh_secret_enc=encrypt(secret.strip()),
+        provider=old.provider,
+        country=old.country,
+        role=old.role,
+        price=old.price,
+        panel_url=old.panel_url,
+        rent_until=(utcnow() + timedelta(days=int(rent_days))) if rent_days.strip().isdigit() else None,
+        status="new",
+    )
+    db.add(fresh)
+    db.commit()
+    db.refresh(fresh)
+
+    asyncio.create_task(_install(
+        fresh.id,
+        node_name=fresh.name,
+        node_port=int(node_port) if node_port.isdigit() else 443,
+        hy2_port=int(hy2_port) if hy2_port.isdigit() else 8443,
+        replace_server_id=old.id,
+    ))
+    db.add(Event(level="info", message=f"Перенос ноды «{old.name}» → «{fresh.name}» начат"[:400]))
+    db.commit()
+    return RedirectResponse("/servers?migrating=1", status_code=303)
+
+
+@router.post("/api/servers/{server_id}/load")
+async def refresh_load(server_id: int, request: Request, csrf: str = Form(""),
+                       db: Session = Depends(get_db)):
+    """Прочитать нагрузку сервера по SSH (loadavg + память)."""
+    security.require_user(request)
+    security.check_csrf(request, csrf)
+    server = db.get(Server, server_id)
+    if not server:
+        return RedirectResponse("/servers", status_code=303)
+
+    try:
+        target = prov.target_from_server(server)
+        pct, info = await prov.read_load(target)
+        server.load_pct = pct
+        if info:
+            server.os_info = info[:120]
+        db.add(Event(level="info", message=f"Нагрузка «{server.name}»: {pct}% ({info})"[:400]))
+    except prov.ProvisionError as exc:
+        db.add(Event(level="error", message=f"Нагрузка «{server.name}»: {exc}"[:400]))
+    db.commit()
     return RedirectResponse("/servers", status_code=303)

@@ -21,6 +21,9 @@
       <b>{{ s.name }}</b>
       <span class="pill">{{ s.kind }}</span>
       <span class="pill {{ 'ok' if s.status == 'active' else 'bad' if s.status == 'dead' else '' }}">{{ s.status }}</span>
+      {% if s.kind == 'public' %}
+        <span class="pill bad" title="Публичный источник: не заходите через него в банки и почту">ненадёжный</span>
+      {% endif %}
       <div class="muted" style="margin-top:5px;word-break:break-all">{{ s.url | mask }}</div>
     </div>
     <div style="text-align:right;white-space:nowrap">
@@ -41,7 +44,22 @@
     <div class="bar-track"><div class="bar-fill {{ 'bad' if pct > 90 else 'warn' if pct > 75 else '' }}" style="width:{{ [pct,100]|min }}%"></div></div>
   {% endif %}
 
+  <div class="muted" style="margin-top:10px">Доступность за 7 дней:</div>
+  <div style="display:flex;gap:4px;margin-top:5px">
+    {% for day in history.get(s.id, []) %}
+      <div title="{{ day.label }}" style="flex:1;height:10px;border-radius:3px;
+        background:{{ '#41c98a' if day.ok else '#f2555a' if day.ok is sameas false else '#262b36' }}"></div>
+    {% endfor %}
+    {% if not history.get(s.id) %}
+      <div class="muted" style="font-size:12px">проверок ещё не было</div>
+    {% endif %}
+  </div>
+
   <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+    <form method="post" action="/api/sources/{{ s.id }}/check">
+      <input type="hidden" name="csrf" value="{{ request.cookies.get('hub_csrf','') }}">
+      <button class="btn" type="submit">Проверить сейчас</button>
+    </form>
     <form method="post" action="/api/sources/{{ s.id }}/toggle">
       <input type="hidden" name="csrf" value="{{ request.cookies.get('hub_csrf','') }}">
       <button class="btn ghost" type="submit">{{ 'Включить' if s.status == 'disabled' else 'Отключить' }}</button>

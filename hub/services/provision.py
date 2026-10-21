@@ -144,3 +144,52 @@ def target_from_server(server) -> Target:
     if secret.startswith("ssh-") or "PRIVATE KEY" in secret:
         return Target(host=server.ip, user=server.ssh_user, port=server.ssh_port, key=secret)
     return Target(host=server.ip, user=server.ssh_user, port=server.ssh_port, password=secret)
+
+
+def parse_load(text: str) -> tuple[int, str]:
+    """Вывод `nproc; cat /proc/loadavg; free -m` → (нагрузка %, описание)."""
+    lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
+    cores = 1
+    load1 = 0.0
+    mem_used = mem_total = 0
+    for line in lines:
+        parts = line.split()
+        if len(parts) == 1 and parts[0].isdigit():
+            cores = max(1, int(parts[0]))
+        elif len(parts) >= 3 and "/" in line and line.count(".") >= 2:
+            try:
+                load1 = float(parts[0])
+            except ValueError:
+                pass
+        elif len(parts) == 2 and all(part.isdigit() for part in parts):
+            mem_used, mem_total = int(parts[0]), int(parts[1])
+
+    cpu_pct = min(100, round(load1 / cores * 100)) if cores else 0
+    mem_pct = min(100, round(mem_used / mem_total * 100)) if mem_total else 0
+    pct = max(cpu_pct, mem_pct)
+
+    bits = [f"CPU {cpu_pct}% ({load1:.2f} на {cores} ядер)"]
+    if mem_total:
+        bits.append(f"RAM {mem_used}/{mem_total} МБ")
+    return pct, ", ".join(bits)
+
+
+def _load_blocking(target: Target, timeout: float) -> tuple[int, str]:
+    client = _connect(target, timeout=20)
+    try:
+        command = "nproc; cat /proc/loadavg; free -m | awk '/Mem:/{print $3\" \"$2}'"
+        _stdin, stdout, _stderr = client.exec_command(command, timeout=timeout)
+        text = stdout.read().decode("utf-8", "replace")
+        return parse_load(text)
+    finally:
+        client.close()
+
+
+async def read_load(target: Target, timeout: float = 30) -> tuple[int, str]:
+    """Нагрузка сервера по SSH: CPU (loadavg) и память."""
+    try:
+        return await asyncio.to_thread(_load_blocking, target, timeout)
+    except ProvisionError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise ProvisionError(f"не удалось прочитать нагрузку: {type(exc).__name__}") from exc

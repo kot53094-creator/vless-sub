@@ -23,6 +23,10 @@
   {% if error %}<div class="err">{{ error }}</div>{% endif %}
   <input name="username" placeholder="Логин" autocomplete="username" autofocus>
   <input name="password" type="password" placeholder="Пароль" autocomplete="current-password">
+  {% if totp %}
+    <input name="totp" placeholder="Код из приложения (6 цифр)" inputmode="numeric"
+           autocomplete="one-time-code" maxlength="7">
+  {% endif %}
   <button type="submit">Войти</button>
 </form>
 </body>

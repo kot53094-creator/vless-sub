@@ -19,7 +19,7 @@ import sys
 from .config import settings
 from .db import SessionLocal, init_db
 from .models import Event, Node, RouteRule, Server, Source
-from .services import detector, routing, subscription
+from .services import deadlines, detector, notifier, routing, subscription
 
 
 def _mode(db, requested: str | None) -> str:
@@ -103,6 +103,69 @@ def _cmd_hash_password(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_totp_secret(_: argparse.Namespace) -> int:
+    """Новый секрет для приложения-аутентификатора."""
+    import pyotp
+
+    secret = pyotp.random_base32()
+    uri = pyotp.TOTP(secret).provisioning_uri(name=settings.admin_user, issuer_name="VPN Hub")
+    print(f"HUB_TOTP_SECRET={secret}")
+    print(f"otpauth://... для QR: {uri}")
+    return 0
+
+
+def _cmd_telegram(_: argparse.Namespace) -> int:
+    """Проверить бота, запомнить chat_id и отправить тестовое сообщение."""
+    init_db()
+
+    async def run() -> int:
+        me = await notifier.api_call("getMe")
+        if not me or not me.get("ok"):
+            print("бот не отвечает: проверьте токен и доступ к api.telegram.org",
+                  file=sys.stderr)
+            return 1
+        print(f"бот: @{me['result'].get('username')} ({me['result'].get('first_name')})")
+
+        chat = notifier.chat_id()
+        updates = await notifier.api_call("getUpdates", limit=20) or {}
+        for item in reversed(updates.get("result") or []):
+            message = item.get("message") or item.get("channel_post") or {}
+            cid = (message.get("chat") or {}).get("id")
+            if cid:
+                chat = str(cid)
+                break
+        if chat:
+            db = SessionLocal()
+            try:
+                from .models import Setting
+
+                row = db.get(Setting, "telegram_chat_id") or Setting(key="telegram_chat_id")
+                row.value = chat
+                db.merge(row)
+                db.commit()
+            finally:
+                db.close()
+            print(f"chat_id: {chat} (сохранён)")
+
+        sent = await notifier.send("<b>VPN Hub</b>: связь с ботом установлена.")
+        print("тестовое сообщение: " + ("отправлено" if sent else "не отправлено"))
+        if not chat:
+            print("Напишите боту любое сообщение и повторите команду.", file=sys.stderr)
+            return 1
+        return 0 if sent else 1
+
+    return asyncio.run(run())
+
+
+def _cmd_notify(args: argparse.Namespace) -> int:
+    init_db()
+    sent = asyncio.run(deadlines.scan(notify=not args.no_notify))
+    print(f"предупреждений: {len(sent)}")
+    for message in sent:
+        print(" •", message.replace("\n", " ")[:120])
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m hub.cli", description="VPN Hub: служебные команды")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -127,6 +190,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_hash = sub.add_parser("hash-password", help="argon2-хеш для HUB_ADMIN_PASSWORD_HASH")
     p_hash.add_argument("password")
     p_hash.set_defaults(func=_cmd_hash_password)
+
+    p_totp = sub.add_parser("totp-secret", help="секрет для двухфакторного входа")
+    p_totp.set_defaults(func=_cmd_totp_secret)
+
+    p_tg = sub.add_parser("telegram", help="проверить бота и запомнить chat_id")
+    p_tg.set_defaults(func=_cmd_telegram)
+
+    p_notify = sub.add_parser("notify", help="разослать предупреждения о сроках")
+    p_notify.add_argument("--no-notify", action="store_true", help="только показать, не отправлять")
+    p_notify.set_defaults(func=_cmd_notify)
 
     return parser
 

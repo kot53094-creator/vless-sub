@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..db import SessionLocal
 from ..models import Event, Node, Source, SyncRun
-from . import checker, fetcher, notifier, parser, subscription
+from . import checker, devices, fetcher, health, notifier, parser, subscription, traffic
 
 LogFn = Callable[[str], Awaitable[None]] | Callable[[str], None]
 
@@ -65,6 +65,7 @@ async def run_sync(log_cb: LogFn | None = None, mode: str = subscription.MODE_NO
     dead_sources = 0
 
     for src in sources:
+        was_active = src.status == "active"
         await _log(log_cb, f"{src.name} [{src.kind}]")
 
         if parser.is_single_key(src.url):
@@ -129,12 +130,28 @@ async def run_sync(log_cb: LogFn | None = None, mode: str = subscription.MODE_NO
         src.last_report = f"{len(alive)}/{len(results)} живых"
         await _log(log_cb, f"  живых {len(alive)} из {len(results)}")
 
+        best = min((r for r in alive if r.get("latency_ms")), key=lambda r: r["latency_ms"], default=None)
+        health.record(db, src.id, bool(alive),
+                      best["latency_ms"] if best else None,
+                      "" if alive else "все узлы мертвы")
+
         if alive:
-            best = min((r for r in alive if r.get("latency_ms")), key=lambda r: r["latency_ms"], default=None)
             if best:
                 note(f"{src.name}: {len(alive)} узлов, минимум {best['latency_ms']} мс")
+        elif was_active:
+            db.add(Event(level="error", message=f"Нода «{src.name}» упала: все узлы мертвы"[:400]))
+            if notifier.enabled():
+                await notifier.send(notifier.format_node_down(
+                    src.name, f"проверено {len(results)} узлов, ни один не ответил"))
 
         db.commit()
+
+    # Снимок трафика: из него считаются суточный и месячный расход.
+    try:
+        traffic.record(db)
+        traffic.prune(db)
+    except Exception as exc:  # noqa: BLE001 - метрики не должны ломать сборку
+        await _log(log_cb, f"Трафик: {type(exc).__name__}")
 
     encoded, published = subscription.build(db, mode)
     run.finished_at = _now()
@@ -158,16 +175,43 @@ async def run_sync(log_cb: LogFn | None = None, mode: str = subscription.MODE_NO
     }
     await _log(log_cb, f"Готово: опубликовано {published} узлов за {summary['seconds']} с")
 
-    # Новые устройства на ключах Remnawave — отдельное уведомление.
-    if settings.remnawave_url and settings.remnawave_token and notifier.enabled():
+    # Remnawave: новые устройства по HWID и упавшие ноды.
+    if settings.remnawave_url and settings.remnawave_token:
         try:
-            from .detector import watch_new_device
             from .remnawave import Remnawave
 
-            panel_users = await Remnawave().users()
-            await watch_new_device({u.username: u.devices for u in panel_users})
+            panel = Remnawave()
+            panel_users = await panel.users()
+            for user in panel_users[:30]:
+                try:
+                    items = await panel.devices(user.uuid)
+                except Exception:  # noqa: BLE001 - один ключ не должен ломать обход
+                    items = []
+                if items:
+                    await devices.watch(db, user.username, items, notify=notifier.enabled())
+                else:
+                    await devices.watch_counts(db, {user.username: user.devices},
+                                               notify=notifier.enabled())
+
+            offline = [n.name or n.address for n in await panel.nodes() if not n.connected]
+            if offline:
+                db.add(Event(level="error",
+                             message=f"Remnawave: ноды не на связи — {', '.join(offline[:5])}"[:400]))
+                if notifier.enabled():
+                    await notifier.send(notifier.format_remnawave_nodes(offline[:10]))
+            await _log(log_cb, f"Remnawave: пользователей {len(panel_users)}, нод без связи {len(offline)}")
         except Exception as exc:  # noqa: BLE001 - панель не должна ломать sync
             await _log(log_cb, f"Remnawave недоступна: {type(exc).__name__}")
+
+    # Сроки ключей, аренды и исчерпанный трафик.
+    try:
+        from . import deadlines
+
+        sent = await deadlines.scan(notify=notifier.enabled())
+        if sent:
+            await _log(log_cb, f"Предупреждений о сроках: {len(sent)}")
+    except Exception as exc:  # noqa: BLE001
+        await _log(log_cb, f"Дедлайны: {type(exc).__name__}")
 
     # Итог одной строкой и предупреждения — в Telegram, если он настроен.
     if notifier.enabled():
