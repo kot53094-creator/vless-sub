@@ -2,7 +2,9 @@
 
 import type { ReplyMarkup } from "./telegram";
 
-export const BRAND = "Apelsinka VPN";
+import { BRAND } from "../brand";
+
+export { BRAND };
 
 export const WELCOME =
   `<b>${BRAND}</b>\n` +

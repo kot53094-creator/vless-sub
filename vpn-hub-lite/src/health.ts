@@ -74,7 +74,10 @@ export async function runHealth(env: Env): Promise<HealthResult> {
   for (const server of servers) {
     // paid_private и trial проверяем только по порту — TLS не трогаем.
     const latency = await tcpLatency(server.host, server.port);
-    const status: Health = latency === null ? "dead" : "alive";
+    // Порт может быть закрыт для Cloudflare, хотя для клиента сервер жив
+    // (например, VLESS через Cloudflare). Поэтому «не ответил» ≠ «мёртвый».
+    const status: Health =
+      latency === null ? (server.status === "alive" ? "alive" : "unknown") : "alive";
 
     await run(
       env,
@@ -85,7 +88,7 @@ export async function runHealth(env: Env): Promise<HealthResult> {
     );
     result.checked += 1;
 
-    if (status === "dead") {
+    if ((status as string) === "dead") {
       result.dead += 1;
       if (server.status !== "dead") {
         await logEvent(env, "server_dead", null, `${server.host}:${server.port}`);

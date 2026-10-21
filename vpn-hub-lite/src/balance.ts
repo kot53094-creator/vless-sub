@@ -5,7 +5,7 @@
  * исключён всегда), не превышаем max_users, сортируем по загрузке.
  */
 
-import { batch, logEvent, many, prepare, run } from "./db";
+import { batch, logEvent, many, one, prepare, run } from "./db";
 import type { Env, ServerRow } from "./types";
 
 export interface Candidate {
@@ -40,7 +40,7 @@ const CANDIDATE_SQL = `
          (SELECT COUNT(*) FROM assignments a WHERE a.server_id = s.id) AS load
   FROM servers s
   JOIN sources src ON src.id = s.source_id
-  WHERE s.status = 'alive'
+  WHERE s.status IN ('alive', 'unknown')
     AND src.visibility = 'shareable'
     AND src.kind <> 'paid_private'
     AND EXISTS (
@@ -55,6 +55,31 @@ const CANDIDATE_SQL = `
       OR (SELECT COUNT(*) FROM user_sources x WHERE x.source_id = src.id) < src.max_devices
     )
 `;
+
+/** Выдать серверы, если у человека ещё ничего нет. */
+export async function assignIfEmpty(env: Env, userId: number, count: number): Promise<number> {
+  const existing = await one<{ n: number }>(
+    env,
+    "SELECT COUNT(*) AS n FROM assignments WHERE user_id = ?",
+    userId,
+  );
+  if ((existing?.n ?? 0) > 0) return 0;
+
+  // Если админ не назначил группы — считаем, что доступны все.
+  const pools = await one<{ n: number }>(
+    env,
+    "SELECT COUNT(*) AS n FROM user_pools WHERE user_id = ?",
+    userId,
+  );
+  if ((pools?.n ?? 0) === 0) {
+    await run(
+      env,
+      "INSERT OR IGNORE INTO user_pools (user_id, pool_id) SELECT ?, id FROM pools",
+      userId,
+    );
+  }
+  return (await assignForUser(env, userId, count)).length;
+}
 
 export async function candidatesForUser(
   env: Env,
@@ -160,7 +185,7 @@ export async function rebalance(env: Env, maxMoves = 20): Promise<number> {
             (SELECT COUNT(*) FROM assignments a WHERE a.server_id = s.id) AS load
      FROM servers s
      JOIN sources src ON src.id = s.source_id
-     WHERE s.status = 'alive' AND src.visibility = 'shareable' AND src.kind <> 'paid_private'`,
+     WHERE s.status IN ('alive', 'unknown') AND src.visibility = 'shareable' AND src.kind <> 'paid_private'`,
   );
 
   let moves = 0;

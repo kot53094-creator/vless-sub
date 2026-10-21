@@ -4,6 +4,7 @@ import { rebalance, serverLoads } from "./balance";
 import { logEvent, many, one, run } from "./db";
 import { syncOneSource } from "./sync";
 import { maskLink, maskToken } from "./labels";
+import { BRAND } from "./brand";
 import {
   adminCookieValue,
   clientIp,
@@ -151,10 +152,10 @@ function sidebar(active: string): string {
 function page(title: string, body: string, active: string, env: Env): Response {
   const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(title)} · VPN Hub</title><style>${CSS}</style></head><body>
+<title>${esc(title)} · ${BRAND}</title><style>${CSS}</style></head><body>
 <div class="layout">
   <aside class="side">
-    <div class="brand"><i>VH</i> VPN Hub</div>
+    <div class="brand"><i>AV</i> ${BRAND}</div>
     ${sidebar(active)}
     <div class="spacer"></div>
     <a class="out" href="/admin/logout">Выйти</a>
@@ -191,10 +192,10 @@ fetch("/healthz").then((r) => { if (r.ok) document.getElementById("net").textCon
 
 function loginPage(error = ""): Response {
   const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>Вход · VPN Hub</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Вход · ${BRAND}</title>
 <style>${CSS}</style></head><body>
 <form class="card login" method="post" action="/admin/login">
-  <h2>VPN Hub</h2>
+  <h2>${BRAND}</h2>
   <p class="muted" style="margin:0 0 12px">Токен администратора (ADMIN_TOKEN)</p>
   ${error ? `<div class="err">${esc(error)}</div>` : ""}
   <input type="password" name="token" autofocus autocomplete="current-password" placeholder="Токен">
@@ -550,6 +551,12 @@ ${ok ? `<div class="notice">${esc(ok)}</div>` : ""}
 ${err ? `<div class="err">${esc(err)}</div>` : ""}
 
 <div class="card">
+  <form method="post" action="/admin/action" style="margin-bottom:10px">
+    <input type="hidden" name="csrf" value="${csrf}">
+    <input type="hidden" name="action" value="selftest">
+    <button class="btn">Проверить мою подписку</button>
+    <span class="muted">покажет, сколько серверов реально уходит в Happ</span>
+  </form>
   <table>
     <thead><tr><th>Кто</th><th>Статус</th><th>До</th><th>Устройства</th><th>Трафик</th><th>Подписка</th><th>Действия</th></tr></thead>
     <tbody>${rows || `<tr><td colspan="7" class="muted">Пока никого</td></tr>`}</tbody>
@@ -572,6 +579,12 @@ ${err ? `<div class="err">${esc(err)}</div>` : ""}
       </select>
     </div>
     <button class="btn primary">Выдать</button>
+  </form>
+  <form method="post" action="/admin/action" style="margin-top:12px">
+    <input type="hidden" name="csrf" value="${csrf}">
+    <input type="hidden" name="action" value="selftest">
+    <button class="btn">Проверить мою подписку</button>
+    <span class="muted">покажет, сколько серверов реально уходит в Happ</span>
   </form>
 </div>`;
 
@@ -908,6 +921,33 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
     );
     await logEvent(env, "slot_added", id, `источник #${sourceId}`);
     return back("/admin/users", "Слот выдан");
+  }
+
+  if (action === "selftest") {
+    const adminUser = await one<UserRow>(
+      env,
+      "SELECT * FROM users WHERE tg_id = ?",
+      envStr(env.ADMIN_TG_ID),
+    );
+    if (!adminUser) return back("/admin/users", "", "Нет пользователя-админа");
+    const { handleSubscription } = await import("./sub");
+    const response = await handleSubscription(
+      env,
+      adminUser.sub_token,
+      new Request("https://internal/sub"),
+    );
+    const body = await response.text();
+    let decoded = "";
+    try {
+      decoded = atob(body);
+    } catch {
+      decoded = body;
+    }
+    const lines = decoded.split("\n").filter((line) => line.includes("://")).length;
+    return back(
+      "/admin/users",
+      `В вашей подписке серверов: ${lines}. userinfo: ${response.headers.get("subscription-userinfo") ?? "нет"}`,
+    );
   }
 
   if (action === "sync_source") {

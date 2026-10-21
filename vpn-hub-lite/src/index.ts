@@ -8,6 +8,7 @@ import { envStr, timingSafeEqual } from "./security";
 import { handleSubscription } from "./sub";
 import { runSync } from "./sync";
 import type { Env } from "./types";
+import { BRAND } from "./brand";
 
 const SYNC_CRON = "0 */6 * * *";
 const HEALTH_CRON = "*/30 * * * *";
@@ -15,7 +16,7 @@ const HEALTH_CRON = "*/30 * * * *";
 function landing(env: Env): Response {
   const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VPN Hub Lite</title>
+<title>${BRAND}</title>
 <style>
 body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f1115;color:#e8ecf3;
 font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
@@ -24,7 +25,7 @@ h1{margin:0 0 6px;font-size:22px}p{color:#8b95a7;margin:0 0 12px}
 code{background:#12151b;border:1px solid #262b36;border-radius:6px;padding:1px 5px;font-size:13px}
 a{color:#ff8a3d}
 </style></head><body><div class="card">
-<h1>VPN Hub Lite</h1>
+<h1>${BRAND}</h1>
 <p>Персональные подписки для Happ. Ссылку выдаёт Telegram-бот после одобрения.</p>
 <p>Пользователям: откройте бота и отправьте <code>/start</code>.</p>
 <p>Админ: <a href="/admin">панель управления</a>.</p>

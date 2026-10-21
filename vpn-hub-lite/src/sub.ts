@@ -20,6 +20,8 @@ import {
   timingSafeEqual,
 } from "./security";
 import type { DeliverableServer, Env, UserRow } from "./types";
+import { BRAND } from "./brand";
+import { assignIfEmpty } from "./balance";
 
 export const PROFILE_REFRESH_HOURS = 6;
 
@@ -33,7 +35,7 @@ const SERVER_SQL = `
   FROM assignments a
   JOIN servers s ON s.id = a.server_id
   JOIN sources src ON src.id = s.source_id
-  WHERE a.user_id = ?1 AND s.status = 'alive'
+  WHERE a.user_id = ?1 AND s.status IN ('alive', 'unknown')
     AND (src.visibility = 'shareable' OR ?2 = 1)
     AND (src.kind <> 'paid_private' OR ?2 = 1)
     AND (
@@ -50,7 +52,7 @@ export function isDeliverable(server: {
   source_kind?: string;
   status?: string;
 }): boolean {
-  if (server.status && server.status !== "alive") return false;
+  if (server.status && server.status !== "alive" && server.status !== "unknown") return false;
   if (server.visibility !== "shareable") return false;
   if (server.source_kind === "paid_private") return false;
   return true;
@@ -120,8 +122,17 @@ export async function handleSubscription(
 
   // Платные и приватные источники видит только админ — «моя подписка».
   const isAdmin = String(user.tg_id) === envStr(env.ADMIN_TG_ID);
-  const rows = await many<DeliverableServer>(env, SERVER_SQL, user.id, isAdmin ? 1 : 0);
-  const deliverable = rows.filter(isDeliverable);
+  let rows = await many<DeliverableServer>(env, SERVER_SQL, user.id, isAdmin ? 1 : 0);
+  let deliverable = rows.filter(isDeliverable);
+
+  // Самовосстановление: серверы есть, а человеку ничего не выдано — выдаём сейчас.
+  if (deliverable.length === 0) {
+    const issued = await assignIfEmpty(env, user.id, Number(env.SERVERS_PER_USER ?? "3"));
+    if (issued > 0) {
+      rows = await many<DeliverableServer>(env, SERVER_SQL, user.id, isAdmin ? 1 : 0);
+      deliverable = rows.filter(isDeliverable);
+    }
+  }
 
   const uris: string[] = [];
   deliverable.forEach((server, index) => {
@@ -150,7 +161,7 @@ export async function handleSubscription(
 function plain(body: string, userinfo: string | null, user: UserRow | null): Response {
   const headers: Record<string, string> = {
     "Content-Type": "text/plain; charset=utf-8",
-    "profile-title": "VPN Hub",
+    "profile-title": BRAND,
     "profile-update-interval": String(PROFILE_REFRESH_HOURS),
     "cache-control": "no-store",
   };
@@ -160,15 +171,10 @@ function plain(body: string, userinfo: string | null, user: UserRow | null): Res
   return new Response(body, { status: 200, headers });
 }
 
-/** Трафик и срок — по своим нодам (own_vps), как просит ТЗ. */
+/** Лимит и срок конкретного человека — их и показывает Happ. */
 async function buildUserinfo(env: Env, user: UserRow): Promise<string> {
-  const totals = await one<{ used: number | null; total: number | null }>(
-    env,
-    `SELECT SUM(COALESCE(traffic_used, 0)) AS used, SUM(COALESCE(traffic_total, 0)) AS total
-     FROM sources WHERE kind = 'own_vps' AND visibility = 'shareable'`,
-  );
-  const used = totals?.used ?? 0;
-  const total = totals?.total ?? 0;
+  const total = Math.max(0, Number(user.traffic_gb ?? 0)) * 1024 ** 3;
+  const used = 0; // реальный расход у провайдера, воркер его не видит
   return `upload=0; download=${used}; total=${total}; expire=${expireTs(user)}`;
 }
 
