@@ -6,6 +6,8 @@ import type { Env, UserRow } from "../types";
 import * as admin from "./admin";
 import { answerCallback, adminId, sendMessage } from "./telegram";
 import * as user from "./user";
+import { rotateToken } from "../sub";
+import { runSync } from "../sync";
 
 interface TgMessage {
   message_id: number;
@@ -167,6 +169,87 @@ async function handleCallback(
   }
 
   const data = query.data ?? "";
+  const chatId = query.message?.chat.id ?? query.from.id;
+  const tgId = String(query.from.id);
+
+  // Кнопки меню: доступны всем, без прав админа.
+  if (data.startsWith("act:") || data.startsWith("dev:")) {
+    const existing = await one<UserRow>(env, "SELECT * FROM users WHERE tg_id = ?", tgId);
+    await answerCallback(env, query.id, "");
+
+    if (data === "act:menu") {
+      await user.sendMenu(env, chatId);
+      return;
+    }
+    if (data === "act:devices") {
+      await user.sendDevices(env, chatId);
+      return;
+    }
+    if (data.startsWith("dev:")) {
+      await user.sendInstruction(env, chatId, data.slice(4));
+      return;
+    }
+    if (data === "act:cabinet") {
+      await user.sendCabinet(env, chatId, existing);
+      return;
+    }
+    if (data === "act:help") {
+      await user.sendHelp(env, chatId);
+      return;
+    }
+    if (data === "act:plans") {
+      await sendMessage(
+        env,
+        chatId,
+        "Тарифы и оплата — у администратора.\nПробный доступ выдаётся один раз.",
+      );
+      return;
+    }
+    if (data === "act:status") {
+      if (!existing) {
+        await sendMessage(env, chatId, "Сначала нажмите /start.");
+        return;
+      }
+      const devices = await one<{ n: number }>(
+        env,
+        `SELECT COUNT(DISTINCT ip_hash || ':' || ua_hash) AS n FROM fetch_log
+         WHERE user_id = ? AND ts_hour >= strftime('%Y-%m-%dT%H', datetime('now','-24 hours'))`,
+        existing.id,
+      );
+      await sendMessage(
+        env,
+        chatId,
+        `<b>Состояние</b>\nСтатус: ${existing.status}\n` +
+          `Доступ до: ${existing.expires_at?.slice(0, 10) ?? "не задан"}\n` +
+          `Устройств за сутки: ${devices?.n ?? 0} из ${existing.device_limit}`,
+      );
+      return;
+    }
+    if (data === "act:refresh") {
+      if (tgId !== adminId(env)) {
+        await sendMessage(env, chatId, "Обновлять может только администратор.");
+        return;
+      }
+      await sendMessage(env, chatId, "Обновляю. Напишу, когда закончу.");
+      void runSync(env).catch(() => {});
+      return;
+    }
+    if (data === "act:newkey") {
+      if (!existing || existing.status !== "active") {
+        await sendMessage(env, chatId, "Ссылка станет активной после одобрения.");
+        return;
+      }
+      const token = await rotateToken(env, existing);
+      await sendMessage(
+        env,
+        chatId,
+        `<b>Новая ссылка</b>\n<code>${user.linkFor(env, token)}</code>\n\nСтарая больше не работает.`,
+      );
+      return;
+    }
+    return;
+  }
+
   const [action, ...rest] = data.split(":");
 
   const userRow = rest.length

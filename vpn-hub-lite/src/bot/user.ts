@@ -6,6 +6,16 @@ import { devices24h, invalidateSubscription, rotateToken } from "../sub";
 import { randomToken } from "../security";
 import type { Env, UserRow } from "../types";
 import { escapeHtml, sendMessage, sendToAdmin } from "./telegram";
+import {
+  BRAND,
+  DEVICES,
+  HELP,
+  INSTRUCTIONS,
+  WELCOME,
+  backKeyboard,
+  deviceKeyboard,
+  mainKeyboard,
+} from "./texts";
 
 export interface TgFrom {
   id: number;
@@ -62,10 +72,11 @@ export async function handleStart(env: Env, from: TgFrom): Promise<void> {
       return;
     }
     if (existing.status === "active") {
+      await sendMenu(env, tgId);
       await sendMessage(
         env,
         tgId,
-        `Вы уже подключены (${expiryNote(existing)}).\nСсылка: /key`,
+        `Вы уже подключены (${expiryNote(existing)}). Ссылка — в «👤 Кабинете».`,
       );
       return;
     }
@@ -99,10 +110,11 @@ export async function handleStart(env: Env, from: TgFrom): Promise<void> {
   const userId = Number(result.meta.last_row_id ?? 0);
 
   await logEvent(env, "register", userId, "заявка на регистрацию");
+  await sendMessage(env, tgId, WELCOME, mainKeyboard());
   await sendMessage(
     env,
     tgId,
-    "Заявка отправлена админу. Как только её одобрят, я пришлю вашу личную ссылку для Happ.",
+    "Заявка отправлена админу. Как только её одобрят, пришлю вашу ссылку для Happ.",
   );
 
   const name = escapeHtml(from.username ? `@${from.username}` : `id ${tgId}`);
@@ -184,6 +196,77 @@ export async function approveUser(
     await sendToAdmin(env, `У пользователя ${user.tg_id} нет серверов: все места заняты.`);
   }
   return user;
+}
+
+/** Главное меню — тот же экран, что на макете. */
+export async function sendMenu(env: Env, chatId: number | string): Promise<void> {
+  await sendMessage(env, chatId, WELCOME, mainKeyboard());
+}
+
+export async function sendDevices(env: Env, chatId: number | string): Promise<void> {
+  await sendMessage(
+    env,
+    chatId,
+    "<b>Включить VPN</b>\nВыберите устройство, на котором хотите пользоваться VPN:",
+    deviceKeyboard(),
+  );
+}
+
+export async function sendInstruction(
+  env: Env,
+  chatId: number | string,
+  device: string,
+): Promise<void> {
+  const label = DEVICES.find((item) => item.key === device)?.label ?? device;
+  await sendMessage(
+    env,
+    chatId,
+    `<b>${label}</b>\n${INSTRUCTIONS[device] ?? INSTRUCTIONS.android}`,
+    backKeyboard(),
+  );
+}
+
+export async function sendCabinet(
+  env: Env,
+  chatId: number | string,
+  user: UserRow | null,
+): Promise<void> {
+  if (!user) {
+    await sendMessage(env, chatId, "Заявки пока нет. Нажмите /start.");
+    return;
+  }
+  const until = user.expires_at ? user.expires_at.slice(0, 10) : "не задан";
+  const status =
+    user.status === "active"
+      ? "активен"
+      : user.status === "pending"
+        ? "ждёт одобрения"
+        : user.status === "banned"
+          ? "закрыт"
+          : "истёк";
+  const link = linkFor(env, user.sub_token);
+  const body =
+    `<b>${BRAND} · кабинет</b>\n` +
+    `Статус: ${status}\n` +
+    `Доступ до: ${until}\n` +
+    `Устройств: до ${user.device_limit}\n\n` +
+    (user.status === "active"
+      ? `<code>${escapeHtml(link)}</code>`
+      : "Ссылка станет активной после одобрения.");
+
+  await sendMessage(env, chatId, body, {
+    inline_keyboard: [
+      [{ text: "⚡️ Как подключить", callback_data: "act:devices" }],
+      user.status === "active"
+        ? [{ text: "♻️ Новая ссылка", callback_data: "act:newkey" }]
+        : [],
+      [{ text: "← В меню", callback_data: "act:menu" }],
+    ].filter((row) => row.length > 0),
+  });
+}
+
+export async function sendHelp(env: Env, chatId: number | string): Promise<void> {
+  await sendMessage(env, chatId, HELP, mainKeyboard());
 }
 
 export async function handleKey(env: Env, user: UserRow): Promise<void> {

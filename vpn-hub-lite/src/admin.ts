@@ -275,6 +275,18 @@ async function usersPage(
     </form>
     <form method="post" action="/admin/action" style="margin-top:8px">
       <input type="hidden" name="csrf" value="${csrf}">
+      <input type="hidden" name="action" value="menu">
+      <button class="btn">Отправить меню в Telegram</button>
+      <span class="muted">пришлёт админу тот же экран, что видят пользователи</span>
+    </form>
+    <form method="post" action="/admin/action" style="margin-top:8px">
+      <input type="hidden" name="csrf" value="${csrf}">
+      <input type="hidden" name="action" value="menu">
+      <button class="btn">Отправить меню в Telegram</button>
+      <span class="muted">пришлёт админу тот же экран, что видят пользователи</span>
+    </form>
+    <form method="post" action="/admin/action" style="margin-top:8px">
+      <input type="hidden" name="csrf" value="${csrf}">
       <input type="hidden" name="action" value="ping">
       <button class="btn">Проверить отправку</button>
       <span class="muted">пришлёт тестовое сообщение админу (${esc(envStr(env.ADMIN_TG_ID))})</span>
@@ -539,6 +551,24 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
       headers: {
         location: `/admin/users?diag=${encodeURIComponent(JSON.stringify(summary))}`,
       },
+    });
+  } else if (action === "menu") {
+    const { sendMenu } = await import("./bot/user");
+    const chat = envStr(env.ADMIN_TG_ID);
+    await sendMenu(env, chat);
+    await logEvent(env, "tg_menu", null, `меню отправлено в ${chat}`);
+    return new Response(null, {
+      status: 303,
+      headers: { location: "/admin/users?ping=ok: меню отправлено в Telegram" },
+    });
+  } else if (action === "menu") {
+    const { sendMenu } = await import("./bot/user");
+    const chat = envStr(env.ADMIN_TG_ID);
+    await sendMenu(env, chat);
+    await logEvent(env, "tg_menu", null, `меню отправлено в ${chat}`);
+    return new Response(null, {
+      status: 303,
+      headers: { location: "/admin/users?ping=ok: меню отправлено в Telegram" },
     });
   } else if (action === "ping") {
     const { tgRaw } = await import("./bot/telegram");
