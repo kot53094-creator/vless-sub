@@ -44,6 +44,7 @@ import {
   revokeSquad,
   squadsOf,
 } from "../bonus";
+import { redeemInvite } from "../invites";
 import { humanDuration, mskDate, plural, round2 } from "../promotions";
 
 export interface TgFrom {
@@ -158,8 +159,19 @@ export async function handleStart(
 
   await logEvent(env, "register", userId, "заявка на регистрацию");
 
-  if (payload && userId) {
+  if (payload && userId && !payload.startsWith("inv_")) {
     await attachReferral(env, userId, payload);
+  }
+
+  // Инвайт: подписка выдаётся сразу, без ожидания одобрения.
+  if (payload.startsWith("inv_") && userId) {
+    const terms = await redeemInvite(env, payload.slice(4), userId);
+    if (terms) {
+      await approveUser(env, userId, terms.days, { gb: terms.gb, devices: terms.devices });
+      return;
+    }
+    await sendMessage(env, tgId, "Ссылка-приглашение недействительна или уже использована.");
+    return;
   }
 
   await sendChannelGate(env, tgId, false);
@@ -213,6 +225,7 @@ export async function approveUser(
   env: Env,
   userId: number,
   days: number,
+  terms: { gb?: number; devices?: number } = {},
 ): Promise<UserRow | null> {
   const user = await one<UserRow>(env, "SELECT * FROM users WHERE id = ?", userId);
   if (!user) return null;
@@ -221,8 +234,10 @@ export async function approveUser(
   const expires = daysFromNowIso(days);
   await run(
     env,
-    "UPDATE users SET status='active', expires_at=? WHERE id=?",
+    "UPDATE users SET status='active', expires_at=?, traffic_gb=?, device_limit=? WHERE id=?",
     expires,
+    terms.gb ?? user.traffic_gb,
+    terms.devices ?? user.device_limit,
     userId,
   );
 
