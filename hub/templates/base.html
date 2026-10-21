@@ -60,6 +60,7 @@
     <a href="/servers" class="{{ 'active' if request.url.path.startswith('/servers') else '' }}">Серверы</a>
     <a href="/sources" class="{{ 'active' if request.url.path.startswith('/sources') else '' }}">Источники</a>
     <a href="/add" class="{{ 'active' if request.url.path == '/add' else '' }}">Добавить ключ</a>
+    <a href="/routing" class="{{ 'active' if request.url.path.startswith('/routing') else '' }}">Маршрутизация</a>
     <a href="/sync" class="{{ 'active' if request.url.path == '/sync' else '' }}">Синхронизация</a>
     <a href="/settings" class="{{ 'active' if request.url.path == '/settings' else '' }}">Настройки</a>
     <a href="/logout" style="margin-left:auto">Выход</a>

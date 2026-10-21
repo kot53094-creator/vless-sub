@@ -144,3 +144,20 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(String(60), primary_key=True)
     value: Mapped[str] = mapped_column(Text, default="")
+
+
+class RouteRule(Base):
+    """Правило маршрутизации для Happ (формат sing-box route)."""
+
+    __tablename__ = "route_rules"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), default="")
+    # domain | geosite | geoip | ip | network
+    match_type: Mapped[str] = mapped_column(String(20), default="domain")
+    value: Mapped[str] = mapped_column(Text, default="")
+    # direct | main | usa | eu | nearest
+    outbound: Mapped[str] = mapped_column(String(20), default="main")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort: Mapped[int] = mapped_column(Integer, default=100)
+    note: Mapped[str] = mapped_column(String(300), default="")

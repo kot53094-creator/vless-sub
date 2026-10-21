@@ -1,0 +1,15 @@
+[Unit]
+Description=VPN Hub: hub-sync каждые 6 часов
+
+[Timer]
+# Первый прогон через 5 минут после загрузки, дальше — раз в 6 часов.
+OnBootSec=5min
+OnUnitActiveSec=6h
+# Если сервер спал/лежал — догнать пропущенный запуск.
+Persistent=true
+# Разброс, чтобы не бить по панелям ровно в 00:00.
+RandomizedDelaySec=120
+Unit=vpnhub-sync.service
+
+[Install]
+WantedBy=timers.target

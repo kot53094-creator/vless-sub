@@ -31,6 +31,9 @@ class Settings:
     session_hours: int = int(os.getenv("HUB_SESSION_HOURS", "72"))
 
     # --- синхронизация
+    # Встроенный планировщик. Выключите, если синхронизацию запускает
+    # systemd-таймер или cron — иначе прогоны будут дублироваться.
+    scheduler_enabled: bool = _bool("HUB_SCHEDULER_ENABLED", True)
     sync_interval_hours: int = int(os.getenv("HUB_SYNC_INTERVAL_HOURS", "6"))
     fetch_timeout: int = int(os.getenv("HUB_FETCH_TIMEOUT", "20"))
     check_timeout: float = float(os.getenv("HUB_CHECK_TIMEOUT", "6"))

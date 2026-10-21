@@ -1,0 +1,23 @@
+[Unit]
+Description=VPN Hub: пересборка подписки (hub-sync)
+Documentation=file:///opt/vless-sub/HUB.md
+# Контейнер должен быть уже поднят: сначала docker compose up -d
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/vless-sub
+# Если хаб запущен в Docker (обычный вариант) — прогон внутри контейнера:
+ExecStart=/usr/bin/docker compose exec -T hub python -m hub.cli sync
+# Без Docker (venv), закомментируйте строку выше и раскомментируйте эту:
+# ExecStart=/opt/vless-sub/.venv/bin/python -m hub.cli sync
+# EnvironmentFile=/opt/vless-sub/.env
+User=root
+TimeoutStartSec=2400
+Nice=10
+# Логи: journalctl -u vpnhub-sync.service -n 100
+
+[Install]
+WantedBy=multi-user.target

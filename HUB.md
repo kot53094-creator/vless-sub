@@ -22,7 +22,7 @@ VLESS (Reality, XHTTP, mlkem-шифрование), VMess, Trojan, Shadowsocks.
 
 Публичные источники в выдаче помечаются тегом «не для банков».
 
-## Запуск на своём VPS (6 шагов)
+## Запуск на своём VPS (7 шагов)
 
 ```bash
 # 1. код на сервер
@@ -43,6 +43,10 @@ docker compose up -d --build
 # 5. открыть https://ваш-домен → войти → «Источники» → «Добавить ключ»
 
 # 6. ссылка для Happ — на экране «Настройки»
+#    профиль правил — «Маршрутизация» → ссылка на JSON
+
+# 7. автозапуск раз в 6 часов (по желанию, см. раздел «Автозапуск»)
+sudo ./deploy/install-timers.sh /opt/vless-sub
 ```
 
 Без домена можно проверить локально: `docker compose up hub` и открыть
@@ -54,6 +58,17 @@ docker compose up -d --build
 curl -s https://hub.example.com/healthz                    # ok
 curl -s -o /dev/null -w "%{http_code}\n" https://hub.example.com/login   # 200
 curl -s https://hub.example.com/sub/<HUB_SUB_TOKEN> | head -c 120       # base64
+curl -s https://hub.example.com/sub/<HUB_SUB_TOKEN> | base64 -d | head  # ссылки
+curl -s https://hub.example.com/sub/<HUB_SUB_TOKEN>/routing             # JSON правил
+curl -sD - -o /dev/null https://hub.example.com/sub/<HUB_SUB_TOKEN> | grep -i subscription-userinfo
+```
+
+Локально, без домена и Docker:
+
+```bash
+python -m pytest tests -q                          # 44 passed
+HUB_DATA_DIR=./data python -m hub.cli status       # сводка по базе
+HUB_DATA_DIR=./data python -m hub.cli routing      # JSON маршрутизации
 ```
 
 В браузере: «Главная» → «Синхронизация» → «Запустить» → в логе видно каждый
@@ -106,6 +121,73 @@ curl -s https://hub.example.com/sub/<HUB_SUB_TOKEN> | head -c 120       # base64
   режима, новые устройства на ключах Remnawave.
 - Без токена уведомления молча отключаются — хаб работает как обычно.
 
+## Этап 5: маршрутизация для Happ
+
+- Экран **«Маршрутизация»** — список правил: тип совпадения (домен, geosite,
+  geoip, IP/CIDR, протокол), значение, выход (`direct` / `main` / `usa` / `eu` /
+  `nearest`), порядок и заметка. Правила добавляются, выключаются и удаляются
+  без рестарта.
+- При первом запуске таблица заполняется семью правилами: российские домены и
+  адреса — напрямую, ИИ-сервисы (OpenAI, Anthropic, Gemini, Perplexity,
+  Copilot) — через США/ЕС, игры по UDP — через ближайшую ноду (Hysteria2).
+  Всё остальное — `final: main`, то есть основной профиль.
+- Профиль отдаётся по той же секретной ссылке:
+  `https://ваш-домен/sub/<HUB_SUB_TOKEN>/routing` — JSON в формате
+  `route.rules` (sing-box). Его понимают Happ, sing-box и nekobox.
+- Ссылка на профиль есть на экране, в JSON-превью и в заголовке
+  `routing-profile-url` ответа подписки.
+- Как подключить: Happ → профиль → **Routing** → импорт правил → вставить
+  ссылку или JSON. Теги выходов сопоставляются один раз: `direct` — напрямую,
+  `main` — основной профиль, `usa`/`eu` — узлы этих стран, `nearest-udp` —
+  ближайшая нода по UDP.
+
+Важно: Happ не тянет routing-правила автоматически вместе с подпиской —
+стандартного заголовка для этого нет. Правила импортируются один раз вручную,
+дальше меняются на экране «Маршрутизация» и подхватываются при следующем
+обновлении JSON.
+
+## Автозапуск каждые 6 часов: три способа
+
+Выберите **один**, иначе прогоны будут дублироваться.
+
+**1. Встроенный планировщик (по умолчанию).** Работает, пока жив контейнер:
+`HUB_SCHEDULER_ENABLED=1` и `HUB_SYNC_INTERVAL_HOURS=6`. Ничего ставить не нужно.
+
+**2. systemd-таймер (переживает рестарты, виден в journalctl).**
+
+```bash
+sudo ./deploy/install-timers.sh /opt/vless-sub
+# затем выключите встроенный планировщик, чтобы не было двух прогонов:
+echo 'HUB_SCHEDULER_ENABLED=0' >> .env && docker compose up -d
+
+systemctl list-timers 'vpnhub-*'
+systemctl start vpnhub-sync.service           # проверка вручную
+journalctl -u vpnhub-sync -n 50
+```
+
+Файлы: `deploy/vpnhub-sync.{service,timer}` (раз в 6 часов),
+`deploy/vpnhub-detector.{service,timer}` (детектор раз в 5 минут).
+
+**3. cron.**
+
+```bash
+crontab -e     # строки из deploy/crontab.example
+```
+
+Файл `deploy/crontab.example` содержит обе задачи и напоминание про
+`HUB_SCHEDULER_ENABLED=0`.
+
+Обе службы вызывают одну и ту же команду — её можно запускать и руками:
+
+```bash
+docker compose exec -T hub python -m hub.cli sync          # один прогон hub-sync
+docker compose exec -T hub python -m hub.cli sync --mode whitelist
+docker compose exec -T hub python -m hub.cli detect        # проба белых списков
+docker compose exec -T hub python -m hub.cli status        # сводка по базе
+docker compose exec -T hub python -m hub.cli routing       # JSON правил
+docker compose exec -T hub python -m hub.cli hash-password 'пароль'
+```
+
 ## Тесты
 
 ```bash
@@ -114,37 +196,56 @@ python -m pytest tests -q
 
 Покрыто: разбор VLESS Reality / WS / Hysteria2 / Shadowsocks, дедупликация,
 base64 и plain-подписки, порядок блоков в двух режимах, маскировка ссылок,
-проверка живого и закрытого порта, отношение к UDP-узлам.
+проверка живого и закрытого порта, отношение к UDP-узлам, профиль
+маршрутизации (порядок правил, склейка одинаковых выходов, выключенные
+правила, структура JSON), заголовок `subscription-userinfo`.
+
+Сейчас: **44 теста, все проходят** (`44 passed`).
+
+```bash
+python -m pytest tests -q          # 44 passed
+python -m pytest tests/test_routing.py -q
+```
 
 ## Структура
 
 ```
 hub/
-  main.py          FastAPI, /sub/<токен>, планировщик
+  main.py          FastAPI, /sub/<токен>, /sub/<токен>/routing, планировщик
+  cli.py           команды для cron/systemd: sync, detect, status, routing
   config.py        настройки из .env
   db.py            SQLite + сессии
-  models.py        sources, nodes, servers, sync_runs, events, settings
+  models.py        sources, nodes, servers, sync_runs, events, settings, route_rules
   security.py      argon2, сессии, CSRF, антиперебор
   services/
     parser.py      разбор ссылок (переиспользует scripts/merge.py)
     fetcher.py     загрузка подписок с UA Happ
     checker.py     TCP + TLS + задержка, 3 попытки
     subscription.py сборка выдачи и порядок блоков
+    routing.py     правила маршрутизации и экспорт JSON
     sync.py        hub-sync
+    detector.py    пробы A/B и переключение режима
   routers/         страницы и действия
   templates/       тёмный адаптивный интерфейс
+deploy/
+  vpnhub-sync.service|.timer        пересборка раз в 6 часов
+  vpnhub-detector.service|.timer    проба белых списков раз в 5 минут
+  crontab.example                   вариант с cron
+  install-timers.sh                 установка таймеров одной командой
 ```
 
-## Что дальше по этапам
+## Что сделано по этапам
 
-2. **Remnawave**: ключи, трафик, HWID-устройства, действия (сброс трафика,
-   перевыпуск ссылки, отключение). Хаб продолжает работать без неё.
-3. **Автоустановка ноды**: SSH (asyncssh) → Xray Reality + Hysteria2, ufw, BBR,
-   генерация ссылок; плюс `install-node.sh` для ручного запуска.
-4. **Детектор белых списков**: пробы A/B раз в 5 минут, авторежим, уведомление
-   в Telegram.
-5. **Маршрутизация для Happ**: профиль правил (RU напрямую, ИИ через US/EU,
-   игры через ближайшую ноду) и экран редактирования.
+1. Ядро: `sources`, hub-sync, итоговая подписка, главная, режимы сети.
+2. Remnawave: ключи, трафик, HWID-устройства, действия с ключом.
+3. Автоустановка ноды по SSH + `install-node.sh` для ручного запуска.
+4. Детектор белых списков и уведомления в Telegram.
+5. Маршрутизация для Happ: правила, экран редактирования, JSON по ссылке.
+6. Тесты на парсер, проверку ключей, детектор, Remnawave, маршрутизацию.
+
+Осталось на будущее (в ТЗ помечено как опциональное): сценарий XHTTP через
+CDN (Xray + nginx) и сценарий моста «российский сервер → зарубежный выход»
+отдельной инструкцией.
 
 ## Безопасность
 

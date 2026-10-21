@@ -8,15 +8,15 @@ import secrets
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.responses import PlainTextResponse, RedirectResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 
 from .config import settings
 from .db import SessionLocal, init_db
 from .models import Event, Setting
-from .routers import api, remna, servers, ui
-from .services import detector, subscription, sync
+from .routers import api, remna, routing as routing_router, servers, ui
+from .services import detector, routing, subscription, sync
 
 
 def _bootstrap() -> None:
@@ -26,6 +26,8 @@ def _bootstrap() -> None:
         if not db.get(Setting, "mode"):
             db.add(Setting(key="mode", value=subscription.MODE_NORMAL))
             db.commit()
+        # Правила маршрутизации по умолчанию — один раз, дальше правятся на экране.
+        routing.seed_defaults(db)
     finally:
         db.close()
 
@@ -52,16 +54,21 @@ async def lifespan(app: FastAPI):
     _bootstrap()
     for warning in settings.warnings():
         print(f"[warn] {warning}", flush=True)
-    task = asyncio.create_task(_scheduler())
+    task = asyncio.create_task(_scheduler()) if settings.scheduler_enabled else None
     detector_task = asyncio.create_task(detector.loop()) if settings.detector_enabled else None
+    if task is None:
+        print("[info] встроенный планировщик выключен (HUB_SCHEDULER_ENABLED=0): "
+              "синхронизацию должен запускать systemd-таймер или cron", flush=True)
     try:
         yield
     finally:
-        task.cancel()
+        if task:
+            task.cancel()
         if detector_task:
             detector_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
+        if task:
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
@@ -69,6 +76,7 @@ app.include_router(ui.router)
 app.include_router(api.router)
 app.include_router(remna.router)
 app.include_router(servers.router)
+app.include_router(routing_router.router)
 
 
 @app.get("/healthz", response_class=PlainTextResponse)
@@ -98,6 +106,28 @@ def public_subscription(token: str, request: Request):
         "profile-title": "VPN Hub",
         "profile-update-interval": str(max(1, settings.sync_interval_hours)),
         "profile-web-page-url": settings.public_base_url,
+        # Не стандарт, но полезно: клиент или скрипт может найти профиль правил.
+        "routing-profile-url": f"{settings.public_base_url}/sub/{settings.sub_token}/routing",
+        "cache-control": "no-store",
+    })
+
+
+@app.get("/sub/{token}/routing")
+def public_routing(token: str):
+    """Профиль маршрутизации для Happ: правила sing-box по тому же токену."""
+    if not settings.sub_token or not secrets.compare_digest(token, settings.sub_token):
+        return PlainTextResponse("not found", status_code=404)
+
+    db = SessionLocal()
+    try:
+        row = db.get(Setting, "mode")
+        mode = row.value if row else subscription.MODE_NORMAL
+        payload = routing.build_profile(db, mode)
+    finally:
+        db.close()
+
+    return JSONResponse(payload, headers={
+        "profile-title": "VPN Hub routing",
         "cache-control": "no-store",
     })
 

@@ -1,0 +1,15 @@
+# VPN Hub — вариант с cron вместо systemd-таймера.
+# Установка: crontab -e  и вставить строки ниже (пути под свой сервер).
+#
+# ВАЖНО: при работе по cron выключите встроенный планировщик,
+# иначе синхронизация будет запускаться дважды:
+#   HUB_SCHEDULER_ENABLED=0   в .env  →  docker compose up -d
+
+# hub-sync каждые 6 часов
+0 */6 * * * cd /opt/vless-sub && /usr/bin/docker compose exec -T hub python -m hub.cli sync >> /var/log/vpnhub-sync.log 2>&1
+
+# детектор белых списков каждые 5 минут (нужен, только если HUB_DETECTOR_ENABLED=0)
+*/5 * * * * cd /opt/vless-sub && /usr/bin/docker compose exec -T hub python -m hub.cli detect >> /var/log/vpnhub-detect.log 2>&1
+
+# Без Docker:
+# 0 */6 * * * cd /opt/vless-sub && .venv/bin/python -m hub.cli sync >> /var/log/vpnhub-sync.log 2>&1

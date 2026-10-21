@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Маршрутизация · VPN Hub{% endblock %}
+{% block body %}
+
+<div class="row" style="border:0;padding:0 0 12px">
+  <div>
+    <b>Маршрутизация для Happ</b>
+    <div class="muted">что идёт напрямую, что через VPN и через какую страну</div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:10px">
+  <h2>Профиль правил</h2>
+  <div class="muted" style="margin-bottom:8px">
+    Формат sing-box route — его понимают Happ, sing-box и nekobox.
+    Ссылка ниже отдаёт JSON по секретному токену:
+  </div>
+  <div class="muted" style="word-break:break-all">{{ routing_url_masked }}</div>
+  <details style="margin-top:8px">
+    <summary class="muted" style="cursor:pointer">показать полную ссылку</summary>
+    <div style="word-break:break-all;margin-top:6px">{{ routing_url }}</div>
+  </details>
+  <div class="muted" style="margin-top:10px">
+    В Happ: профиль → <b>Routing</b> → импорт правил → вставить ссылку или JSON.
+    Теги выходов сопоставляются один раз: <b>direct</b> — напрямую,
+    <b>main</b> — основной профиль, <b>usa</b>/<b>eu</b> — узлы этих стран,
+    <b>nearest-udp</b> — ближайшая нода по UDP.
+  </div>
+  {% if counters %}
+  <div class="muted" style="margin-top:10px">
+    Сейчас в профиле:
+    {% for out, n in counters.items() %}<span class="pill">{{ out }}: {{ n }}</span> {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:10px">
+  <h2>Правила</h2>
+  {% if not rules %}
+    <div class="muted">Правил нет — весь трафик пойдёт через основной профиль.</div>
+  {% endif %}
+  {% for r in rules %}
+  <div class="row">
+    <div style="min-width:0">
+      <b>{{ r.name }}</b>
+      <div class="muted" style="word-break:break-all">
+        {{ r.match_type }}: {{ r.value }}
+        {% if r.note %} · {{ r.note }}{% endif %}
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;white-space:nowrap">
+      <span class="pill {{ 'ok' if r.outbound == 'direct' else 'warn' if r.outbound == 'nearest' else '' }}">
+        {{ labels.get(r.outbound, r.outbound) }}
+      </span>
+      <span class="pill {{ 'ok' if r.enabled else '' }}">{{ 'вкл' if r.enabled else 'выкл' }}</span>
+      <form method="post" action="/api/routing/{{ r.id }}/toggle" style="display:inline">
+        <input type="hidden" name="csrf" value="{{ request.cookies.get('hub_csrf','') }}">
+        <button class="btn ghost" type="submit" style="padding:5px 9px;font-size:12px">
+          {{ 'Выключить' if r.enabled else 'Включить' }}
+        </button>
+      </form>
+      <form method="post" action="/api/routing/{{ r.id }}/delete" style="display:inline"
+            onsubmit="return confirm('Удалить правило «{{ r.name }}»?')">
+        <input type="hidden" name="csrf" value="{{ request.cookies.get('hub_csrf','') }}">
+        <button class="btn danger" type="submit" style="padding:5px 9px;font-size:12px">Удалить</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card" style="margin-bottom:10px">
+  <h2>Добавить правило</h2>
+  <form method="post" action="/api/routing">
+    <input type="hidden" name="csrf" value="{{ request.cookies.get('hub_csrf','') }}">
+    <label>Название</label>
+    <input name="name" placeholder="Например: ИИ-сервисы через США">
+    <label>Тип совпадения</label>
+    <select name="match_type">
+      {% for key, title in match_types %}
+      <option value="{{ key }}">{{ title }}</option>
+      {% endfor %}
+    </select>
+    <label>Значение (можно несколько через запятую)</label>
+    <input name="value" placeholder="openai.com, claude.ai  ·  category-ru  ·  ru  ·  udp">
+    <label>Куда отправлять</label>
+    <select name="outbound">
+      <option value="direct">напрямую (direct)</option>
+      <option value="main" selected>основной профиль (main)</option>
+      <option value="usa">выход США (usa)</option>
+      <option value="eu">выход ЕС (eu)</option>
+      <option value="nearest">ближайшая нода по UDP (nearest)</option>
+    </select>
+    <label>Порядок (меньше — раньше)</label>
+    <input name="sort" value="100" inputmode="numeric">
+    <label>Заметка</label>
+    <input name="note" placeholder="необязательно">
+    <div style="margin-top:14px"><button class="btn" type="submit">Сохранить правило</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>JSON, который получает клиент</h2>
+  <pre id="json" style="background:#0b0d11;border:1px solid var(--line);border-radius:10px;
+       padding:10px;overflow:auto;font:12px/1.45 ui-monospace,Consolas,monospace">{{ preview }}</pre>
+</div>
+
+{% endblock %}

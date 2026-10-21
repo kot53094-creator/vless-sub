@@ -78,4 +78,8 @@ def test_installer_exists_and_has_expected_parts():
 @pytest.mark.skipif(shutil.which("bash") is None, reason="bash недоступен на этой машине")
 def test_installer_passes_bash_syntax_check():
     proc = subprocess.run(["bash", "-n", str(INSTALLER)], capture_output=True, text=True)
-    assert proc.returncode == 0, proc.stderr
+    stderr = proc.stderr or ""
+    # На Windows MSYS иногда не может форкнуться из-под pytest — это не ошибка скрипта.
+    if "fatal error - NtCreateDirectoryObject" in stderr or "msys-2.0" in stderr:
+        pytest.skip("bash не запускается в этом окружении (MSYS fork error)")
+    assert proc.returncode == 0, stderr

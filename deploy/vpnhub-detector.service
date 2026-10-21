@@ -1,0 +1,14 @@
+[Unit]
+Description=VPN Hub: проверка белых списков (A/B-проба)
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/vless-sub
+ExecStart=/usr/bin/docker compose exec -T hub python -m hub.cli detect
+# Без Docker: ExecStart=/opt/vless-sub/.venv/bin/python -m hub.cli detect
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target
