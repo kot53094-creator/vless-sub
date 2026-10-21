@@ -113,6 +113,16 @@ export async function handleSubscription(
     return plain(stubBody(blocked), null, user);
   }
 
+  // Устройство могли отвязать вручную — тогда именно ему отдаём отказ.
+  const device = await touchDevice(env, user.id, request.headers.get("User-Agent") ?? "");
+  if (device?.blocked) {
+    return plain(
+      stubBody("Это устройство отключено. Откройте бота → «📱 Устройства»"),
+      null,
+      user,
+    );
+  }
+
   const cacheKey = `sub:v1:${token}`;
   const cached = await env.CACHE.get(cacheKey);
   if (cached) {
@@ -203,6 +213,104 @@ async function touchFetchLog(env: Env, user: UserRow, request: Request): Promise
   if (devices > user.device_limit) {
     await logEvent(env, "device_limit", user.id, `устройств за 24 ч: ${devices}`);
   }
+}
+
+export interface UserDevice {
+  id: number;
+  label: string;
+  last_seen: string;
+  blocked: number;
+}
+
+/** «iPhone · Happ», «Windows · Happ» — без сырого User-Agent. */
+export function deviceLabel(ua: string): string {
+  const app = /happ/i.test(ua)
+    ? "Happ"
+    : /streisand/i.test(ua)
+      ? "Streisand"
+      : /v2rayng/i.test(ua)
+        ? "v2rayNG"
+        : /hiddify/i.test(ua)
+          ? "Hiddify"
+          : /shadowrocket/i.test(ua)
+            ? "Shadowrocket"
+            : /foxray/i.test(ua)
+              ? "FoXray"
+              : /clash|mihomo/i.test(ua)
+                ? "Clash"
+                : "Клиент";
+
+  const os = /ipad/i.test(ua)
+    ? "iPad"
+    : /iphone|ios/i.test(ua)
+      ? "iPhone"
+      : /android/i.test(ua)
+        ? "Android"
+        : /windows/i.test(ua)
+          ? "Windows"
+          : /macintosh|mac os/i.test(ua)
+            ? "macOS"
+            : /linux/i.test(ua)
+              ? "Linux"
+              : "Устройство";
+
+  return `${os} · ${app}`;
+}
+
+/**
+ * Регистрирует устройство при каждом запросе подписки и сообщает,
+ * заблокировано ли оно. Ключ — хеш User-Agent с солью.
+ */
+export async function touchDevice(
+  env: Env,
+  userId: number,
+  ua: string,
+): Promise<{ blocked: boolean } | null> {
+  if (!ua || ua === "-") return null;
+  const key = await hashValue(ua, envStr(env.SALT));
+
+  await run(
+    env,
+    `INSERT INTO user_devices (user_id, device_key, label) VALUES (?, ?, ?)
+     ON CONFLICT (user_id, device_key)
+     DO UPDATE SET last_seen = datetime('now'), label = excluded.label`,
+    userId,
+    key,
+    deviceLabel(ua),
+  );
+
+  const row = await one<{ blocked: number }>(
+    env,
+    "SELECT blocked FROM user_devices WHERE user_id = ? AND device_key = ?",
+    userId,
+    key,
+  );
+  return { blocked: row?.blocked === 1 };
+}
+
+export async function listDevices(env: Env, userId: number): Promise<UserDevice[]> {
+  return await many<UserDevice>(
+    env,
+    `SELECT id, label, last_seen, blocked FROM user_devices
+      WHERE user_id = ? ORDER BY blocked ASC, last_seen DESC LIMIT 10`,
+    userId,
+  );
+}
+
+export async function setDeviceBlocked(
+  env: Env,
+  userId: number,
+  id: number,
+  blocked: boolean,
+): Promise<boolean> {
+  const result = await run(
+    env,
+    "UPDATE user_devices SET blocked = ? WHERE id = ? AND user_id = ?",
+    blocked ? 1 : 0,
+    id,
+    userId,
+  );
+  return Boolean(result.meta.changes);
 }
 
 export async function devices24h(env: Env, userId: number): Promise<number> {

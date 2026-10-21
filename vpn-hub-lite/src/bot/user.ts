@@ -2,7 +2,13 @@
 
 import { assignForUser, assignmentCount } from "../balance";
 import { daysFromNowIso, logEvent, many, one, run } from "../db";
-import { devices24h, invalidateSubscription, rotateToken } from "../sub";
+import {
+  devices24h,
+  invalidateSubscription,
+  listDevices,
+  rotateToken,
+  setDeviceBlocked,
+} from "../sub";
 import { randomToken } from "../security";
 import type { Env, UserRow } from "../types";
 import { escapeHtml, sendMessage, sendToAdmin, type ReplyMarkup } from "./telegram";
@@ -616,8 +622,9 @@ export async function sendTraffic(
   await screen(env, chatId, messageId, "account", lines.join("\n"), cabinetKeyboard({ referral: true }));
 }
 
-function ago(hourStamp: string): string {
-  const ts = Date.parse(`${hourStamp}:00:00Z`);
+function ago(value: string): string {
+  const stamp = value.length <= 13 ? `${value}:00:00` : value;
+  const ts = Date.parse(`${stamp.replace(" ", "T")}Z`);
   if (!Number.isFinite(ts)) return "—";
   const minutes = Math.max(0, Math.round((Date.now() - ts) / 60000));
   if (minutes < 60) return `${minutes} мин назад`;
@@ -627,58 +634,55 @@ function ago(hourStamp: string): string {
   return `${days} ${plural(days, "день", "дня", "дней")} назад`;
 }
 
-/** Экран «Устройства»: список активных подключений и кнопка отключения. */
+/** Экран «Устройства»: имена клиентов и отвязка по одному. */
 export async function sendDevicesInfo(
   env: Env,
   chatId: number | string,
   user: UserRow,
   messageId?: number,
 ): Promise<void> {
-  const used = await devices24h(env, user.id);
-  const rows = await many<{ ip_hash: string; ua_hash: string; last: string }>(
-    env,
-    `SELECT ip_hash, ua_hash, MAX(ts_hour) AS last
-       FROM fetch_log
-      WHERE user_id = ? AND ts_hour >= strftime('%Y-%m-%dT%H', datetime('now', '-3 days'))
-      GROUP BY ip_hash, ua_hash
-      ORDER BY last DESC LIMIT 5`,
-    user.id,
-  );
+  const devices = await listDevices(env, user.id);
+  const active = devices.filter((item) => !item.blocked);
+  const blocked = devices.filter((item) => item.blocked);
 
   const lines = [
     `<b>Устройства</b>`,
-    `Лимит: ${user.device_limit} · за 24 ч: ${used}`,
+    `Лимит: ${user.device_limit} · подключено: ${active.length}`,
     "",
   ];
 
-  if (rows.length) {
-    rows.forEach((row, index) => {
-      lines.push(`${index + 1}. было в сети ${ago(row.last)}`);
+  if (active.length) {
+    active.forEach((item, index) => {
+      lines.push(`${index + 1}. ${escapeHtml(item.label)} — ${ago(item.last_seen)}`);
     });
-    lines.push(
-      "",
-      "Если устройство потеряно, продано или просто больше не нужно — отключите все:",
-      "ссылка перевыпустится, и старое подключение перестанет работать.",
-    );
   } else {
-    lines.push(
-      "Активных подключений не видно.",
-      "",
-      "Как только добавите ссылку в Happ, устройство появится здесь.",
-    );
+    lines.push("Пока ни одно устройство не открывало подписку.");
   }
 
-  const keyboard = {
-    inline_keyboard: [
-      [{ text: "🔄 Отключить все устройства", callback_data: "dev:kick" }],
-      [
-        { text: "👤 Кабинет", callback_data: "act:cabinet" },
-        { text: "← В меню", callback_data: "act:menu" },
-      ],
-    ],
-  };
+  if (blocked.length) {
+    lines.push("", "<b>Отключены</b>");
+    blocked.forEach((item) => lines.push(`• ${escapeHtml(item.label)}`));
+  }
 
-  await screen(env, chatId, messageId, "account", lines.join("\n"), keyboard);
+  lines.push(
+    "",
+    "Отвязать можно одно устройство — остальные продолжат работать.",
+  );
+
+  const rows: Array<Array<{ text: string; callback_data: string }>> = [];
+  for (const item of active.slice(0, 5)) {
+    rows.push([{ text: `✖️ Отвязать ${item.label}`, callback_data: `dvb:${item.id}` }]);
+  }
+  for (const item of blocked.slice(0, 3)) {
+    rows.push([{ text: `↩️ Вернуть ${item.label}`, callback_data: `dvu:${item.id}` }]);
+  }
+  rows.push([{ text: "🔄 Отключить все", callback_data: "dev:kick" }]);
+  rows.push([
+    { text: "👤 Кабинет", callback_data: "act:cabinet" },
+    { text: "← В меню", callback_data: "act:menu" },
+  ]);
+
+  await screen(env, chatId, messageId, "account", lines.join("\n"), { inline_keyboard: rows });
 }
 
 /** Подтверждение: перевыпуск ссылки выкидывает все устройства сразу. */

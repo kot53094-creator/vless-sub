@@ -6,7 +6,7 @@ import type { Env, UserRow } from "../types";
 import * as admin from "./admin";
 import { answerCallback, adminId, sendMessage } from "./telegram";
 import * as user from "./user";
-import { rotateToken } from "../sub";
+import { rotateToken, setDeviceBlocked } from "../sub";
 import { runSync } from "../sync";
 import { parsePromoCommand } from "../promotions";
 
@@ -232,6 +232,8 @@ async function handleCallback(
   if (
     data.startsWith("act:") ||
     data.startsWith("dev:") ||
+    data.startsWith("dvb:") ||
+    data.startsWith("dvu:") ||
     data.startsWith("bon:") ||
     data.startsWith("ref:") ||
     data.startsWith("prm:") ||
@@ -250,6 +252,28 @@ async function handleCallback(
       await user.sendDevices(env, chatId, messageId);
       return;
     }
+    if (data.startsWith("dvb:") || data.startsWith("dvu:")) {
+      if (!existing) {
+        await answerCallback(env, query.id, "Сначала нажмите /start.", true);
+        return;
+      }
+      const deviceId = Number(data.slice(4));
+      const block = data.startsWith("dvb:");
+      if (!Number.isFinite(deviceId) || !memRateLimit(`dev:${tgId}`, 12, 60)) {
+        await answerCallback(env, query.id, "Не так быстро", true);
+        return;
+      }
+      const done = await setDeviceBlocked(env, existing.id, deviceId, block);
+      await answerCallback(
+        env,
+        query.id,
+        done ? (block ? "Устройство отвязано" : "Устройство возвращено") : "Устройство не найдено",
+        !done,
+      );
+      await user.sendDevicesInfo(env, chatId, existing, messageId);
+      return;
+    }
+
     if (data === "dev:kick") {
       if (!existing || existing.status !== "active") {
         await answerCallback(env, query.id, "Доступ ещё не активен.", true);
