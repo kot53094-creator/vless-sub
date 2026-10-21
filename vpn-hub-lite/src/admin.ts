@@ -2,6 +2,7 @@
 
 import { rebalance, serverLoads } from "./balance";
 import { deliverSource, topUpAllActive } from "./delivery";
+import { createInvite, inviteLink, listInvites, revokeInvite } from "./invites";
 import { logEvent, many, one, run } from "./db";
 import { syncOneSource } from "./sync";
 import { maskLink, maskToken } from "./labels";
@@ -245,6 +246,7 @@ const NAV: Array<[string, string, string, string]> = [
   ["Дашборд", "/admin/users", "Пользователи", "users"],
   ["Данные", "/admin/servers", "Серверы", "servers"],
   ["Данные", "/admin/sources", "Источники", "sources"],
+  ["Доступ", "/admin/grant", "Выдать подписку", "grant"],
   ["Маркетинг", "/admin/bonuses", "Настройки бонусов", "bonuses"],
   ["Маркетинг", "/admin/promos", "Промокоды", "promos"],
   ["Маркетинг", "/admin/accruals", "Начисления", "accruals"],
@@ -379,6 +381,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   if (path === "/admin/users") return await usersPage(env, url);
   if (path === "/admin/servers") return await serversPage(env);
   if (path === "/admin/sources") return await sourcesPage(env, url);
+  if (path === "/admin/grant") return await grantPage(env, url);
   if (path === "/admin/bonuses") return await bonusesPage(env, url);
   if (path === "/admin/promos") return await promosPage(env, url);
   if (path === "/admin/accruals") return await accrualsPage(env, url);
@@ -1321,6 +1324,38 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
     return back("/admin/servers", `Проверено ${result.checked}, мёртвых ${result.dead}`);
   }
 
+  if (action === "create_invite") {
+    const invite = await createInvite(env, {
+      days: Number(form.get("days") ?? 30),
+      gb: Number(form.get("gb") ?? 0),
+      devices: Number(form.get("devices") ?? 3),
+      note: String(form.get("note") ?? ""),
+    });
+    return back(`/admin/grant?new=${invite.code}`, "Ссылка создана");
+  }
+
+  if (action === "revoke_invite") {
+    const code = String(form.get("code") ?? "");
+    const done = await revokeInvite(env, code);
+    return done
+      ? back("/admin/grant", `Ссылка ${code} отменена`)
+      : back("/admin/grant", "", "Ссылка уже использована");
+  }
+
+  if (action === "grant_user") {
+    const tgId = String(form.get("tg_id") ?? "").trim().replace(/^@/, "");
+    const user = await one<{ id: number }>(env, "SELECT id FROM users WHERE tg_id = ?", tgId);
+    if (!user) {
+      return back("/admin/grant", "", "Такого пользователя нет — отправьте ему инвайт-ссылку");
+    }
+    const { approveUser } = await import("./bot/user");
+    await approveUser(env, user.id, Number(form.get("days") ?? 30), {
+      gb: Number(form.get("gb") ?? 0),
+      devices: Number(form.get("devices") ?? 3),
+    });
+    return back("/admin/grant", `Подписка выдана: ${tgId}`);
+  }
+
   if (action === "deliver_source") {
     const sourceId = Number(form.get("id") ?? 0);
     const issued = await deliverSource(env, sourceId);
@@ -1818,4 +1853,92 @@ ${err ? `<div class="err">${esc(err)}</div>` : ""}
 </div>`;
 
   return page("Группы", body, "squads", env);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Выдача подписок: инвайт-ссылки и прямое одобрение по Telegram ID
+   ══════════════════════════════════════════════════════════════════════════ */
+
+async function grantPage(env: Env, url: URL): Promise<Response> {
+  const csrf = await csrfToken(env);
+  const fresh = url.searchParams.get("new");
+  const ok = url.searchParams.get("ok");
+  const err = url.searchParams.get("err");
+  const invites = await listInvites(env);
+
+  const freshBlock = fresh
+    ? `<div class="card" style="border-color:#4FE3C1">
+         <div class="head"><h2>Ссылка готова</h2></div>
+         <p class="muted" style="margin-top:0">Отправьте её человеку. Сгорает после первого входа.</p>
+         <p class="mono" style="font-size:15px;word-break:break-all">${esc(inviteLink(env, fresh))}</p>
+       </div>`
+    : "";
+
+  const rows = invites
+    .map((invite) => {
+      const used = invite.used_by !== null;
+      return `<tr data-row="${esc(invite.code)}">
+        <td class="mono">${esc(invite.code)}</td>
+        <td>${invite.days} дн.</td>
+        <td>${invite.gb ? `${invite.gb} ГБ` : "без лимита"}</td>
+        <td>${invite.devices}</td>
+        <td>${used ? `<span class="pill ok">использован</span>` : `<span class="pill warn">свободен</span>`}</td>
+        <td>${used ? "—" : `<span class="mono" style="font-size:12px">${esc(inviteLink(env, invite.code))}</span>`}</td>
+        <td>${
+          used
+            ? "—"
+            : `<form method="post" action="/admin/action" class="inline">
+                 <input type="hidden" name="csrf" value="${csrf}">
+                 <input type="hidden" name="action" value="revoke_invite">
+                 <input type="hidden" name="code" value="${esc(invite.code)}">
+                 <button class="btn danger">Отменить</button>
+               </form>`
+        }</td>
+      </tr>`;
+    })
+    .join("");
+
+  const body = `
+<h1>Выдать подписку</h1>
+<div class="sub">Инвайт-ссылка или прямое одобрение по Telegram ID</div>
+${ok ? `<div class="notice">${esc(ok)}</div>` : ""}
+${err ? `<div class="err">${esc(err)}</div>` : ""}
+${freshBlock}
+
+<div class="card">
+  <div class="head"><h2>Новая ссылка-приглашение</h2></div>
+  <form method="post" action="/admin/action" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <input type="hidden" name="csrf" value="${csrf}">
+    <input type="hidden" name="action" value="create_invite">
+    <div><label class="muted">Дней</label><br><input name="days" value="30" inputmode="numeric" style="width:90px"></div>
+    <div><label class="muted">ГБ (0 — без лимита)</label><br><input name="gb" value="0" inputmode="numeric" style="width:120px"></div>
+    <div><label class="muted">Устройств</label><br><input name="devices" value="3" inputmode="numeric" style="width:100px"></div>
+    <div><label class="muted">Пометка</label><br><input name="note" placeholder="для кого" style="width:180px"></div>
+    <button class="btn primary">Создать ссылку</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="head"><h2>Выдать существующему</h2></div>
+  <p class="muted" style="margin-top:0">Человек уже запускал бота — знаете его Telegram ID.</p>
+  <form method="post" action="/admin/action" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <input type="hidden" name="csrf" value="${csrf}">
+    <input type="hidden" name="action" value="grant_user">
+    <div><label class="muted">Telegram ID</label><br><input name="tg_id" placeholder="123456789" style="width:150px"></div>
+    <div><label class="muted">Дней</label><br><input name="days" value="30" inputmode="numeric" style="width:90px"></div>
+    <div><label class="muted">ГБ (0 — без лимита)</label><br><input name="gb" value="0" inputmode="numeric" style="width:120px"></div>
+    <div><label class="muted">Устройств</label><br><input name="devices" value="3" inputmode="numeric" style="width:100px"></div>
+    <button class="btn primary">Выдать</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="head"><h2>Ссылки</h2></div>
+  <table>
+    <thead><tr><th>Код</th><th>Срок</th><th>Трафик</th><th>Устройств</th><th>Статус</th><th>Ссылка</th><th></th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="7" class="muted">Пока нет ссылок</td></tr>`}</tbody>
+  </table>
+</div>`;
+
+  return page("Выдать подписку", body, "grant", env);
 }
