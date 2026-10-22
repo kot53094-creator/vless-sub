@@ -23,6 +23,7 @@ import type { DeliverableServer, Env, UserRow } from "./types";
 import { BRAND } from "./brand";
 import { assignIfEmpty } from "./balance";
 import { compareServers, isModern } from "./ranking";
+import { checkReality } from "./reality";
 
 export const PROFILE_REFRESH_HOURS = 6;
 
@@ -98,10 +99,21 @@ function expireTs(user: UserRow): number {
   return Number.isFinite(ts) ? Math.floor(ts / 1000) : 0;
 }
 
+/** Режимы отбора: REALITY-only и производные от него. */
+export type SubMode =
+  | "default"
+  | "reality"
+  | "working"
+  | "best"
+  | "stable"
+  | "low-latency"
+  | "untested";
+
 export async function handleSubscription(
   env: Env,
   token: string,
   request: Request,
+  mode: SubMode = "default",
 ): Promise<Response> {
   const ip = clientIp(request);
   // 60 запросов в минуту с одного адреса — защита от перебора токенов
@@ -137,8 +149,10 @@ export async function handleSubscription(
     );
   }
 
+  // Кэшируем только основную подписку: у режимов своя фильтрация,
+  // и держать шесть копий тела в KV дороже, чем собрать заново.
   const cacheKey = `sub:v2:${token}`;
-  const cached = await env.CACHE.get(cacheKey);
+  const cached = mode === "default" ? await env.CACHE.get(cacheKey) : null;
   if (cached) {
     const parsed = JSON.parse(cached) as { body: string };
     // Заголовок считаем заново из БД: в кэше он устаревает и Happ
@@ -173,6 +187,34 @@ export async function handleSubscription(
     })
     .filter(isModern)
     .sort(compareServers);
+
+  // Режимы отбора. Всё, кроме default, дополнительно требует настоящий
+  // VLESS + REALITY с полным набором параметров.
+  if (mode !== "default") {
+    deliverable = deliverable.filter((server) => {
+      if (!checkReality(server.link).ok) return false;
+      const stability = server.stability ?? 0;
+      switch (mode) {
+        case "reality":
+          return true;
+        case "untested":
+          return stability === 0 && server.latency_ms === null;
+        case "working":
+          return stability > 0;
+        case "best":
+          return stability >= 0.8;
+        case "stable":
+          return stability >= 0.95;
+        case "low-latency":
+          return (server.latency_ms ?? 0) > 0;
+        default:
+          return true;
+      }
+    });
+    if (mode === "low-latency") {
+      deliverable.sort((a, b) => (a.latency_ms ?? 1e9) - (b.latency_ms ?? 1e9));
+    }
+  }
 
   // Выбор пользователя важнее рейтинга: он ставится первым в списке.
   const preferredId = user.preferred_server ?? 0;

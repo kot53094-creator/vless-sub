@@ -8,7 +8,7 @@ import { expireSubscriptions } from "./maintenance";
 import { runNotifications } from "./notify";
 import { runPoll, watchWebhook } from "./polling";
 import { envStr, timingSafeEqual } from "./security";
-import { handleSubscription } from "./sub";
+import { handleSubscription, type SubMode } from "./sub";
 import { runSync } from "./sync";
 import type { Env } from "./types";
 import { BRAND } from "./brand";
@@ -48,8 +48,22 @@ export default {
     if (path === "/healthz") return new Response("ok");
 
     if (path.startsWith("/sub/")) {
-      const token = decodeURIComponent(path.slice("/sub/".length)).replace(/\/$/, "");
-      return await handleSubscription(env, token, request);
+      const rest = decodeURIComponent(path.slice("/sub/".length)).replace(/\/$/, "");
+      // Поддерживаем /sub/<токен> и /sub/<токен>/<режим>.
+      const [token, rawMode = ""] = rest.split("/");
+      const MODES: Record<string, SubMode> = {
+        reality: "reality",
+        "reality-working": "working",
+        "reality-best": "best",
+        "reality-stable": "stable",
+        "reality-low-latency": "low-latency",
+        "reality-untested": "untested",
+        working: "working",
+        best: "best",
+        stable: "stable",
+        untested: "untested",
+      };
+      return await handleSubscription(env, token, request, MODES[rawMode] ?? "default");
     }
 
     if (path === "/webhook" && request.method === "POST") {
