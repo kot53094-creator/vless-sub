@@ -31,9 +31,13 @@ const SERVER_SQL = `
          s.latency_ms, s.last_check_at, s.max_users, s.seen_at,
           s.country_name, s.city, s.country_code, s.tier, s.enabled, s.priority,
           src.visibility, src.kind AS source_kind,
-         (SELECT p.name FROM pool_servers ps
-            JOIN pools p ON p.id = ps.pool_id
-           WHERE ps.server_id = s.id ORDER BY p.id LIMIT 1) AS pool_name
+          (SELECT p.name FROM pool_servers ps
+             JOIN pools p ON p.id = ps.pool_id
+            WHERE ps.server_id = s.id ORDER BY p.id LIMIT 1) AS pool_name,
+          -- Доля успешных проверок из последних десяти: основа рейтинга.
+          COALESCE((SELECT AVG(c.result = 'ok') FROM (
+              SELECT result FROM server_checks c2
+               WHERE c2.server_id = s.id ORDER BY c2.id DESC LIMIT 10) c), 0) AS stability
   FROM assignments a
   JOIN servers s ON s.id = a.server_id
   JOIN sources src ON src.id = s.source_id
