@@ -92,4 +92,7 @@ export interface DeliverableServer extends ServerRow {
   visibility: Visibility;
   source_kind: SourceKind;
   pool_name: string | null;
+  country_name?: string | null;
+  city?: string | null;
+  country_code?: string | null;
 }

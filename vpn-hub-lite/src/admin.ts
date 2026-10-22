@@ -1362,6 +1362,17 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
     return back("/admin/sources", `Выдано серверов источника: ${issued}`);
   }
 
+  if (action === "geo") {
+    const { fillGeo } = await import("./geo");
+    let total = 0;
+    for (let i = 0; i < 4; i += 1) {
+      const done = await fillGeo(env, 40);
+      total += done;
+      if (done === 0) break;
+    }
+    return back("/admin/servers", `Определено стран: ${total}`);
+  }
+
   if (action === "refill") {
     const added = await topUpAllActive(env);
     await logEvent(env, "refill", null, `добрано серверов: ${added}`);
