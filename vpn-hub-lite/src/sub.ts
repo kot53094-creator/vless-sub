@@ -29,8 +29,8 @@ export const PROFILE_REFRESH_HOURS = 6;
 const SERVER_SQL = `
   SELECT s.id, s.source_id, s.remark, s.link, s.host, s.port, s.status,
          s.latency_ms, s.last_check_at, s.max_users, s.seen_at,
-         s.country_name, s.city, s.country_code,
-         src.visibility, src.kind AS source_kind,
+          s.country_name, s.city, s.country_code, s.tier, s.enabled,
+          src.visibility, src.kind AS source_kind,
          (SELECT p.name FROM pool_servers ps
             JOIN pools p ON p.id = ps.pool_id
            WHERE ps.server_id = s.id ORDER BY p.id LIMIT 1) AS pool_name
@@ -157,7 +157,18 @@ export async function handleSubscription(
   }
 
   // Только то, что реально пробивает блокировки, и лучшее — вверх.
-  deliverable = deliverable.filter(isModern).sort(compareServers);
+  // Тарифные категории: personal — только владельцу, free/premium — по тарифу.
+  const userTier = isAdmin ? "personal" : (user.tier ?? "free");
+  deliverable = deliverable
+    .filter((server) => server.enabled !== 0)
+    .filter((server) => {
+      const tier = server.tier ?? "free";
+      if (tier === "personal") return isAdmin;
+      if (userTier === "premium") return true;
+      return tier === "free";
+    })
+    .filter(isModern)
+    .sort(compareServers);
 
   const uris: string[] = [];
   deliverable.forEach((server, index) => {

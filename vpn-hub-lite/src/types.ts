@@ -53,6 +53,7 @@ export interface UserRow {
   sub_token: string;
   last_fetch_at: string | null;
   traffic_gb?: number;
+  tier?: string;
   note: string;
 }
 
@@ -95,4 +96,6 @@ export interface DeliverableServer extends ServerRow {
   country_name?: string | null;
   city?: string | null;
   country_code?: string | null;
+  tier?: string | null;
+  enabled?: number | null;
 }
