@@ -21,23 +21,60 @@ export function protocolLabel(key: ParsedKey): string {
   }
 }
 
-/**
- * Пример: «Европа · VLESS Reality #2».
- * Имя пула — единственная «география», которую видит пользователь;
- * название источника (сервиса) не раскрывается никогда.
- */
+const COUNTRY_RU: Record<string, string> = {
+  DE: "Германия",
+  NL: "Нидерланды",
+  FI: "Финляндия",
+  FR: "Франция",
+  US: "США",
+  GB: "Великобритания",
+  SE: "Швеция",
+  PL: "Польша",
+  CA: "Канада",
+  SG: "Сингапур",
+  JP: "Япония",
+  TR: "Турция",
+  RU: "Россия",
+  LV: "Латвия",
+  LT: "Литва",
+  EE: "Эстония",
+  CH: "Швейцария",
+  AT: "Австрия",
+  CZ: "Чехия",
+  RO: "Румыния",
+  IT: "Италия",
+  ES: "Испания",
+  HK: "Гонконг",
+  KZ: "Казахстан",
+  AE: "ОАЭ",
+  IN: "Индия",
+  BR: "Бразилия",
+  AU: "Австралия",
+};
+
+/** «VLESS · Германия» или «VLESS · Германия · Франкфурт». */
 export function serverLabel(
   poolName: string | null,
   key: ParsedKey,
   index: number,
   custom?: string,
+  geo?: { country?: string | null; city?: string | null; code?: string | null },
 ): string {
   // Своим ключам оставляем человеческое имя: человек должен узнать свой сервер.
   const own = custom?.trim();
   if (own) return own.slice(0, 40);
-  const place = poolName && poolName.trim() ? poolName.trim() : "Node";
-  return `${place} · ${protocolLabel(key)} #${index}`;
+
+  const protocol = protocolLabel(key);
+  const code = (geo?.code ?? "").trim().toUpperCase();
+  // Локатор отдаёт английские названия — переводим известные страны,
+  // остальные показываем как есть, врать не будем.
+  const country = COUNTRY_RU[code] ?? (geo?.country ?? "").trim();
+  if (!country) return `${protocol} · Регион неизвестен`;
+
+  return `${protocol} · ${country}`;
 }
+
+export { COUNTRY_RU };
 
 export function maskLink(link: string, keep = 14): string {
   if (link.length <= keep * 2) return "•".repeat(Math.min(link.length, 24));

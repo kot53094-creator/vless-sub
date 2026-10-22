@@ -2,6 +2,7 @@
 
 import { handleAdmin } from "./admin";
 import { handleUpdate, type TgUpdate } from "./bot";
+import { fillGeo } from "./geo";
 import { runHealth } from "./health";
 import { runNotifications } from "./notify";
 import { runPoll, watchWebhook } from "./polling";
@@ -95,6 +96,12 @@ export default {
         }),
       );
       // Уведомления о сроке + снятие истёкших групп живут в этом же тике.
+      // Геолокация новых серверов — по 40 за тик, чтобы не жечь лимит D1.
+      ctx.waitUntil(
+        fillGeo(env).catch((error) => {
+          console.error("geo failed", error instanceof Error ? error.message : error);
+        }),
+      );
       ctx.waitUntil(
         runNotifications(env).catch((error) => {
           console.error("notify failed", error instanceof Error ? error.message : error);

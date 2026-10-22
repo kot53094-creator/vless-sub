@@ -29,6 +29,7 @@ export const PROFILE_REFRESH_HOURS = 6;
 const SERVER_SQL = `
   SELECT s.id, s.source_id, s.remark, s.link, s.host, s.port, s.status,
          s.latency_ms, s.last_check_at, s.max_users, s.seen_at,
+         s.country_name, s.city, s.country_code,
          src.visibility, src.kind AS source_kind,
          (SELECT p.name FROM pool_servers ps
             JOIN pools p ON p.id = ps.pool_id
@@ -163,7 +164,16 @@ export async function handleSubscription(
     const key = parseUri(server.link);
     if (!key) return;
     const own = server.visibility === "private" ? server.remark : "";
-    uris.push(withLabel(server.link, serverLabel(server.pool_name, key, index + 1, own)));
+    uris.push(
+      withLabel(
+        server.link,
+        serverLabel(server.pool_name, key, index + 1, own, {
+          country: server.country_name,
+          city: server.city,
+          code: server.country_code,
+        }),
+      ),
+    );
   });
 
   const body =
@@ -348,6 +358,10 @@ export async function rotateToken(env: Env, user: UserRow): Promise<string> {
 }
 
 export async function invalidateSubscription(env: Env, token: string): Promise<void> {
+  // Чистим все версии ключа: иначе после смены формата остаётся старый кэш
+  // и человек видит устаревшие имена серверов.
   await env.CACHE.delete(`sub:v1:${token}`);
+  await env.CACHE.delete(`sub:v2:${token}`);
+  await env.CACHE.delete(`sub:v3:${token}`);
 }
 
