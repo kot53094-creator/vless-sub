@@ -4,6 +4,7 @@ import { handleAdmin } from "./admin";
 import { handleUpdate, type TgUpdate } from "./bot";
 import { fillGeo } from "./geo";
 import { runHealth } from "./health";
+import { expireSubscriptions } from "./maintenance";
 import { runNotifications } from "./notify";
 import { runPoll, watchWebhook } from "./polling";
 import { envStr, timingSafeEqual } from "./security";
@@ -100,6 +101,12 @@ export default {
       ctx.waitUntil(
         fillGeo(env).catch((error) => {
           console.error("geo failed", error instanceof Error ? error.message : error);
+        }),
+      );
+      // Просроченные подписки переводим в expired до рассылки уведомлений.
+      ctx.waitUntil(
+        expireSubscriptions(env).catch((error) => {
+          console.error("expire failed", error instanceof Error ? error.message : error);
         }),
       );
       ctx.waitUntil(
