@@ -54,6 +54,8 @@ export interface UserRow {
   last_fetch_at: string | null;
   traffic_gb?: number;
   tier?: string;
+  preferred_server?: number | null;
+  preferred_country?: string | null;
   note: string;
 }
 

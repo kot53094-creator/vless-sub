@@ -107,6 +107,7 @@ export function cabinetKeyboard(options: KeyboardOptions = {}): ReplyMarkup {
     rows.push([{ text: "🛡 Обход белых списков", callback_data: "sq:bypass" }]);
   }
 
+  rows.push([{ text: "🌍 Выбрать сервер", callback_data: "srv:list" }]);
   rows.push([{ text: "⚡️ Как подключить", callback_data: "act:devices" }]);
   if (options.active) {
     rows.push([{ text: "♻️ Новая ссылка", callback_data: "act:newkey" }]);

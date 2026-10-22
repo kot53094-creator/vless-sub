@@ -238,6 +238,7 @@ async function handleCallback(
     data.startsWith("ref:") ||
     data.startsWith("prm:") ||
     data.startsWith("sq:") ||
+    data.startsWith("srv:") ||
     data.startsWith("chk:")
   ) {
     const existing = await one<UserRow>(env, "SELECT * FROM users WHERE tg_id = ?", tgId);
@@ -342,6 +343,30 @@ async function handleCallback(
       await answerCallback(env, query.id, text, true);
       const fresh = await user.findUser(env, tgId);
       await user.sendCabinet(env, chatId, fresh, messageId);
+      return;
+    }
+
+    if (data === "srv:list" || data.startsWith("srv:")) {
+      if (!existing || existing.status !== "active") {
+        await answerCallback(env, query.id, "Доступ ещё не активен.", true);
+        return;
+      }
+      if (data === "srv:auto") {
+        await user.setPreferredServer(env, existing, null);
+        await answerCallback(env, query.id, "Выбор снят: сортировка по скорости");
+      } else if (data !== "srv:list") {
+        const serverId = Number(data.slice(4));
+        if (!Number.isFinite(serverId) || serverId <= 0) {
+          await answerCallback(env, query.id, "Не понял, какой сервер", true);
+          return;
+        }
+        await user.setPreferredServer(env, existing, serverId);
+        await answerCallback(env, query.id, "Сервер выбран, он будет первым");
+      } else {
+        await answerCallback(env, query.id, "");
+      }
+      const fresh = await user.findUser(env, tgId);
+      if (fresh) await user.sendServerPicker(env, chatId, fresh, messageId);
       return;
     }
 
