@@ -52,6 +52,13 @@ const COUNTRY_RU: Record<string, string> = {
   AU: "Австралия",
 };
 
+/** 🇩🇪 из «DE». Пустая строка, если код неизвестен. */
+export function flagOf(code: string | null | undefined): string {
+  const value = (code ?? "").trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(value)) return "";
+  return String.fromCodePoint(...[...value].map((char) => 0x1f1e6 + char.charCodeAt(0) - 65));
+}
+
 /** «VLESS · Германия» или «VLESS · Германия · Франкфурт». */
 export function serverLabel(
   poolName: string | null,

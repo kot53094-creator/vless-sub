@@ -35,14 +35,25 @@ export function serverRank(server: RankableServer): number {
 }
 
 export function compareServers<
-  T extends RankableServer & { latency_ms?: number | null; priority?: number | null; id: number },
+  T extends RankableServer & {
+    latency_ms?: number | null;
+    priority?: number | null;
+    stability?: number | null;
+    id: number;
+  },
 >(a: T, b: T): number {
   // Ручной приоритет из админки важнее автоматического ранжирования.
   const byPriority = (b.priority ?? 0) - (a.priority ?? 0);
   if (byPriority !== 0) return byPriority;
 
+  // Тип сервера: свои ключи → Reality → обычный TLS.
   const byRank = serverRank(a) - serverRank(b);
   if (byRank !== 0) return byRank;
+
+  // Внутри группы решает качество: стабильность из истории проверок.
+  // Непроверенные (0) уходят вниз, как запасные.
+  const byStability = (b.stability ?? 0) - (a.stability ?? 0);
+  if (Math.abs(byStability) > 0.001) return byStability;
 
   const la = a.latency_ms ?? Number.MAX_SAFE_INTEGER;
   const lb = b.latency_ms ?? Number.MAX_SAFE_INTEGER;

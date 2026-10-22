@@ -3,6 +3,7 @@
 import { rebalance, serverLoads } from "./balance";
 import { deliverSource, topUpAllActive } from "./delivery";
 import { createInvite, inviteLink, listInvites, revokeInvite } from "./invites";
+import { flagOf } from "./labels";
 import { invalidateSubscription } from "./sub";
 import { logEvent, many, one, run } from "./db";
 import { syncOneSource } from "./sync";
@@ -820,15 +821,20 @@ async function serversPage(env: Env, url: URL): Promise<Response> {
 
   const body_rows = rows
     .map((server) => {
+      const flag = flagOf(server.country_code);
       const name = server.country_name
         ? `VLESS · ${server.country_name}${server.city && server.city.length <= 16 ? ` · ${server.city}` : ""}`
         : "VLESS · Регион неизвестен";
+      const ping = server.latency_ms;
+      const pingColor = ping === null ? "#6b7c8f" : ping < 150 ? "#4FE3C1" : ping < 300 ? "#FFB454" : "#FF6B6B";
       return `<tr data-row="${esc(server.host)}">
         <td><input type="checkbox" name="ids" value="${server.id}" form="bulk"></td>
-        <td>${esc(name)}
+        <td style="white-space:nowrap">
+          <span style="font-size:18px;margin-right:8px">${flag || "🌐"}</span>
+          <span>${esc(name.replace("VLESS · ", ""))}</span>
           <div class="muted mono" style="font-size:11px">${esc(server.host)}:${server.port} · #${server.id}</div></td>
         <td>${statusPill(server)}</td>
-        <td>${server.latency_ms ?? "—"} мс</td>
+        <td style="color:${pingColor};font-weight:600">${ping === null ? "—" : `${ping} мс`}</td>
         <td><span class="pill">${esc(server.tier)}</span></td>
         <td>${server.users}</td>
         <td class="muted">${when(server.last_check_at)}</td>
@@ -865,11 +871,35 @@ async function serversPage(env: Env, url: URL): Promise<Response> {
     )
     .join("");
 
+  const stats = await one<{ online: number; offline: number; unknown: number; avg: number | null }>(
+    env,
+    `SELECT
+       SUM(CASE WHEN enabled = 1 AND status = 'alive' THEN 1 ELSE 0 END) AS online,
+       SUM(CASE WHEN enabled = 1 AND status = 'dead' THEN 1 ELSE 0 END) AS offline,
+       SUM(CASE WHEN enabled = 1 AND status = 'unknown' THEN 1 ELSE 0 END) AS unknown,
+       AVG(CASE WHEN enabled = 1 AND status = 'alive' THEN latency_ms END) AS avg
+     FROM servers`,
+  );
+
+  const kpi = (value: string, label: string, color: string) =>
+    `<div style="flex:1;min-width:120px;background:#111a24;border:1px solid #1e2a37;border-radius:14px;padding:14px 16px">
+       <div style="font-size:24px;font-weight:700;color:${color}">${value}</div>
+       <div class="muted" style="font-size:12px">${label}</div>
+     </div>`;
+
   const body = `
 <h1>Серверы</h1>
 <div class="sub">Статус, задержка, доступ и тарифная категория</div>
 ${ok ? `<div class="notice">${esc(ok)}</div>` : ""}
 ${err ? `<div class="err">${esc(err)}</div>` : ""}
+
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+  ${kpi(String(total), "всего", "#ffffff")}
+  ${kpi(String(stats?.online ?? 0), "ONLINE", "#4FE3C1")}
+  ${kpi(String(stats?.offline ?? 0), "OFFLINE", "#FF6B6B")}
+  ${kpi(String(stats?.unknown ?? 0), "UNKNOWN", "#FFB454")}
+  ${kpi(stats?.avg ? `${Math.round(stats.avg)} мс` : "—", "средняя задержка", "#9db2c6")}
+</div>
 
 <div class="card">
   <div class="head">

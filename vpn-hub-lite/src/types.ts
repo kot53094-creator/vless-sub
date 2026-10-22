@@ -101,4 +101,5 @@ export interface DeliverableServer extends ServerRow {
   tier?: string | null;
   enabled?: number | null;
   priority?: number | null;
+  stability?: number | null;
 }
