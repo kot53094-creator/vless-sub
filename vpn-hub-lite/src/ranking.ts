@@ -34,10 +34,13 @@ export function serverRank(server: RankableServer): number {
   return 2;
 }
 
-export function compareServers<T extends RankableServer & { latency_ms?: number | null; id: number }>(
-  a: T,
-  b: T,
-): number {
+export function compareServers<
+  T extends RankableServer & { latency_ms?: number | null; priority?: number | null; id: number },
+>(a: T, b: T): number {
+  // Ручной приоритет из админки важнее автоматического ранжирования.
+  const byPriority = (b.priority ?? 0) - (a.priority ?? 0);
+  if (byPriority !== 0) return byPriority;
+
   const byRank = serverRank(a) - serverRank(b);
   if (byRank !== 0) return byRank;
 

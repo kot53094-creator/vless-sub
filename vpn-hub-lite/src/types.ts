@@ -98,4 +98,5 @@ export interface DeliverableServer extends ServerRow {
   country_code?: string | null;
   tier?: string | null;
   enabled?: number | null;
+  priority?: number | null;
 }

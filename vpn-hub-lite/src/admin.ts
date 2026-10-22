@@ -380,6 +380,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   if (path === "/admin" || path === "/admin/") return await overviewPage(env);
   if (path === "/admin/users") return await usersPage(env, url);
   if (path === "/admin/servers") return await serversPage(env, url);
+  if (path === "/admin/server") return await serverEditPage(env, url);
   if (path === "/admin/sources") return await sourcesPage(env, url);
   if (path === "/admin/grant") return await grantPage(env, url);
   if (path === "/admin/bonuses") return await bonusesPage(env, url);
@@ -776,7 +777,7 @@ async function serversPage(env: Env, url: URL): Promise<Response> {
               s.country_name, s.city, s.country_code, s.latency_ms, s.last_check_at,
               (SELECT COUNT(*) FROM assignments a WHERE a.server_id = s.id) AS users
          FROM servers s ${filter}
-        ORDER BY s.enabled DESC, (s.status = 'alive') DESC,
+        ORDER BY s.enabled DESC, s.priority DESC, (s.status = 'alive') DESC,
                  (s.latency_ms IS NULL), s.latency_ms, s.id
         LIMIT ? OFFSET ?`,
       ...params,
@@ -848,6 +849,7 @@ async function serversPage(env: Env, url: URL): Promise<Response> {
             <input type="hidden" name="id" value="${server.id}">
             <button class="btn danger">×</button>
           </form>
+          <a class="btn" href="/admin/server?id=${server.id}" title="Настройки сервера">✎</a>
         </td>
       </tr>`;
     })
@@ -1109,13 +1111,16 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
   const action = String(form.get("action") ?? "");
   const id = Number(form.get("id") ?? 0);
   const days = Number(form.get("days") ?? 0);
-  const back = (path: string, ok = "", err = "") =>
-    new Response(null, {
-      status: 303,
-      headers: {
-        location: `${path}${ok ? `?ok=${encodeURIComponent(ok)}` : err ? `?err=${encodeURIComponent(err)}` : ""}`,
-      },
-    });
+  const back = (path: string, ok = "", err = "") => {
+    // У пути может уже быть query (?id=30) — тогда разделитель «&».
+    const sep = path.includes("?") ? "&" : "?";
+    const suffix = ok
+      ? `${sep}ok=${encodeURIComponent(ok)}`
+      : err
+        ? `${sep}err=${encodeURIComponent(err)}`
+        : "";
+    return new Response(null, { status: 303, headers: { location: `${path}${suffix}` } });
+  };
 
   /* ── маркетинг: настройки, промокоды, баннеры, группы ── */
 
@@ -1530,6 +1535,31 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
     return back("/admin/sources", `Выдано серверов источника: ${issued}`);
   }
 
+  if (action === "server_save") {
+    const id = Number(form.get("id") ?? 0);
+    const remark = String(form.get("remark") ?? "").trim().slice(0, 80);
+    const code = String(form.get("country_code") ?? "").trim().toUpperCase().slice(0, 2);
+    const name = String(form.get("country_name") ?? "").trim().slice(0, 60);
+    const tierRaw = String(form.get("tier") ?? "free");
+    const tier = ["free", "premium", "personal"].includes(tierRaw) ? tierRaw : "free";
+    const priority = Number(form.get("priority") ?? 0) || 0;
+    const enabled = String(form.get("enabled")) === "0" ? 0 : 1;
+
+    await run(
+      env,
+      "UPDATE servers SET remark = ?, country_code = ?, country_name = ?, tier = ?, priority = ?, enabled = ? WHERE id = ?",
+      remark,
+      code,
+      name,
+      tier,
+      priority,
+      enabled,
+      id,
+    );
+    await logEvent(env, "server_save", null, `#${id} ${tier} приоритет ${priority}`);
+    return back(`/admin/server?id=${id}`, "Сохранено");
+  }
+
   if (action === "server_toggle") {
     const id = Number(form.get("id") ?? 0);
     await run(env, "UPDATE servers SET enabled = 1 - enabled WHERE id = ?", id);
@@ -1605,6 +1635,12 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
       return back("/admin/servers", `Удалено серверов: ${ids.length}`);
     }
     return back("/admin/servers", "", "Неизвестная операция");
+  }
+
+  if (action === "maintenance") {
+    const { expireSubscriptions } = await import("./maintenance");
+    const expired = await expireSubscriptions(env);
+    return back("/admin/users", `Просроченных подписок закрыто: ${expired}`);
   }
 
   if (action === "geo") {
@@ -2197,4 +2233,110 @@ ${freshBlock}
 </div>`;
 
   return page("Выдать подписку", body, "grant", env);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Карточка сервера: имя, страна, тариф, приоритет, история проверок
+   ══════════════════════════════════════════════════════════════════════════ */
+
+async function serverEditPage(env: Env, url: URL): Promise<Response> {
+  const csrf = await csrfToken(env);
+  const id = Number(url.searchParams.get("id") ?? 0);
+  const ok = url.searchParams.get("ok");
+  const err = url.searchParams.get("err");
+
+  const server = await one<{
+    id: number;
+    host: string;
+    port: number;
+    remark: string;
+    status: string;
+    enabled: number;
+    tier: string;
+    priority: number;
+    country_code: string | null;
+    country_name: string | null;
+    city: string | null;
+    latency_ms: number | null;
+    last_check_at: string | null;
+    link: string;
+  }>(env, "SELECT * FROM servers WHERE id = ?", id);
+
+  if (!server) {
+    return page("Сервер не найден", `<div class="card"><p>Сервер #${id} не существует.</p>
+      <a class="btn" href="/admin/servers">← К списку</a></div>`, "servers", env);
+  }
+
+  const checks = await many<{ checked_at: string; result: string; latency_ms: number | null; error: string | null }>(
+    env,
+    "SELECT checked_at, result, latency_ms, error FROM server_checks WHERE server_id = ? ORDER BY id DESC LIMIT 12",
+    id,
+  );
+  const users = await one<{ n: number }>(
+    env,
+    "SELECT COUNT(*) AS n FROM assignments WHERE server_id = ?",
+    id,
+  );
+
+  const checkRows = checks
+    .map(
+      (check) =>
+        `<tr><td class="muted">${esc(check.checked_at)}</td>
+         <td>${check.result === "ok" ? `<span class="pill ok">ok</span>` : `<span class="pill bad">fail</span>`}</td>
+         <td>${check.latency_ms ?? "—"} мс</td>
+         <td class="muted">${esc(check.error ?? "")}</td></tr>`,
+    )
+    .join("");
+
+  const body = `
+<h1>Сервер #${server.id}</h1>
+<div class="sub mono">${esc(server.host)}:${server.port} · выдано людям: ${users?.n ?? 0}</div>
+${ok ? `<div class="notice">${esc(ok)}</div>` : ""}
+${err ? `<div class="err">${esc(err)}</div>` : ""}
+
+<div class="card">
+  <div class="head"><h2>Настройки</h2></div>
+  <form method="post" action="/admin/action" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+    <input type="hidden" name="csrf" value="${csrf}">
+    <input type="hidden" name="action" value="server_save">
+    <input type="hidden" name="id" value="${server.id}">
+    <div style="flex:1;min-width:220px">
+      <label class="muted">Название для пользователя</label><br>
+      <input name="remark" value="${esc(server.remark)}" style="width:100%">
+    </div>
+    <div><label class="muted">Код страны</label><br>
+      <input name="country_code" value="${esc(server.country_code ?? "")}" maxlength="2" style="width:70px"></div>
+    <div><label class="muted">Страна</label><br>
+      <input name="country_name" value="${esc(server.country_name ?? "")}" style="width:150px"></div>
+    <div><label class="muted">Тариф</label><br>
+      <select name="tier">
+        ${["free", "premium", "personal"].map((t) => `<option value="${t}"${server.tier === t ? " selected" : ""}>${t.toUpperCase()}</option>`).join("")}
+      </select></div>
+    <div><label class="muted">Приоритет</label><br>
+      <input name="priority" value="${server.priority}" inputmode="numeric" style="width:90px"></div>
+    <div><label class="muted">Состояние</label><br>
+      <select name="enabled">
+        <option value="1"${server.enabled ? " selected" : ""}>включён</option>
+        <option value="0"${server.enabled ? "" : " selected"}>выключен</option>
+      </select></div>
+    <button class="btn primary">Сохранить</button>
+  </form>
+  <p class="muted" style="margin:10px 0 0">
+    Название показывается в подписке как есть, если заполнено. Пусто — имя соберётся
+    из протокола и страны. Приоритет выше нуля поднимает сервер в начало списка.
+  </p>
+</div>
+
+<div class="card">
+  <div class="head"><h2>История проверок</h2></div>
+  <table>
+    <thead><tr><th>Когда</th><th>Результат</th><th>Задержка</th><th>Ошибка</th></tr></thead>
+    <tbody>${checkRows || `<tr><td colspan="4" class="muted">Проверок ещё не было</td></tr>`}</tbody>
+  </table>
+  <p class="muted" style="margin-top:10px">Проверка — TCP-коннект к порту. Туннель VLESS не проверяется.</p>
+</div>
+
+<a class="btn" href="/admin/servers">← К списку серверов</a>`;
+
+  return page(`Сервер #${server.id}`, body, "servers", env);
 }

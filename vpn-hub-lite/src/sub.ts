@@ -29,7 +29,7 @@ export const PROFILE_REFRESH_HOURS = 6;
 const SERVER_SQL = `
   SELECT s.id, s.source_id, s.remark, s.link, s.host, s.port, s.status,
          s.latency_ms, s.last_check_at, s.max_users, s.seen_at,
-          s.country_name, s.city, s.country_code, s.tier, s.enabled,
+          s.country_name, s.city, s.country_code, s.tier, s.enabled, s.priority,
           src.visibility, src.kind AS source_kind,
          (SELECT p.name FROM pool_servers ps
             JOIN pools p ON p.id = ps.pool_id
