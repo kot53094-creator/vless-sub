@@ -3,6 +3,7 @@
 import { rebalance, serverLoads } from "./balance";
 import { deliverSource, topUpAllActive } from "./delivery";
 import { createInvite, inviteLink, listInvites, revokeInvite } from "./invites";
+import { invalidateSubscription } from "./sub";
 import { logEvent, many, one, run } from "./db";
 import { syncOneSource } from "./sync";
 import { maskLink, maskToken } from "./labels";
@@ -246,6 +247,7 @@ const NAV: Array<[string, string, string, string]> = [
   ["Дашборд", "/admin/users", "Пользователи", "users"],
   ["Данные", "/admin/servers", "Серверы", "servers"],
   ["Данные", "/admin/sources", "Источники", "sources"],
+  ["Доступ", "/admin/subs", "Подписки", "subs"],
   ["Доступ", "/admin/grant", "Выдать подписку", "grant"],
   ["Маркетинг", "/admin/bonuses", "Настройки бонусов", "bonuses"],
   ["Маркетинг", "/admin/promos", "Промокоды", "promos"],
@@ -383,6 +385,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   if (path === "/admin/server") return await serverEditPage(env, url);
   if (path === "/admin/sources") return await sourcesPage(env, url);
   if (path === "/admin/grant") return await grantPage(env, url);
+  if (path === "/admin/subs") return await subsPage(env, url);
   if (path === "/admin/bonuses") return await bonusesPage(env, url);
   if (path === "/admin/promos") return await promosPage(env, url);
   if (path === "/admin/accruals") return await accrualsPage(env, url);
@@ -1637,6 +1640,46 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
     return back("/admin/servers", "", "Неизвестная операция");
   }
 
+  if (action === "sub_extend") {
+    const id = Number(form.get("id") ?? 0);
+    const days = Math.max(1, Math.min(365, Number(form.get("days") ?? 7) || 7));
+    await run(
+      env,
+      `UPDATE users
+          SET status = 'active',
+              expires_at = datetime(
+                CASE WHEN expires_at IS NULL OR expires_at < datetime('now')
+                     THEN datetime('now') ELSE expires_at END,
+                '+' || ? || ' days')
+        WHERE id = ?`,
+      days,
+      id,
+    );
+    await logEvent(env, "sub_extend", id, `+${days} дн.`);
+    return back("/admin/subs", `Продлено на ${days} дней`);
+  }
+
+  if (action === "sub_tier") {
+    const id = Number(form.get("id") ?? 0);
+    const tier = String(form.get("tier") ?? "free") === "premium" ? "premium" : "free";
+    await run(env, "UPDATE users SET tier = ? WHERE id = ?", tier, id);
+    await logEvent(env, "sub_tier", id, tier);
+    return back("/admin/subs", `Тариф: ${tier.toUpperCase()}`);
+  }
+
+  if (action === "sub_revoke") {
+    const id = Number(form.get("id") ?? 0);
+    await run(
+      env,
+      "UPDATE users SET status = 'expired', expires_at = datetime('now') WHERE id = ?",
+      id,
+    );
+    const row = await one<{ sub_token: string }>(env, "SELECT sub_token FROM users WHERE id = ?", id);
+    if (row) await invalidateSubscription(env, row.sub_token);
+    await logEvent(env, "sub_revoke", id, "доступ отозван");
+    return back("/admin/subs", "Доступ отозван");
+  }
+
   if (action === "maintenance") {
     const { expireSubscriptions } = await import("./maintenance");
     const expired = await expireSubscriptions(env);
@@ -2339,4 +2382,113 @@ ${err ? `<div class="err">${esc(err)}</div>` : ""}
 <a class="btn" href="/admin/servers">← К списку серверов</a>`;
 
   return page(`Сервер #${server.id}`, body, "servers", env);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Подписки: тариф, срок, устройства, продление и отзыв доступа
+   ══════════════════════════════════════════════════════════════════════════ */
+
+async function subsPage(env: Env, url: URL): Promise<Response> {
+  const csrf = await csrfToken(env);
+  const ok = url.searchParams.get("ok");
+  const err = url.searchParams.get("err");
+
+  const users = await many<{
+    id: number;
+    tg_id: string;
+    status: string;
+    tier: string;
+    expires_at: string | null;
+    traffic_gb: number;
+    device_limit: number;
+    servers: number;
+    devices: number;
+  }>(
+    env,
+    `SELECT u.id, u.tg_id, u.status, u.tier, u.expires_at, u.traffic_gb, u.device_limit,
+            (SELECT COUNT(*) FROM assignments a WHERE a.user_id = u.id) AS servers,
+            (SELECT COUNT(*) FROM user_devices d WHERE d.user_id = u.id AND d.blocked = 0) AS devices
+       FROM users u ORDER BY u.id`,
+  );
+
+  const rows = users
+    .map((user) => {
+      const until = user.expires_at?.slice(0, 10) ?? "—";
+      const pill =
+        user.status === "active"
+          ? `<span class="pill ok">активна</span>`
+          : user.status === "pending"
+            ? `<span class="pill warn">заявка</span>`
+            : `<span class="pill bad">${esc(user.status)}</span>`;
+      return `<tr data-row="${esc(user.tg_id)}">
+        <td class="mono">${esc(user.tg_id)}</td>
+        <td>${pill}</td>
+        <td><span class="pill">${esc(user.tier)}</span></td>
+        <td>${until}</td>
+        <td>${user.servers}</td>
+        <td>${user.devices} / ${user.device_limit}</td>
+        <td style="white-space:nowrap">
+          <form method="post" action="/admin/action" class="inline">
+            <input type="hidden" name="csrf" value="${csrf}">
+            <input type="hidden" name="action" value="sub_extend">
+            <input type="hidden" name="id" value="${user.id}">
+            <input type="hidden" name="days" value="7">
+            <button class="btn">+7 дн</button>
+          </form>
+          <form method="post" action="/admin/action" class="inline">
+            <input type="hidden" name="csrf" value="${csrf}">
+            <input type="hidden" name="action" value="sub_extend">
+            <input type="hidden" name="id" value="${user.id}">
+            <input type="hidden" name="days" value="30">
+            <button class="btn">+30 дн</button>
+          </form>
+          <form method="post" action="/admin/action" class="inline">
+            <input type="hidden" name="csrf" value="${csrf}">
+            <input type="hidden" name="action" value="sub_tier">
+            <input type="hidden" name="id" value="${user.id}">
+            <select name="tier" onchange="this.form.submit()">
+              ${["free", "premium"].map((t) => `<option value="${t}"${user.tier === t ? " selected" : ""}>${t.toUpperCase()}</option>`).join("")}
+            </select>
+          </form>
+          <form method="post" action="/admin/action" class="inline"
+                onsubmit="return confirm('Отозвать доступ у ${esc(user.tg_id)}?')">
+            <input type="hidden" name="csrf" value="${csrf}">
+            <input type="hidden" name="action" value="sub_revoke">
+            <input type="hidden" name="id" value="${user.id}">
+            <button class="btn danger">Отозвать</button>
+          </form>
+        </td>
+      </tr>`;
+    })
+    .join("");
+
+  const active = users.filter((user) => user.status === "active").length;
+  const premium = users.filter((user) => user.tier === "premium").length;
+
+  const body = `
+<h1>Подписки</h1>
+<div class="sub">${users.length} аккаунтов · активных ${active} · премиум ${premium}</div>
+${ok ? `<div class="notice">${esc(ok)}</div>` : ""}
+${err ? `<div class="err">${esc(err)}</div>` : ""}
+
+<div class="card">
+  <div class="head">
+    <h2>Все аккаунты</h2><div class="spacer"></div>
+    <form method="post" action="/admin/action" class="inline">
+      <input type="hidden" name="csrf" value="${csrf}">
+      <input type="hidden" name="action" value="maintenance">
+      <button class="btn">Закрыть просроченные</button>
+    </form>
+    <a class="btn primary" href="/admin/grant">Выдать подписку</a>
+  </div>
+  <table>
+    <thead><tr><th>Telegram ID</th><th>Статус</th><th>Тариф</th><th>До</th><th>Серверов</th><th>Устройства</th><th></th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="7" class="muted">Пользователей нет</td></tr>`}</tbody>
+  </table>
+  <p class="muted" style="margin-top:10px">
+    «Просроченные» закрываются автоматически каждые 20 минут. Кнопка выше делает это сразу.
+  </p>
+</div>`;
+
+  return page("Подписки", body, "subs", env);
 }

@@ -5,13 +5,14 @@ import { daysFromNowIso, logEvent, many, one, run } from "../db";
 import {
   devices24h,
   invalidateSubscription,
+  listAvailableServers,
   listDevices,
   rotateToken,
   setDeviceBlocked,
 } from "../sub";
 import { randomToken } from "../security";
 import type { Env, UserRow } from "../types";
-import { escapeHtml, sendMessage, sendToAdmin, type ReplyMarkup } from "./telegram";
+import { adminId, escapeHtml, sendMessage, sendToAdmin, type ReplyMarkup } from "./telegram";
 import {
   BRAND,
   HELP,
@@ -407,6 +408,54 @@ export async function cabinetBody(env: Env, user: UserRow): Promise<string> {
   );
 
   return lines.join("\n");
+}
+
+/** Выбор сервера: выбранный встаёт первым в подписке. */
+export async function sendServerPicker(
+  env: Env,
+  chatId: number | string,
+  user: UserRow,
+  messageId?: number,
+): Promise<void> {
+  const isAdmin = String(user.tg_id) === adminId(env);
+  const items = await listAvailableServers(env, user, isAdmin, 8);
+
+  if (!items.length) {
+    await sendMessage(env, chatId, "Пока нет доступных серверов — список обновляется.");
+    return;
+  }
+
+  const current = user.preferred_server ?? 0;
+  const caption = [
+    "<b>Выберите сервер</b>",
+    "Он встанет первым в подписке, остальные останутся ниже запасными.",
+    current ? `Сейчас выбран: #${current}` : "Сейчас: автоматически, по скорости",
+  ].join("\n");
+
+  const rows = items.map((item) => [
+    {
+      text: `${item.id === current ? "✅ " : ""}${item.label}`,
+      callback_data: `srv:${item.id}`,
+    },
+  ]);
+  rows.push([{ text: "🔄 Авто, по скорости", callback_data: "srv:auto" }]);
+  rows.push([{ text: "← В кабинет", callback_data: "act:cabinet" }]);
+
+  await screen(env, chatId, messageId, "account", caption, { inline_keyboard: rows });
+}
+
+export async function setPreferredServer(
+  env: Env,
+  user: UserRow,
+  serverId: number | null,
+): Promise<void> {
+  await run(
+    env,
+    "UPDATE users SET preferred_server = ?, preferred_country = NULL WHERE id = ?",
+    serverId,
+    user.id,
+  );
+  await invalidateSubscription(env, user.sub_token);
 }
 
 export async function sendCabinet(
