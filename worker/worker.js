@@ -219,16 +219,39 @@ export default {
           headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
         });
       }
-      const upstream = await fetch(SOURCE, {
-        cf: { cacheTtl: 60, cacheEverything: true },
-        headers: { "user-agent": request.headers.get("user-agent") || "v2rayNG" },
-      });
-      const body = await upstream.text();
-      if (upstream.ok) {
+      // Основной источник — статический список. Если он недоступен
+      // (Pages выключили, файл переехал), отдаём копию из KV: она пишется
+      // командой `wrangler kv key put sub:current --path docs/sub-ru.txt`.
+      let body = "";
+      let served = false;
+      try {
+        const upstream = await fetch(SOURCE, {
+          cf: { cacheTtl: 60, cacheEverything: true },
+          headers: { "user-agent": request.headers.get("user-agent") || "v2rayNG" },
+        });
+        body = await upstream.text();
+        served = upstream.ok && body.trim().length > 0;
+      } catch (error) {
+        served = false;
+      }
+      if (!served) {
+        const cached = await env.STATS.get("sub:current");
+        if (cached && cached.trim()) {
+          body = cached;
+          served = true;
+        }
+      }
+      if (served) {
         await logHit(env, device, request).catch(() => {});
       }
+      if (!served) {
+        return new Response("Subscription source is unavailable.", {
+          status: 503,
+          headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+        });
+      }
       return new Response(body, {
-        status: upstream.status,
+        status: 200,
         headers: {
           "content-type": "text/plain; charset=utf-8",
           "profile-title": "base64:" + btoa(unescape(encodeURIComponent(TITLE))),
