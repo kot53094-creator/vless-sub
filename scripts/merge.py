@@ -685,7 +685,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--prev", default="docs/sub.txt")
     ap.add_argument("--timeout", type=float, default=30.0, help="per-source HTTP timeout")
     ap.add_argument("--probe-timeout", type=float, default=4.0)
-    ap.add_argument("--probe-concurrency", type=int, default=48)
+    ap.add_argument("--probe-concurrency", type=int,
+                    default=int(os.getenv("PROBE_CONCURRENCY", "96")))
     # Публичные списки дают сотни узлов, но живыми оказываются единицы.
     # Публикуем верхушку: лучше 200 проверенных строк, чем 1200 мёртвых.
     ap.add_argument("--max-configs", type=int, default=int(os.getenv("MAX_CONFIGS", "400")))
@@ -695,6 +696,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                      help="nodes per provider profile (0 = all)")
     ap.add_argument("--min-configs", type=int, default=int(os.getenv("MIN_CONFIGS", "20")))
     ap.add_argument("--max-per-host", type=int, default=int(os.getenv("MAX_PER_HOST", "4")))
+    # Публикацию проходит только узел с реальным трафиком, а его проверка —
+    # самая дорогая стадия. Кандидатов проверяем ограниченную порцию, равномерно
+    # размазанную по источникам: иначе один бот на 15 тыс. конфигов съедает
+    # весь бюджет пробы, а в подписке всё равно умещается --max-configs строк.
+    ap.add_argument("--candidate-limit", type=int,
+                    default=int(os.getenv("CANDIDATE_LIMIT", "8000")),
+                    help="how many configs may enter the probe (0 = all)")
     ap.add_argument("--allow-protocols", default=os.getenv("ALLOW_PROTOCOLS", "vless,ss"))
     ap.add_argument("--no-probe", action="store_true", help="skip reachability probe")
     ap.add_argument("--reachable-only", action="store_true",
@@ -710,7 +718,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                     help="do not add the '--- K1 ... ---' separator entries")
     ap.add_argument("--no-deep", action="store_true",
                     help="skip the Xray traffic test (nothing is proven to work then)")
-    ap.add_argument("--deep-workers", type=int, default=int(os.getenv("DEEP_WORKERS", "16")))
+    ap.add_argument("--deep-workers", type=int, default=int(os.getenv("DEEP_WORKERS", "32")))
     ap.add_argument("--deep-timeout", type=float, default=float(os.getenv("DEEP_TIMEOUT", "5")))
     ap.add_argument("--deep-limit", type=int, default=int(os.getenv("DEEP_LIMIT", "0")),
                     help="cap how many configs get the traffic test (0 = all reachable)")
@@ -1034,6 +1042,39 @@ def main(argv: list[str]) -> int:
     records = capped
     print(f"[cap] {len(records)} configs, max {args.max_per_host} per host")
 
+    # ---- candidate limit before probing ------------------------------------
+    # Свои ключи проверяются всегда (их единицы), публичные — порциями по
+    # источнику, чтобы богатый список не вытеснил остальные.
+    if args.candidate_limit and len(records) > args.candidate_limit:
+        own = [r for r in records if r.get("from_private")]
+        free = [r for r in records if not r.get("from_private")]
+        room = max(0, args.candidate_limit - len(own))
+        buckets: dict[str, list[dict]] = {}
+        for rec in free:
+            buckets.setdefault(rec["origin"], []).append(rec)
+        # Голова файла не репрезентативна: порядок строк у ботов произвольный
+        # и часто весь мёртвый. Порция берётся равномерно по всему списку.
+        for origin in buckets:
+            buckets[origin].sort(
+                key=lambda r: hashlib.sha1(r["fingerprint"].encode()).hexdigest())
+        picked: list[dict] = []
+        round_idx = 0
+        while len(picked) < room:
+            added = False
+            for bucket in buckets.values():
+                if round_idx < len(bucket):
+                    picked.append(bucket[round_idx])
+                    added = True
+                    if len(picked) >= room:
+                        break
+            if not added:
+                break
+            round_idx += 1
+        records = own + picked
+        print(f"[limit] {len(free)} public candidates -> {len(picked)} "
+              f"(limit {args.candidate_limit}, {len(buckets)} sources, "
+              f"{len(own)} own keys kept)")
+
     # ---- reachability ------------------------------------------------------
     if args.no_probe:
         for rec in records:
@@ -1221,7 +1262,9 @@ def main(argv: list[str]) -> int:
             if div.get("note"):
                 tail = f"{div['note']} · {tail}"
         else:
-            tail = div.get("note") or "нет доступа"
+            # Ни одного узла не дошло до подписки — обещание из заметки
+            # провайдера («ещё 5 дней», «до 22.10») в клиенте было бы обманом.
+            tail = "нет доступа"
         div["out_uri"] = notice_uri(f"{div['color']} ━━━ {div['tag']} · {tail} ━━━")
 
     # The divider must show how many free nodes actually made it past the cap.

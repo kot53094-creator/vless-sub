@@ -1,28 +1,60 @@
 # Источники публичных конфигураций. Один URL на строку, строки с "#" игнорируются.
 # Формат файла-источника определяется автоматически: plain text, base64 или JSON (Xray).
 # Сборщик только скачивает данные. Код и скрипты из этих репозиториев не выполняются.
+#
+# Отбор по данным прогона 29.10.2026: каждый источник прогнан равномерной выборкой
+# через TCP-пробу и реальный трафик (Xray → generate_204) из сети автора.
+# В список входят только те, что дали живые узлы; всё прочее удалено:
+#   mehrtat/vless-collector   0 из 65    (был 45 живых 20.10 — источник выдохся)
+#   trikiman/vlessfilter      0 из 1     (в файле остался один узел)
+#   morpheusadam/v2ray-config 0 из 11    (VLESS в бандле больше нет, только SS/Trojan)
+#   kort0881/…-configs-russia 0 из 770   (порт открывается, трафик не проходит)
+#   mohammadaz2/…             0 уникальных
+#   configs/kavkaz.txt        0 из 110   (снимок от 20.10)
+#   configs/albania.txt       0 из 2     (ключи на 3 дня истекли 21.10)
+#   configs/freesocks.txt     0 из 3
 
-# Проверено 2026-10-18.
-# mehrtat/vless-collector — обновление ежечасно, каждый узел прогоняется через xray
-# (generate_204), публикуется только то, что реально пропустило трафик.
-https://raw.githubusercontent.com/mehrtat/vless-collector/main/vless.txt
+# --------------------------------------------------------------------- #
+# Публичные источники — уходят в конец подписки с пометкой FREE.
+# --------------------------------------------------------------------- #
 
-# trikiman/vlessfilter — top-3 на страну, двухступенчатый тест (alive + speedtest),
-# отдельно стабильные и «плавающие» выходы. Здесь только VLESS.
-https://raw.githubusercontent.com/trikiman/vlessfilter/main/subs/vless/all.txt
+# hamedcode/port-based-v2ray-configs — пересборка каждые 4 часа, ~5.8 тыс. VLESS.
+https://raw.githubusercontent.com/hamedcode/port-based-v2ray-configs/main/sub/vless.txt
 
-# morpheusadam/v2ray-config — курированный бандл (2000 конфигов, смешанные протоколы),
-# отфильтрован по score источников. VLESS внутри отбирается валидатором.
-# ВНИМАНИЕ: proxies/all.txt в этом репозитории сейчас содержит только socks/http — не VLESS,
-# поэтому он сознательно не используется.
-https://raw.githubusercontent.com/morpheusadam/v2ray-config/main/subs/bundles/best.txt
+# ninjastrikers/nexus-nodes — агрегатор с дедупликацией и проверкой узлов.
+https://raw.githubusercontent.com/ninjastrikers/nexus-nodes/main/configs/all.txt
 
-# Собственный ключ с меткой: строка "МЕТКА|URL" становится отдельным блоком
-# подписки (K1, K2, …). Префикс file: — локальный файл в репозитории.
-# KavkazVPN отдаёт конфиги только своему приложению, поэтому список снят из клиента.
-# 20.10.2026: конфиги сняты из кэша v2RayTun, из 110 узлов живы два.
-KAVKAZ:4|file:configs/kavkaz.txt|110 из кэша
+# 0xRadikal/Free-v2ray-Configs — пересборка каждые 15 минут, VLESS-подмножество.
+https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/protocols/vless_base64.txt
 
-# Бесплатные ключи Албании (Outline + VLESS), срок 3 дня с 18.10.2026.
-ALB:6|file:configs/albania.txt|3 дня
-FREESOCKS:7|file:configs/freesocks.txt|CDN, режется
+# Argh94/V2RayAutoConfig — автоматический сборщик, ~15 тыс. VLESS, ежедневно.
+https://raw.githubusercontent.com/Argh94/V2RayAutoConfig/main/configs/Vless.txt
+
+# 3inker/v2ray-subscription — лучший выход по проверке: 20 живых из 120 выборки.
+# Файл с российскими выходами (all_ru.txt) сознательно не берётся: они не помогают
+# обходить блокировки.
+https://raw.githubusercontent.com/3inker/v2ray-subscription/main/subs/all_not_ru.txt
+
+# VPN-Subcription-Links/ClashX-V2Ray-TopFreeProxy — обновление каждые 6 часов.
+https://raw.githubusercontent.com/VPN-Subcription-Links/ClashX-V2Ray-TopFreeProxy/main/combine/v2ray.config.txt
+
+# ProblemTheCode/SylphNet-public — 350+ конфигов, автообновление.
+https://raw.githubusercontent.com/ProblemTheCode/SylphNet-public/main/sub/sub.txt
+
+# vsvavan2/vpn-config-rkn — рабочие ключи для обхода белых/чёрных списков.
+https://raw.githubusercontent.com/vsvavan2/vpn-config-rkn/main/output/all_working_keys.txt
+
+# zxcursedzxc0721/vless-subscriptions — российская подборка узлов.
+https://raw.githubusercontent.com/zxcursedzxc0721/vless-subscriptions/main/ru/vless.txt
+
+# bobrinaw/vlessforu — только узлы, прошедшие проверку автором.
+https://raw.githubusercontent.com/bobrinaw/vlessforu/main/working_configs.txt
+
+# --------------------------------------------------------------------- #
+# Собственные ключи: строка "МЕТКА:порядок|URL|заметка" становится отдельным
+# блоком подписки (K1, K2, …) и идёт перед публичными узлами.
+# Префикс file: — локальный файл в репозитории.
+#
+# Снимки kavkaz/albania/freesocks выше отключены: ни один узел из них не пускает
+# трафик. Если провайдер выдаст новый список — верните строку обратно.
+# --------------------------------------------------------------------- #
