@@ -1,0 +1,71 @@
+name: verify-tunnels
+
+# Проверка туннелей без домашнего компьютера.
+#
+# Раньше агент проверки крутился локально по Планировщику задач Windows:
+# выключил ПК — пул перестал обновляться, а мёртвые узлы остались в подписке.
+# Здесь тот же самый tools/agent/verify.mjs, но на раннере GitHub: он
+# скачивает Xray закреплённой версии, поднимает клиент на каждый узел,
+# прогоняет через него настоящий запрос и отправляет результат в воркер.
+#
+# Бесплатно: репозиторий публичный, минуты Actions не тарифицируются.
+
+on:
+  schedule:
+    # Каждые 20 минут. GitHub может задержать запуск — это нормально:
+    # агент берёт очередь «что давно не проверяли», а не жёсткий список.
+    - cron: "*/20 * * * *"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Сколько узлов проверить за прогон"
+        required: false
+        default: "40"
+
+concurrency:
+  group: verify-tunnels
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Официальный релиз Xray, версия и sha256 закреплены — как в
+      # scripts/xray_check.py. Архив проверяется до распаковки.
+      - name: Xray (pinned + sha256)
+        run: |
+          set -euo pipefail
+          curl -fsSL -o xray.zip \
+            https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-64.zip
+          echo "23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae  xray.zip" \
+            | sha256sum -c -
+          unzip -q xray.zip -d "$GITHUB_WORKSPACE/xray-bin"
+          chmod +x "$GITHUB_WORKSPACE/xray-bin/xray"
+          "$GITHUB_WORKSPACE/xray-bin/xray" version | head -2
+
+      - name: Проверка туннелей
+        working-directory: vpn-hub-lite/tools/agent
+        env:
+          BASE_URL: https://vpn-hub-lite.twistx-launcher.workers.dev
+          CHECK_TOKEN: ${{ secrets.CHECK_TOKEN }}
+          QUEUE_LIMIT: ${{ github.event.inputs.limit || '40' }}
+          XRAY_START_MS: "900"
+          CURL_TIMEOUT: "8"
+        run: |
+          node verify.mjs "$GITHUB_WORKSPACE/xray-bin/xray"
+
+      # Итог прогона виден в summary, без захода в логи.
+      - name: Итог
+        if: always()
+        run: echo "Проверка завершена. Результаты отправлены в воркер (POST /api/checks)." \
+          >> "$GITHUB_STEP_SUMMARY"
