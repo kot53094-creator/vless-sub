@@ -18,8 +18,12 @@ import { socksRequest, socksTcp } from "./socks.mjs";
 import { connect as netConnect } from "node:net";
 
 
-const BASE = process.env.BASE_URL;
-const TOKEN = process.env.CHECK_TOKEN;
+// trim + strip BOM: секрет, залитый из Windows/PowerShell или вставленный
+// в настройки GitHub, часто приходит с невидимым U+FEFF в начале. Node
+// падает на таком значении в заголовке («character at index 0 has a value
+// of 65279»), и прогон умирает до первой проверки.
+const BASE = (process.env.BASE_URL ?? "").trim().replace(/\/+$/, "");
+const TOKEN = (process.env.CHECK_TOKEN ?? "").trim().replace(/^\uFEFF/, "");
 // На Windows путь к бинарнику передаём явно: xray.exe лежит рядом с распакованным архивом.
 const XRAY = process.argv[2] ?? (process.platform === "win32" ? "xray.exe" : "xray");
 const TEST_URL = process.env.TEST_URL ?? "https://www.gstatic.com/generate_204";
