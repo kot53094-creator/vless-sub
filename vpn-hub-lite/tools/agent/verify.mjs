@@ -33,6 +33,7 @@ const TEST_URL = process.env.TEST_URL ?? "https://www.gstatic.com/generate_204";
 const HTTP_TEST_URL = process.env.HTTP_TEST_URL ?? "http://cp.cloudflare.com/";
 // Сколько узлов проверяем за прогон: локально лучше начинать с 8–10.
 const QUEUE_LIMIT = Number(process.env.QUEUE_LIMIT ?? 40) || 40;
+const QUEUE_ORDER = (process.env.QUEUE_ORDER ?? "").trim();
 const START_DELAY_MS = Number(process.env.XRAY_START_MS ?? 1200) || 1200;
 // Базовый SOCKS-порт; на каждую попытку берётся свой, чтобы не ловить занятый.
 const SOCKS_BASE = Number(process.env.SOCKS_BASE ?? 21080) || 21080;
@@ -381,7 +382,7 @@ for (const signal of ["SIGINT", "SIGTERM", "exit"]) {
 const CHECK_ID = Number(process.env.CHECK_ID ?? 0) || 0;
 const queueUrl = CHECK_ID
   ? `${BASE}/api/checks/queue?id=${CHECK_ID}`
-  : `${BASE}/api/checks/queue?limit=${QUEUE_LIMIT}`;
+  : `${BASE}/api/checks/queue?limit=${QUEUE_LIMIT}&served=1${QUEUE_ORDER ? `&order=${QUEUE_ORDER}` : ""}`;
 
 // NODES_FILE — очередь из локального файла [{id, link}]. Нужна, когда прямой
 // HTTPS к Worker из Node не проходит (DPI режет TLS-отпечаток Node): очередь
@@ -535,7 +536,7 @@ if (RESULTS_FILE) {
 const sendCount = RESULTS_FILE ? 0 : results.length;
 for (let i = 0; i < sendCount; i += 20) {
   const chunk = results.slice(i, i + 20);
-  const body = JSON.stringify({ results: chunk });
+  const body = JSON.stringify({ results: chunk, region: (process.env.REGION || "").trim() });
   const viaCurl = httpJson(`${BASE}/api/checks`, { method: "POST", body });
   if (viaCurl) {
     console.log(`отправлено ${i + chunk.length}/${results.length}:`, viaCurl.status, viaCurl.text);
