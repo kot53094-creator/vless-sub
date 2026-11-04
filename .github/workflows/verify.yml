@@ -21,6 +21,10 @@ on:
         description: "Сколько узлов проверить за прогон"
         required: false
         default: "40"
+      order:
+        description: "pool — проверить ровно то, что выдано людям"
+        required: false
+        default: ""
 
 concurrency:
   group: verify-tunnels
