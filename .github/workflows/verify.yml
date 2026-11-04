@@ -59,6 +59,7 @@ jobs:
           BASE_URL: https://vpn-hub-lite.twistx-launcher.workers.dev
           CHECK_TOKEN: ${{ secrets.CHECK_TOKEN }}
           QUEUE_LIMIT: ${{ github.event.inputs.limit || '40' }}
+          QUEUE_ORDER: ${{ github.event.inputs.order || '' }}
           XRAY_START_MS: "900"
           CURL_TIMEOUT: "8"
         run: |
