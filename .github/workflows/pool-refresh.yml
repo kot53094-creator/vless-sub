@@ -1,0 +1,93 @@
+name: pool-refresh
+
+# Полное обновление пула подписки в облаке: скачать свежие публичные списки,
+# проверить узлы настоящим туннелем и залить рабочие в KV воркера.
+#
+# Ничего не запускается на домашнем компьютере: прогон идёт на раннере GitHub,
+# поэтому работает и при выключенном ПК.
+#
+# Расписание:
+#   «47 6 * * *»  — 14:47 по Иркутску (первый прогон — сегодня)
+#   «0 21 * * *»  — 05:00 по Иркутску, обычное утреннее обновление
+#
+# Пул перезаписывается только если рабочих узлов не меньше MIN_OK: иначе
+# прогон падает и люди остаются с прежним списком, а не с пустым.
+
+on:
+  schedule:
+    - cron: "47 6 * * *"
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Сколько узлов проверить за прогон"
+        required: false
+        default: "180"
+
+concurrency:
+  group: pool-refresh
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Xray (pinned + sha256)
+        run: |
+          set -euo pipefail
+          curl -fsSL -o xray.zip \
+            https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-64.zip
+          echo "23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae  xray.zip" \
+            | sha256sum -c -
+          unzip -q xray.zip -d "$GITHUB_WORKSPACE/xray-bin"
+          chmod +x "$GITHUB_WORKSPACE/xray-bin/xray"
+          "$GITHUB_WORKSPACE/xray-bin/xray" version | head -2
+
+      - name: Собрать очередь кандидатов
+        working-directory: vpn-hub-lite/tools/agent
+        env:
+          LIMIT: ${{ github.event.inputs.limit || '180' }}
+        run: node refresh_pool.mjs prep
+
+      - name: Проверить туннели
+        working-directory: vpn-hub-lite/tools/agent
+        env:
+          BASE_URL: https://vpn-hub-lite.twistx-launcher.workers.dev
+          CHECK_TOKEN: ${{ secrets.CHECK_TOKEN }}
+          NODES_FILE: nodes.json
+          RESULTS_FILE: results.json
+          FAST_PROBE: "1"
+          XRAY_START_MS: "900"
+          CURL_TIMEOUT: "8"
+          SPEED_MIN_MBPS: "0"
+        run: node verify.mjs "$GITHUB_WORKSPACE/xray-bin/xray"
+
+      - name: Собрать пул и залить в KV
+        working-directory: vpn-hub-lite/tools/agent
+        env:
+          BASE_URL: https://vpn-hub-lite.twistx-launcher.workers.dev
+          CHECK_TOKEN: ${{ secrets.CHECK_TOKEN }}
+          RESULTS_FILE: results.json
+          MIN_OK: "8"
+        run: node refresh_pool.mjs finish
+
+      - name: Итог
+        if: always()
+        run: |
+          {
+            echo "## Обновление пула"
+            echo ""
+            echo "- расписание: 14:47 и 05:00 по Иркутску"
+            echo "- проверка: Xray через туннель, не TCP-пинг"
+            echo "- пул перезаписывается только при достаточном числе рабочих узлов"
+          } >> "$GITHUB_STEP_SUMMARY"
