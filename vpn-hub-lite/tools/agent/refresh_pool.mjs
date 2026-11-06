@@ -177,6 +177,26 @@ async function geocode(hosts) {
       // без гео узел останется без страны и не попадёт в пул — это честнее
     }
   }
+  // Пакетный сервис с раннера иногда недоступен. Тогда спрашиваем по одному
+  // хосту: пул без страны бессмысленен, метка в клиенте останется пустой.
+  const missing = unique.filter((host) => !out.has(host)).slice(0, 80);
+  for (const host of missing) {
+    try {
+      const res = await fetch(
+        `https://ipwho.is/${encodeURIComponent(host)}?fields=success,country,country_code,city`,
+      );
+      const info = await res.json();
+      if (info.success) {
+        out.set(host, {
+          cc: info.country_code,
+          country: info.country,
+          city: info.city,
+        });
+      }
+    } catch {
+      // пропускаем: страну возьмём из метки узла
+    }
+  }
   return out;
 }
 
@@ -239,9 +259,15 @@ const alive = okResults
 
 const geo = await geocode(alive.map((item) => item.node.host));
 const rows = alive
-  .filter((item) => geo.has(item.node.host))
-  .map((item, idx) => toRow(item.node, item.result, geo.get(item.node.host), idx))
-  .filter((row) => !BLOCK.has(row.country_code ?? ""));
+  .map((item) => {
+    const info =
+      geo.get(item.node.host) ??
+      (item.node.country ? { cc: item.node.country, country: null, city: null } : null);
+    return info ? { item, info } : null;
+  })
+  .filter((entry) => entry !== null)
+  .map((entry, idx) => toRow(entry.item.node, entry.item.result, entry.info, idx))
+  .filter((row) => row.country_code && !BLOCK.has(row.country_code));
 
 const white = rows.filter((row) => [443, 8443].includes(row.port));
 
