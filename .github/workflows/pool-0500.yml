@@ -1,0 +1,48 @@
+name: Пул 05:00 Иркутск
+
+# 21:00 UTC = 05:00 по Иркутску. Прогон полностью в облаке: компьютер может
+# быть выключен. Проверяет узлы настоящим туннелем и заливает готовый пул
+# в Worker, не трогая D1 (у неё суточная квота чтений).
+on:
+  schedule:
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: pool-0500
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Скачать Xray
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -fsSLo xray.zip https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-64.zip
+          unzip -q -o xray.zip
+          chmod +x xray
+          ./xray version | head -1
+          echo "XRAY_BIN=$RUNNER_TEMP/xray" >> "$GITHUB_ENV"
+
+      - name: Собрать и проверить пул
+        env:
+          BASE_URL: https://vpn-hub-lite.twistx-launcher.workers.dev
+          CHECK_TOKEN: ${{ secrets.CHECK_TOKEN }}
+          POOL_LIMIT: "240"
+        run: node vpn-hub-lite/tools/agent/refresh_pool.mjs
+
+      - name: Сохранить отчёт прогона
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pool-report
+          path: pool-last.json
+          if-no-files-found: ignore
