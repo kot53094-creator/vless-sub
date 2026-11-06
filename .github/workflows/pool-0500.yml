@@ -7,6 +7,10 @@ on:
   schedule:
     - cron: "0 21 * * *"
   workflow_dispatch:
+    inputs:
+      limit:
+        description: Сколько узлов проверять
+        default: "240"
 
 concurrency:
   group: pool-0500
@@ -36,7 +40,7 @@ jobs:
         env:
           BASE_URL: https://vpn-hub-lite.twistx-launcher.workers.dev
           CHECK_TOKEN: ${{ secrets.CHECK_TOKEN }}
-          POOL_LIMIT: "240"
+          POOL_LIMIT: ${{ inputs.limit || 240 }}
         run: node vpn-hub-lite/tools/agent/refresh_pool.mjs
 
       - name: Сохранить отчёт прогона
