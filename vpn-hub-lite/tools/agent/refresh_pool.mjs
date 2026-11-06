@@ -65,7 +65,15 @@ function parseVless(line) {
   const port = Number(url.port);
   if (!url.hostname || !port) return null;
   const q = url.searchParams;
-  const remark = decodeURIComponent(url.hash.replace(/^#/, ""));
+  // Метки в публичных списках бывают битыми: decodeURIComponent на них
+  // бросает URIError и роняет весь прогон. Метка нужна только для флага
+  // страны, поэтому при ошибке берём сырой фрагмент.
+  let remark = url.hash.replace(/^#/, "");
+  try {
+    remark = decodeURIComponent(remark);
+  } catch {
+    // оставляем как есть
+  }
   return {
     link: line,
     host: url.hostname,
