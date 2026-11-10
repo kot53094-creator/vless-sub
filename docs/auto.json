@@ -26,70 +26,315 @@
  ],
  "outbounds": [
   {
-   "protocol": "vless",
+   "protocol": "trojan",
    "settings": {
-    "vnext": [
+    "servers": [
      {
-      "address": "185.147.27.164",
-      "port": 8443,
-      "users": [
-       {
-        "id": "3a90bf69-1ffe-4ebb-b9a7-ad9ba8e9f66f",
-        "encryption": "none",
-        "flow": "xtls-rprx-vision"
-       }
-      ]
+      "address": "cdn1.yabenzin.app",
+      "port": 443,
+      "password": "duJyVGgB2y0tCFs37Y89NE1fMHXk8C5j"
      }
     ]
    },
    "streamSettings": {
-    "network": "tcp",
+    "network": "grpc",
     "security": "tls",
+    "grpcSettings": {
+     "serviceName": "",
+     "multiMode": false
+    },
     "tlsSettings": {
-     "serverName": "user-6a8d949a.noooo.win",
-     "allowInsecure": false,
-     "fingerprint": "chrome"
+     "serverName": "cdn1.yabenzin.app",
+     "allowInsecure": false
     }
    },
    "tag": "auto-1"
   },
   {
-   "protocol": "vless",
+   "protocol": "trojan",
    "settings": {
-    "vnext": [
+    "servers": [
      {
-      "address": "185.147.27.164",
-      "port": 8443,
-      "users": [
-       {
-        "id": "3a90bf69-1ffe-4ebb-b9a7-ad9ba8e9f66f",
-        "encryption": "none",
-        "flow": "xtls-rprx-vision"
-       }
-      ]
+      "address": "cdn10.yabenzin.app",
+      "port": 443,
+      "password": "duJyVGgB2y0tCFs37Y89NE1fMHXk8C5j"
      }
     ]
    },
    "streamSettings": {
-    "network": "tcp",
+    "network": "grpc",
     "security": "tls",
+    "grpcSettings": {
+     "serviceName": "",
+     "multiMode": false
+    },
     "tlsSettings": {
-     "serverName": "user-6a8d949a.noooo.win",
+     "serverName": "cdn10.yabenzin.app",
      "allowInsecure": false
     }
    },
    "tag": "auto-2"
   },
   {
+   "protocol": "trojan",
+   "settings": {
+    "servers": [
+     {
+      "address": "cdn11.yabenzin.app",
+      "port": 443,
+      "password": "duJyVGgB2y0tCFs37Y89NE1fMHXk8C5j"
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "grpc",
+    "security": "tls",
+    "grpcSettings": {
+     "serviceName": "",
+     "multiMode": false
+    },
+    "tlsSettings": {
+     "serverName": "cdn11.yabenzin.app",
+     "allowInsecure": false
+    }
+   },
+   "tag": "auto-3"
+  },
+  {
+   "protocol": "trojan",
+   "settings": {
+    "servers": [
+     {
+      "address": "cdn12.yabenzin.app",
+      "port": 443,
+      "password": "duJyVGgB2y0tCFs37Y89NE1fMHXk8C5j"
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "grpc",
+    "security": "tls",
+    "grpcSettings": {
+     "serviceName": "",
+     "multiMode": false
+    },
+    "tlsSettings": {
+     "serverName": "cdn12.yabenzin.app",
+     "allowInsecure": false
+    }
+   },
+   "tag": "auto-4"
+  },
+  {
+   "protocol": "trojan",
+   "settings": {
+    "servers": [
+     {
+      "address": "cdn14.yabenzin.app",
+      "port": 443,
+      "password": "duJyVGgB2y0tCFs37Y89NE1fMHXk8C5j"
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "grpc",
+    "security": "tls",
+    "grpcSettings": {
+     "serviceName": "",
+     "multiMode": false
+    },
+    "tlsSettings": {
+     "serverName": "cdn14.yabenzin.app",
+     "allowInsecure": false
+    }
+   },
+   "tag": "auto-5"
+  },
+  {
+   "protocol": "trojan",
+   "settings": {
+    "servers": [
+     {
+      "address": "cdn2.yabenzin.app",
+      "port": 443,
+      "password": "duJyVGgB2y0tCFs37Y89NE1fMHXk8C5j"
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "grpc",
+    "security": "tls",
+    "grpcSettings": {
+     "serviceName": "",
+     "multiMode": false
+    },
+    "tlsSettings": {
+     "serverName": "cdn2.yabenzin.app",
+     "allowInsecure": false
+    }
+   },
+   "tag": "auto-6"
+  },
+  {
+   "protocol": "trojan",
+   "settings": {
+    "servers": [
+     {
+      "address": "cdn3.yabenzin.app",
+      "port": 443,
+      "password": "duJyVGgB2y0tCFs37Y89NE1fMHXk8C5j"
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "grpc",
+    "security": "tls",
+    "grpcSettings": {
+     "serviceName": "",
+     "multiMode": false
+    },
+    "tlsSettings": {
+     "serverName": "cdn3.yabenzin.app",
+     "allowInsecure": false
+    }
+   },
+   "tag": "auto-7"
+  },
+  {
+   "protocol": "trojan",
+   "settings": {
+    "servers": [
+     {
+      "address": "cdn4.yabenzin.app",
+      "port": 443,
+      "password": "duJyVGgB2y0tCFs37Y89NE1fMHXk8C5j"
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "grpc",
+    "security": "tls",
+    "grpcSettings": {
+     "serviceName": "",
+     "multiMode": false
+    },
+    "tlsSettings": {
+     "serverName": "cdn4.yabenzin.app",
+     "allowInsecure": false
+    }
+   },
+   "tag": "auto-8"
+  },
+  {
+   "protocol": "trojan",
+   "settings": {
+    "servers": [
+     {
+      "address": "cdn6.yabenzin.app",
+      "port": 443,
+      "password": "duJyVGgB2y0tCFs37Y89NE1fMHXk8C5j"
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "grpc",
+    "security": "tls",
+    "grpcSettings": {
+     "serviceName": "",
+     "multiMode": false
+    },
+    "tlsSettings": {
+     "serverName": "cdn6.yabenzin.app",
+     "allowInsecure": false
+    }
+   },
+   "tag": "auto-9"
+  },
+  {
+   "protocol": "trojan",
+   "settings": {
+    "servers": [
+     {
+      "address": "cdn7.yabenzin.app",
+      "port": 443,
+      "password": "duJyVGgB2y0tCFs37Y89NE1fMHXk8C5j"
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "grpc",
+    "security": "tls",
+    "grpcSettings": {
+     "serviceName": "",
+     "multiMode": false
+    },
+    "tlsSettings": {
+     "serverName": "cdn7.yabenzin.app",
+     "allowInsecure": false
+    }
+   },
+   "tag": "auto-10"
+  },
+  {
+   "protocol": "trojan",
+   "settings": {
+    "servers": [
+     {
+      "address": "cdn8.yabenzin.app",
+      "port": 443,
+      "password": "duJyVGgB2y0tCFs37Y89NE1fMHXk8C5j"
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "grpc",
+    "security": "tls",
+    "grpcSettings": {
+     "serviceName": "",
+     "multiMode": false
+    },
+    "tlsSettings": {
+     "serverName": "cdn8.yabenzin.app",
+     "allowInsecure": false
+    }
+   },
+   "tag": "auto-11"
+  },
+  {
+   "protocol": "trojan",
+   "settings": {
+    "servers": [
+     {
+      "address": "cdn9.yabenzin.app",
+      "port": 443,
+      "password": "duJyVGgB2y0tCFs37Y89NE1fMHXk8C5j"
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "grpc",
+    "security": "tls",
+    "grpcSettings": {
+     "serviceName": "",
+     "multiMode": false
+    },
+    "tlsSettings": {
+     "serverName": "cdn9.yabenzin.app",
+     "allowInsecure": false
+    }
+   },
+   "tag": "auto-12"
+  },
+  {
    "protocol": "vless",
    "settings": {
     "vnext": [
      {
-      "address": "104.143.219.98",
-      "port": 3090,
+      "address": "rur.ookcdn.ru",
+      "port": 443,
       "users": [
        {
-        "id": "2caa3ac7-6733-47c1-aaed-c91cd84d2cba",
+        "id": "2b1bb2bb-dba9-4c1c-b548-78e87341cb3d",
         "encryption": "none"
        }
       ]
@@ -97,42 +342,97 @@
     ]
    },
    "streamSettings": {
-    "network": "grpc",
-    "security": "none",
-    "grpcSettings": {
-     "serviceName": "vless",
-     "multiMode": false
+    "network": "xhttp",
+    "security": "reality",
+    "xhttpSettings": {
+     "path": "/",
+     "mode": "auto",
+     "host": "rur.ookcdn.ru"
+    },
+    "realitySettings": {
+     "serverName": "rur.ookcdn.ru",
+     "publicKey": "mKhrRSxp0MZo27bm_pJCUYeI7X_ubuLL1sSB2O9ZdHg",
+     "shortId": "",
+     "fingerprint": "safari",
+     "spiderX": "/"
     }
    },
-   "tag": "auto-3"
+   "tag": "auto-13"
   },
   {
-   "protocol": "vless",
+   "protocol": "trojan",
    "settings": {
-    "vnext": [
+    "servers": [
      {
-      "address": "185.147.27.183",
-      "port": 8443,
-      "users": [
-       {
-        "id": "379998c5-2a71-4202-9c74-522e0c3c5404",
-        "encryption": "none",
-        "flow": "xtls-rprx-vision"
-       }
-      ]
+      "address": "stream.yabenzin.app",
+      "port": 443,
+      "password": "duJyVGgB2y0tCFs37Y89NE1fMHXk8C5j"
      }
     ]
    },
    "streamSettings": {
-    "network": "tcp",
+    "network": "grpc",
     "security": "tls",
+    "grpcSettings": {
+     "serviceName": "",
+     "multiMode": false
+    },
     "tlsSettings": {
-     "serverName": "user-6a917f32.noooo.win",
-     "allowInsecure": false,
-     "fingerprint": "qq"
+     "serverName": "cdn9.yabenzin.app",
+     "allowInsecure": false
     }
    },
-   "tag": "auto-4"
+   "tag": "auto-14"
+  },
+  {
+   "protocol": "trojan",
+   "settings": {
+    "servers": [
+     {
+      "address": "stream.yabenzin.app",
+      "port": 443,
+      "password": "duJyVGgB2y0tCFs37Y89NE1fMHXk8C5j"
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "grpc",
+    "security": "tls",
+    "grpcSettings": {
+     "serviceName": "",
+     "multiMode": false
+    },
+    "tlsSettings": {
+     "serverName": "cdn4.yabenzin.app",
+     "allowInsecure": false
+    }
+   },
+   "tag": "auto-15"
+  },
+  {
+   "protocol": "trojan",
+   "settings": {
+    "servers": [
+     {
+      "address": "stream.yabenzin.app",
+      "port": 443,
+      "password": "duJyVGgB2y0tCFs37Y89NE1fMHXk8C5j"
+     }
+    ]
+   },
+   "streamSettings": {
+    "network": "grpc",
+    "security": "tls",
+    "grpcSettings": {
+     "serviceName": "",
+     "multiMode": false
+    },
+    "tlsSettings": {
+     "serverName": "cdn1.yabenzin.app",
+     "allowInsecure": false
+    }
+   },
+   "tag": "auto-16"
   },
   {
    "tag": "direct",

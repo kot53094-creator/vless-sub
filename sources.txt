@@ -19,36 +19,36 @@
 # --------------------------------------------------------------------- #
 
 # hamedcode/port-based-v2ray-configs — пересборка каждые 4 часа, ~5.8 тыс. VLESS.
-https://raw.githubusercontent.com/hamedcode/port-based-v2ray-configs/main/sub/vless.txt
+# [OFF 11.11.2026] https://raw.githubusercontent.com/hamedcode/port-based-v2ray-configs/main/sub/vless.txt
 
 # ninjastrikers/nexus-nodes — агрегатор с дедупликацией и проверкой узлов.
-https://raw.githubusercontent.com/ninjastrikers/nexus-nodes/main/configs/all.txt
+# [OFF 11.11.2026] https://raw.githubusercontent.com/ninjastrikers/nexus-nodes/main/configs/all.txt
 
 # 0xRadikal/Free-v2ray-Configs — пересборка каждые 15 минут, VLESS-подмножество.
-https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/protocols/vless_base64.txt
+# [OFF 11.11.2026] https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/protocols/vless_base64.txt
 
 # Argh94/V2RayAutoConfig — автоматический сборщик, ~15 тыс. VLESS, ежедневно.
-https://raw.githubusercontent.com/Argh94/V2RayAutoConfig/main/configs/Vless.txt
+# [OFF 11.11.2026] https://raw.githubusercontent.com/Argh94/V2RayAutoConfig/main/configs/Vless.txt
 
 # 3inker/v2ray-subscription — лучший выход по проверке: 20 живых из 120 выборки.
 # Файл с российскими выходами (all_ru.txt) сознательно не берётся: они не помогают
 # обходить блокировки.
-https://raw.githubusercontent.com/3inker/v2ray-subscription/main/subs/all_not_ru.txt
+# [OFF 11.11.2026] https://raw.githubusercontent.com/3inker/v2ray-subscription/main/subs/all_not_ru.txt
 
 # VPN-Subcription-Links/ClashX-V2Ray-TopFreeProxy — обновление каждые 6 часов.
-https://raw.githubusercontent.com/VPN-Subcription-Links/ClashX-V2Ray-TopFreeProxy/main/combine/v2ray.config.txt
+# [OFF 11.11.2026] https://raw.githubusercontent.com/VPN-Subcription-Links/ClashX-V2Ray-TopFreeProxy/main/combine/v2ray.config.txt
 
 # ProblemTheCode/SylphNet-public — 350+ конфигов, автообновление.
-https://raw.githubusercontent.com/ProblemTheCode/SylphNet-public/main/sub/sub.txt
+# [OFF 11.11.2026] https://raw.githubusercontent.com/ProblemTheCode/SylphNet-public/main/sub/sub.txt
 
 # vsvavan2/vpn-config-rkn — рабочие ключи для обхода белых/чёрных списков.
-https://raw.githubusercontent.com/vsvavan2/vpn-config-rkn/main/output/all_working_keys.txt
+# [OFF 11.11.2026] https://raw.githubusercontent.com/vsvavan2/vpn-config-rkn/main/output/all_working_keys.txt
 
 # zxcursedzxc0721/vless-subscriptions — российская подборка узлов.
-https://raw.githubusercontent.com/zxcursedzxc0721/vless-subscriptions/main/ru/vless.txt
+# [OFF 11.11.2026] https://raw.githubusercontent.com/zxcursedzxc0721/vless-subscriptions/main/ru/vless.txt
 
 # bobrinaw/vlessforu — только узлы, прошедшие проверку автором.
-https://raw.githubusercontent.com/bobrinaw/vlessforu/main/working_configs.txt
+# [OFF 11.11.2026] https://raw.githubusercontent.com/bobrinaw/vlessforu/main/working_configs.txt
 
 # --------------------------------------------------------------------- #
 # Собственные ключи: строка "МЕТКА:порядок|URL|заметка" становится отдельным
@@ -58,3 +58,9 @@ https://raw.githubusercontent.com/bobrinaw/vlessforu/main/working_configs.txt
 # Снимки kavkaz/albania/freesocks выше отключены: ни один узел из них не пускает
 # трафик. Если провайдер выдаст новый список — верните строку обратно.
 # --------------------------------------------------------------------- #
+
+# --------------------------------------------------------------------- #
+# K1 — ключ TelegaVPN, вставлен напрямую (снимок узлов, не ссылка).
+# Все остальные ключи и публичный пул выключены: в подписке только этот блок.
+# --------------------------------------------------------------------- #
+K1!|file:configs/telegavpn-k1.txt|TelegaVPN

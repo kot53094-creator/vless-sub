@@ -1,309 +1,49 @@
 {
-  "built_at": "2026-10-28T20:19:04+00:00",
+  "built_at": "2026-11-10T16:37:11+00:00",
   "brand": "Апельсинка VPN",
-  "configs": 145,
-  "working_total": 142,
-  "reachable_total": 142,
-  "valid_total": 142,
+  "configs": 48,
+  "working_total": 0,
+  "reachable_total": 0,
+  "valid_total": 48,
   "tiers": {
-    "verified": 142,
+    "verified": 0,
     "port_only": 0,
-    "syntax_only": 0,
+    "syntax_only": 48,
     "notices": 0
   },
   "probe_degraded": false,
   "deep_test": {
-    "available": true,
-    "checked": 2599,
-    "passed": 142,
-    "seconds": 267.1,
-    "version": "v26.3.27"
+    "available": false,
+    "reason": "disabled",
+    "checked": 0,
+    "passed": 0
   },
-  "duplicates_removed": 11697,
+  "duplicates_removed": 2,
   "protocols": {
-    "vless": 107,
-    "ss": 38
+    "trojan": 23,
+    "vless": 13,
+    "hysteria2": 12
   },
   "allowed_protocols": [
-    "ss",
+    "hysteria2",
+    "trojan",
     "vless"
   ],
   "max_configs": 400,
-  "previous_configs": 139,
-  "probe": "tcp/tls handshake",
+  "previous_configs": 48,
+  "probe": "skipped",
   "sources": [
     {
-      "name": "raw.githubusercontent.com/hamedcode/port-based-v2ray-configs/main/sub/",
+      "name": "<k1>",
       "ok": true,
-      "seen": 5997,
-      "kept": 5825,
+      "seen": 50,
+      "kept": 50,
       "error": "",
-      "label": "",
-      "note": "",
-      "order": 0,
-      "quota": {},
-      "provider": "",
-      "verified": 50
-    },
-    {
-      "name": "raw.githubusercontent.com/ninjastrikers/nexus-nodes/main/configs/all.t",
-      "ok": true,
-      "seen": 3000,
-      "kept": 1959,
-      "error": "",
-      "label": "",
-      "note": "",
-      "order": 0,
-      "quota": {},
-      "provider": "",
-      "verified": 30
-    },
-    {
-      "name": "raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/protocols/",
-      "ok": true,
-      "seen": 5003,
-      "kept": 4820,
-      "error": "",
-      "label": "",
-      "note": "",
-      "order": 0,
-      "quota": {},
-      "provider": "",
-      "verified": 28
-    },
-    {
-      "name": "raw.githubusercontent.com/Argh94/V2RayAutoConfig/main/configs/Vless.tx",
-      "ok": true,
-      "seen": 14906,
-      "kept": 14649,
-      "error": "",
-      "label": "",
-      "note": "",
-      "order": 0,
-      "quota": {},
-      "provider": "",
-      "verified": 2
-    },
-    {
-      "name": "raw.githubusercontent.com/3inker/v2ray-subscription/main/subs/all_not_",
-      "ok": true,
-      "seen": 262,
-      "kept": 203,
-      "error": "",
-      "label": "",
-      "note": "",
-      "order": 0,
-      "quota": {},
-      "provider": "",
-      "verified": 9
-    },
-    {
-      "name": "raw.githubusercontent.com/VPN-Subcription-Links/ClashX-V2Ray-TopFreePr",
-      "ok": true,
-      "seen": 1343,
-      "kept": 880,
-      "error": "",
-      "label": "",
-      "note": "",
-      "order": 0,
-      "quota": {},
-      "provider": "",
-      "verified": 5
-    },
-    {
-      "name": "raw.githubusercontent.com/ProblemTheCode/SylphNet-public/main/sub/sub.",
-      "ok": true,
-      "seen": 345,
-      "kept": 267,
-      "error": "",
-      "label": "",
-      "note": "",
-      "order": 0,
-      "quota": {},
-      "provider": "",
-      "verified": 3
-    },
-    {
-      "name": "raw.githubusercontent.com/vsvavan2/vpn-config-rkn/main/output/all_work",
-      "ok": true,
-      "seen": 266,
-      "kept": 193,
-      "error": "",
-      "label": "",
-      "note": "",
-      "order": 0,
-      "quota": {},
-      "provider": "",
-      "verified": 7
-    },
-    {
-      "name": "raw.githubusercontent.com/zxcursedzxc0721/vless-subscriptions/main/ru/",
-      "ok": true,
-      "seen": 309,
-      "kept": 306,
-      "error": "",
-      "label": "",
-      "note": "",
-      "order": 0,
-      "quota": {},
-      "provider": "",
-      "verified": 1
-    },
-    {
-      "name": "raw.githubusercontent.com/bobrinaw/vlessforu/main/working_configs.txt",
-      "ok": true,
-      "seen": 173,
-      "kept": 113,
-      "error": "",
-      "label": "",
-      "note": "",
-      "order": 0,
-      "quota": {},
-      "provider": "",
-      "verified": 7
-    },
-    {
-      "name": "<private-1 TITAN>",
-      "ok": true,
-      "seen": 5,
-      "kept": 5,
-      "error": "",
-      "label": "TITAN",
-      "note": "до 22.10 6ГБ",
+      "label": "K1",
+      "note": "TelegaVPN",
       "order": 1,
-      "quota": {
-        "upload": 0,
-        "download": 0,
-        "total": 0,
-        "expire": 1792655196
-      },
-      "provider": "🚀 TITAN VPS ⚡",
-      "verified": 0
-    },
-    {
-      "name": "<private-2 AIDEN2>",
-      "ok": true,
-      "seen": 3,
-      "kept": 0,
-      "error": "",
-      "label": "AIDEN2",
-      "note": "",
-      "order": 2,
-      "quota": {
-        "upload": 0,
-        "download": 0,
-        "total": 32212254720,
-        "expire": 1792925166
-      },
-      "provider": "Aiden VPN",
-      "verified": 0
-    },
-    {
-      "name": "<private-3 VLESS>",
-      "ok": true,
-      "seen": 6,
-      "kept": 6,
-      "error": "",
-      "label": "VLESS",
-      "note": "ещё 5 дней",
-      "order": 3,
-      "quota": {
-        "upload": 3269952393,
-        "download": 11569883327,
-        "total": 0,
-        "expire": 0
-      },
+      "quota": {},
       "provider": "",
-      "verified": 0
-    },
-    {
-      "name": "<private-4 MEDUSA>",
-      "ok": true,
-      "seen": 1,
-      "kept": 0,
-      "error": "",
-      "label": "MEDUSA",
-      "note": "макс 3 устройства",
-      "order": 5,
-      "quota": {
-        "upload": 0,
-        "download": 0,
-        "total": 268435456000,
-        "expire": 1792585615
-      },
-      "provider": "MedusaVPN",
-      "verified": 0
-    },
-    {
-      "name": "<private-5 KAVKAZ1>",
-      "ok": true,
-      "seen": 1,
-      "kept": 0,
-      "error": "",
-      "label": "KAVKAZ1",
-      "note": "",
-      "order": 6,
-      "quota": {
-        "upload": 0,
-        "download": 31837315708,
-        "total": 107374182400,
-        "expire": 1792455564
-      },
-      "provider": "🔐KavkazVPN.ru",
-      "verified": 0
-    },
-    {
-      "name": "<private-6 KAVKAZ2>",
-      "ok": true,
-      "seen": 1,
-      "kept": 0,
-      "error": "",
-      "label": "KAVKAZ2",
-      "note": "",
-      "order": 7,
-      "quota": {
-        "upload": 0,
-        "download": 0,
-        "total": 107374182400,
-        "expire": 1792698344
-      },
-      "provider": "🔐KavkazVPN.ru",
-      "verified": 0
-    },
-    {
-      "name": "<private-7 KAVKAZ3>",
-      "ok": true,
-      "seen": 1,
-      "kept": 0,
-      "error": "",
-      "label": "KAVKAZ3",
-      "note": "",
-      "order": 8,
-      "quota": {
-        "upload": 0,
-        "download": 0,
-        "total": 10737418240,
-        "expire": 1792753787
-      },
-      "provider": "🔐KavkazVPN.ru",
-      "verified": 0
-    },
-    {
-      "name": "<private-8 HAPP>",
-      "ok": true,
-      "seen": 1,
-      "kept": 0,
-      "error": "",
-      "label": "HAPP",
-      "note": "",
-      "order": 9,
-      "quota": {
-        "upload": 0,
-        "download": 0,
-        "total": 107374182400,
-        "expire": 1792698344
-      },
-      "provider": "🔐KavkazVPN.ru",
       "verified": 0
     }
   ]

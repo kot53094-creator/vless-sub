@@ -429,6 +429,15 @@ def validate_uri(uri: str, allowed: set[str], allow_private: bool = False) -> di
             raise Bad("bad trojan security")
         record.update(security=security, sni=(params.get("sni") or "").lower(),
                       network=params.get("type", "tcp").lower())
+    elif scheme == "hysteria2":
+        # Ключи TelegaVPN и подобных панелей: пароль в userinfo, TLS по умолчанию.
+        # Ссылка уходит в подписку байт в байт, поэтому здесь нужен только минимум
+        # для дедупликации и сортировки.
+        if not userinfo:
+            raise Bad("hysteria2 without password")
+        record.update(security="tls",
+                      sni=(params.get("sni") or "").lower(),
+                      network="")
     elif scheme == "vmess":
         try:
             blob = json.loads(b64decode_loose(uri.split("://", 1)[1].split("#", 1)[0]))
@@ -1318,11 +1327,19 @@ def main(argv: list[str]) -> int:
                        if r.get("host") and r.get("deep_ok") is True
                        and r["proto"] in {"vless", "vmess", "trojan"}
                        and (r["network"] or "tcp") in {"tcp", "ws", "grpc", "xhttp", "httpupgrade"}]
-    auto_candidates = (auto_candidates or [r for r in selected
-                                           if r.get("host") and r.get("from_private")])[:40]
+    # Один ключ в подписке — не повод отдавать балансировщику 4 узла: пусть
+    # авто-режим видит весь блок, иначе падение одного сервера ломает профиль.
+    auto_candidates = (auto_candidates or [
+        r for r in selected
+        if r.get("host") and r.get("from_private")
+        and r["proto"] in {"vless", "vmess", "trojan"}
+    ])[:40]
+    groups_in_auto = {r.get("group", 0) for r in auto_candidates}
+    per_group = 16 if len(groups_in_auto) == 1 else 4
     try:
         if len(auto_candidates) >= 2:
-            cfg = auto_config.build_auto_config(auto_candidates, limit=16)
+            cfg = auto_config.build_auto_config(auto_candidates, limit=16,
+                                                per_group=per_group)
             write_atomic(auto_path, json.dumps(cfg, ensure_ascii=False, indent=1) + "\n")
             auto_nodes = len(cfg["outbounds"]) - 2
             print(f"[auto] profile with {auto_nodes} nodes and leastPing balancer -> auto.json")

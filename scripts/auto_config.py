@@ -72,10 +72,11 @@ def pick_mixed(records: list[dict], limit: int = 16, per_group: int = 4) -> list
 
 
 def build_auto_config(records: list[dict], limit: int = 12,
-                      http_port: int = 10809, socks_port: int = 10808) -> dict:
+                      http_port: int = 10809, socks_port: int = 10808,
+                      per_group: int = 4) -> dict:
     """Готовый конфиг: список живых узлов + балансировщик leastPing."""
     outbounds: list[dict] = []
-    for index, rec in enumerate(pick_mixed(records, limit=limit), 1):
+    for index, rec in enumerate(pick_mixed(records, limit=limit, per_group=per_group), 1):
         out = build_outbound(rec)
         out["tag"] = f"{BALANCER_SELECTOR}{index}"
         outbounds.append(out)
