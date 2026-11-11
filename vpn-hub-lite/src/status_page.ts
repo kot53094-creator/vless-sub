@@ -91,15 +91,15 @@ export async function statusPage(env: Env): Promise<Response> {
   if (!cachedStats) {
     try {
       const row = await one<{
-      servers: number;
-      alive: number;
-      sources: number;
-      published: number;
-      sync_at: string | null;
-      check_at: string | null;
-    }>(
-      env,
-      `SELECT (SELECT COUNT(*) FROM servers) AS servers,
+        servers: number;
+        alive: number;
+        sources: number;
+        published: number;
+        sync_at: string | null;
+        check_at: string | null;
+      }>(
+        env,
+        `SELECT (SELECT COUNT(*) FROM servers) AS servers,
               (SELECT COUNT(*) FROM servers WHERE status='alive') AS alive,
               (SELECT COUNT(*) FROM sources) AS sources,
               (SELECT COUNT(*) FROM servers s JOIN sources src ON src.id = s.source_id
@@ -108,45 +108,45 @@ export async function statusPage(env: Env): Promise<Response> {
                   AND s.link LIKE '%security=reality%') AS published,
               (SELECT MAX(last_sync_at) FROM sources) AS sync_at,
               (SELECT MAX(last_check_at) FROM servers) AS check_at`,
-    );
-    if (row) {
-      counts = {
-        servers: row.servers,
-        alive: row.alive,
-        sources: row.sources,
-        published: row.published,
-      };
-      last = { sync_at: row.sync_at, check_at: row.check_at };
-    }
-    const c = await one<{
-      tcp_ok: number;
-      tcp_fail: number;
-      tunnel_ok: number;
-      tunnel_fail: number;
-    }>(
-      env,
-      `SELECT COALESCE(SUM(kind='tcp' AND result='ok'),0)    AS tcp_ok,
+      );
+      if (row) {
+        counts = {
+          servers: row.servers,
+          alive: row.alive,
+          sources: row.sources,
+          published: row.published,
+        };
+        last = { sync_at: row.sync_at, check_at: row.check_at };
+      }
+      const c = await one<{
+        tcp_ok: number;
+        tcp_fail: number;
+        tunnel_ok: number;
+        tunnel_fail: number;
+      }>(
+        env,
+        `SELECT COALESCE(SUM(kind='tcp' AND result='ok'),0)    AS tcp_ok,
               COALESCE(SUM(kind='tcp' AND result='fail'),0)  AS tcp_fail,
               COALESCE(SUM(kind='tunnel' AND result='ok'),0) AS tunnel_ok,
               COALESCE(SUM(kind='tunnel' AND result='fail'),0) AS tunnel_fail
          FROM server_checks WHERE checked_at >= datetime('now','-1 day')`,
-    );
-    if (c) {
-      checks = {
-        tcpOk: c.tcp_ok,
-        tcpFail: c.tcp_fail,
-        tunnelOk: c.tunnel_ok,
-        tunnelFail: c.tunnel_fail,
-      };
+      );
+      if (c) {
+        checks = {
+          tcpOk: c.tcp_ok,
+          tcpFail: c.tcp_fail,
+          tunnelOk: c.tunnel_ok,
+          tunnelFail: c.tunnel_fail,
+        };
+      }
+      await env.CACHE.put(
+        "status:counts:v1",
+        JSON.stringify({ dbOk, counts, last, checks }),
+        { expirationTtl: 60 },
+      ).catch(() => undefined);
+    } catch {
+      dbOk = false;
     }
-    await env.CACHE.put(
-      "status:counts:v1",
-      JSON.stringify({ dbOk, counts, last, checks }),
-      { expirationTtl: 60 },
-    ).catch(() => undefined);
-  } catch {
-    dbOk = false;
-  }
   }
 
   try {
