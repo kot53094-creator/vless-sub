@@ -1,0 +1,61 @@
+# Apelsinka VPN — зеркало основного воркера под коротким именем.
+#
+# Это тот же код, что и vpn-hub-lite (main = src/index.ts), но без секретов
+# и без cron: зеркало только отдаёт подписку, /status и публичные страницы.
+# Бот, синхронизация источников, проверки и бэкапы остаются на основном
+# воркере vpn-hub-lite — там лежат секреты и вебхук Telegram.
+#
+# Зачем это нужно:
+#   1) красивая ссылка подписки https://apelsinka.twistx-launcher.workers.dev
+#      вместо vpn-hub-lite.twistx-launcher.workers.dev;
+#   2) страховка: если основной воркер ляжет, подписка продолжает отдаваться
+#      зеркалом — те же D1 и KV;
+#   3) когда появится свой домен (например apelsinka.eu.org), Custom Domain
+#      вешается на этот воркер одной командой, и старые ссылки не меняются.
+#
+# Деплой: npx wrangler deploy -c wrangler.apelsinka.toml
+# Секреты сюда намеренно НЕ ставятся: без BOT_TOKEN зеркало не может
+# перерегистрировать вебхук на себя, без CHECK_TOKEN не отдаёт очередь.
+
+name = "apelsinka"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+# --- D1: та же база, что у основного воркера --------------------------------
+[[d1_databases]]
+binding = "DB"
+database_name = "vpn-hub-lite"
+database_id = "5fe96e41-4f67-4b64-a9f1-b7a09f989116"
+
+# --- KV: тот же кэш и пулы узлов --------------------------------------------
+[[kv_namespaces]]
+binding = "CACHE"
+id = "31299bcce7184a7f877d90e86853e5d1"
+
+# Cron отключён: все плановые задачи выполняет основной воркер.
+# [triggers] здесь нет намеренно.
+
+[vars]
+ADMIN_TG_ID = "5680608085"
+MAX_USERS = "50"
+SERVERS_PER_USER = "15"
+PUBLIC_BASE_URL = "https://apelsinka.twistx-launcher.workers.dev"
+FETCH_UA = "Happ/2.9.1"
+SUB_CACHE_TTL = "600"
+STRICT_WORKING = "1"
+# Бот живёт на основном воркере: зеркало не должно никуда звать Telegram.
+BOT_TRANSPORT = "webhook"
+SHARED_LIST = "1"
+PREMIUM_LOOK = "1"
+PREMIUM_TRAFFIC_GB = "500"
+PREMIUM_PLAN_DAYS = "365"
+POOL_MIN = "25"
+MERGE_ENABLED = "1"
+CHANNEL_ID = ""
+BOT_USERNAME = "ApelsinkaVpn1_bot"
+
+[ai]
+binding = "AI"
+
+[observability]
+enabled = true
