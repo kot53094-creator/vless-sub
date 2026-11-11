@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 {% set active = 'home' %}
-{% block title %}Дашборд · VPN Hub{% endblock %}
+{% block title %}Дашборд · VPN Hub PRO{% endblock %}
 {% block body %}
 
 <div x-data="hub({csrf: '{{ csrf }}', hasSources: {{ 'true' if sources else 'false' }}, mode: '{{ mode }}'})">
 
 <div class="topbar dash-top">
   <div>
-    <h1>{% if sources %}Дашборд{% else %}Начнём{% endif %}</h1>
+    <h1>{% if sources %}VPN Hub PRO{% else %}Начнём{% endif %}</h1>
     <div class="muted">
-      {% if mode == 'whitelist' %}Режим «белые списки»{% else %}Обычный режим{% endif %}
-      {% if probe %} · RU {{ 'открыт' if probe.ru_ok else 'закрыт' }}, зарубеж {{ 'открыт' if probe.foreign_ok else 'закрыт' }}{% endif %}
+      {% if mode == 'whitelist' %}Режим «белые списки»{% else %}Стандартный режим{% endif %}
+      {% if probe %} · RU {{ 'доступен' if probe.ru_ok else 'закрыт' }}, Global {{ 'доступен' if probe.foreign_ok else 'закрыт' }}{% endif %}
     </div>
   </div>
   <div class="spacer"></div>
@@ -20,9 +20,79 @@
   </div>
   <div class="status" title="Состояние сети">
     <span class="signal {{ 'dead' if probe and not probe.foreign_ok }}"><i></i></span>
-    <span>{{ 'Канал жив' if probe and probe.foreign_ok else 'Проверяю' if not probe else 'Зарубеж закрыт' }}</span>
+    <span>{{ 'Premium Сеть' if probe and probe.foreign_ok else 'Инициализация' if not probe else 'Связь потеряна' }}</span>
   </div>
 </div>
+
+{% if sources %}
+<div class="card premium-card" id="subscription-status">
+  <div class="card-head">
+    <h2>Ваша подписка PRO</h2>
+    <div class="spacer"></div>
+    <span class="badge alive">Активна</span>
+  </div>
+  <div class="sub-info">
+    <div class="sub-row">
+      <span>Период обновления:</span>
+      <b>раз в {{ settings.fetch_interval_hours }} часа</b>
+    </div>
+    <div class="sub-row">
+      <span>Всего локаций:</span>
+      <b>{{ alive_sources }} стран</b>
+    </div>
+    <div class="sub-row">
+      <span>Всего серверов:</span>
+      <b>{{ alive_keys }} узлов</b>
+    </div>
+  </div>
+  
+  <div class="sub-url-box">
+    <div class="muted" style="margin-bottom:8px">Универсальная ссылка для подключения:</div>
+    <div class="copy-field">
+      <input id="sub-url-top" value="{{ sub_url }}" readonly aria-label="Ссылка подписки">
+      <button class="btn" onclick="hubCopy('sub-url-top', this)">Копировать</button>
+    </div>
+    <div class="btn-row" style="margin-top:12px">
+      <a class="btn ghost small" href="happ://add/{{ sub_url }}">Добавить в Happ</a>
+      <a class="btn ghost small" href="v2rayng://install/{{ sub_url }}">v2rayNG</a>
+    </div>
+  </div>
+</div>
+
+<style>
+.badge {
+  padding: 4px 10px;
+  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.badge.alive { background: rgba(79, 227, 193, 0.2); color: var(--signal); border: 1px solid var(--signal); }
+
+.sub-info {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+  margin: 20px 0;
+  padding: 16px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 12px;
+}
+.sub-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sub-row span { font-size: 13px; color: var(--muted); }
+.sub-row b { font-size: 16px; color: var(--text); }
+
+.sub-url-box {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+</style>
+{% endif %}
 
 {% if warnings and not sources %}
 <div class="card" style="border-color:var(--warn)">
@@ -32,26 +102,26 @@
 {% endif %}
 
 {% if sources %}
-<div class="kpis">
-  <div class="kpi">
-    <div class="kpi-top"><span class="kpi-num">{{ alive_keys }}</span><span class="kpi-ico">⚡</span></div>
+  <div class="kpis premium-kpis">
+  <div class="kpi premium">
+    <div class="kpi-top"><span class="kpi-num">{{ alive_keys }}</span><span class="kpi-ico">💎</span></div>
     <div class="kpi-bar"><i style="width:{{ (100 * alive_keys / total_keys) | round if total_keys else 0 }}%"></i></div>
-    <div class="kpi-foot"><span>Живые ключи</span><span class="muted">из {{ total_keys }}</span></div>
+    <div class="kpi-foot"><span>Активные узлы</span><span class="muted">всего {{ total_keys }}</span></div>
   </div>
-  <div class="kpi">
-    <div class="kpi-top"><span class="kpi-num">{{ alive_sources }}<small>/{{ sources|length }}</small></span><span class="kpi-ico">🛰</span></div>
-    <div class="kpi-bar"><i style="width:{{ (100 * alive_sources / (sources|length)) | round if sources else 0 }}%"></i></div>
-    <div class="kpi-foot"><span>Источники</span><span class="muted">живых</span></div>
+  <div class="kpi premium">
+    <div class="kpi-top"><span class="kpi-num">PRO</span><span class="kpi-ico">👑</span></div>
+    <div class="kpi-bar"><i class="glow" style="width: 100%"></i></div>
+    <div class="kpi-foot"><span>Ваш статус</span><span class="muted">Premium доступ</span></div>
   </div>
-  <div class="kpi">
-    <div class="kpi-top"><span class="kpi-num">{{ traffic_used | bytes }}</span><span class="kpi-ico">📈</span></div>
+  <div class="kpi premium">
+    <div class="kpi-top"><span class="kpi-num">{{ traffic_used | bytes }}</span><span class="kpi-ico">🚀</span></div>
     <div class="kpi-bar"><i style="width:{{ (100 * traffic_used / traffic_total) | round if traffic_total else 20 }}%"></i></div>
-    <div class="kpi-foot"><span>Трафик</span><span class="muted">{% if traffic_total %}из {{ traffic_total | bytes }}{% else %}лимит не задан{% endif %}</span></div>
+    <div class="kpi-foot"><span>Трафик</span><span class="muted">использовано</span></div>
   </div>
-  <div class="kpi">
-    <div class="kpi-top"><span class="kpi-num">{% if nearest is none %}—{% else %}{{ nearest }}<small> дн.</small>{% endif %}</span><span class="kpi-ico">⏳</span></div>
-    <div class="kpi-bar"><i class="warn" style="width:{{ 100 if nearest is not none and nearest <= 3 else 45 }}%"></i></div>
-    <div class="kpi-foot"><span>Ближайший срок</span><span class="muted">{{ expiring_count }} скоро</span></div>
+  <div class="kpi premium">
+    <div class="kpi-top"><span class="kpi-num">{% if nearest is none %}∞{% else %}{{ nearest }}<small> дн.</small>{% endif %}</span><span class="kpi-ico">📅</span></div>
+    <div class="kpi-bar"><i class="{{ 'warn' if nearest is not none and nearest <= 3 else '' }}" style="width:{{ 100 if nearest is not none and nearest <= 3 else 75 }}%"></i></div>
+    <div class="kpi-foot"><span>Подписка до</span><span class="muted">активна</span></div>
   </div>
 </div>
 

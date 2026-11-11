@@ -25,3 +25,42 @@ admin_key.txt
 data/
 .env
 *.log
+# локальный токен для запуска проверки с компьютера
+vpn-hub-lite/pool.env
+# отпечаток сети для проверки
+vpn-hub-lite/net-profile.json
+
+# Локальные рабочие артефакты: секреты, выгрузки подписок, кэш wrangler.
+# В репозиторий они попадать не должны ни в каком виде.
+vpn-hub-lite/.dev.vars
+vpn-hub-lite/.tmp/
+vpn-hub-lite/.dryrun*/
+vpn-hub-lite/node-compile-cache/
+.wrangler/
+**/.wrangler/
+*.b64
+*.cookies
+admin-cookies.txt
+check-token.txt
+api_token.json
+kv_keys.txt
+sub_token.txt
+sub_raw.json
+nodes*.json
+results.json
+candidates.json
+links-test.txt
+alive_ids.txt
+dead_ids.txt
+exported.txt
+ws_ok.txt
+ws_bad.txt
+vpn-hub-lite/tmp_*.json
+gh-cli-cache/
+$null
+
+# Одноразовые скрипты и логи ручных прогонов на этой машине.
+vpn-hub-lite/tools/agent/*.log
+vpn-hub-lite/tools/agent/checks.log
+vpn-hub-lite/tools/agent/links-test.txt
+vpn-hub-lite/tools/agent/nodes.json

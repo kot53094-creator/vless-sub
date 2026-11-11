@@ -36,6 +36,10 @@ import {
   saveBannerFile,
 } from "./banners";
 import { normalizePromo, randomPromoCode } from "./promotions";
+import { describeRejects, latestRuns, runsSummary } from "./intake";
+import { listVersions, recentVersions, rollbackVersion } from "./sub_versions";
+import { mergeStatus, mergedNodes, setMergeDisabled, syncMerge } from "./merge";
+import { FRESH_SECONDS, humanAge, liveRows } from "./presence";
 
 const COOKIE = "vh_admin";
 const GB = 1024 ** 3;
@@ -246,9 +250,12 @@ details summary:hover{color:var(--text)}
 const NAV: Array<[string, string, string, string]> = [
   ["Дашборд", "/admin", "Обзор", "overview"],
   ["Дашборд", "/admin/users", "Пользователи", "users"],
+  ["Дашборд", "/admin/online", "Кто онлайн", "online"],
   ["Данные", "/admin/servers", "Серверы", "servers"],
   ["Данные", "/admin/sources", "Источники", "sources"],
+  ["Данные", "/admin/imports", "Импорт", "imports"],
   ["Доступ", "/admin/subs", "Подписки", "subs"],
+  ["Доступ", "/admin/versions", "Версии подписок", "versions"],
   ["Доступ", "/admin/grant", "Выдать подписку", "grant"],
   ["Маркетинг", "/admin/bonuses", "Настройки бонусов", "bonuses"],
   ["Маркетинг", "/admin/promos", "Промокоды", "promos"],
@@ -256,6 +263,7 @@ const NAV: Array<[string, string, string, string]> = [
   ["Маркетинг", "/admin/banners", "Баннеры", "banners"],
   ["Маркетинг", "/admin/squads", "Группы", "squads"],
   ["Журнал", "/admin/events", "События", "events"],
+  ["Внешние подписки", "/admin/merge", "Внешние подписки", "merge"],
 ];
 
 function sidebar(active: string): string {
@@ -271,7 +279,7 @@ function sidebar(active: string): string {
   return html;
 }
 
-function page(title: string, body: string, active: string, env: Env): Response {
+export function page(title: string, body: string, active: string, env: Env): Response {
   const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)} · ${BRAND}</title><style>${CSS}</style></head><body>
@@ -329,7 +337,7 @@ function loginPage(error = ""): Response {
   });
 }
 
-async function isAuthed(request: Request, env: Env): Promise<boolean> {
+export async function isAuthed(request: Request, env: Env): Promise<boolean> {
   const cookie = readCookie(request, COOKIE);
   if (!cookie) return false;
   return timingSafeEqual(cookie, await adminCookieValue(env));
@@ -381,10 +389,16 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   }
 
   if (path === "/admin" || path === "/admin/") return await overviewPage(env);
+  if (path === "/admin/online") return onlinePage(env);
+  if (path === "/admin/live") {
+    return Response.json(await liveSnapshot(env), { headers: { "cache-control": "no-store" } });
+  }
   if (path === "/admin/users") return await usersPage(env, url);
   if (path === "/admin/servers") return await serversPage(env, url);
   if (path === "/admin/server") return await serverEditPage(env, url);
   if (path === "/admin/sources") return await sourcesPage(env, url);
+  if (path === "/admin/imports") return await importsPage(env, url);
+  if (path === "/admin/versions") return await versionsPage(env, url);
   if (path === "/admin/grant") return await grantPage(env, url);
   if (path === "/admin/subs") return await subsPage(env, url);
   if (path === "/admin/bonuses") return await bonusesPage(env, url);
@@ -396,6 +410,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
     return await bannerFileResponse(env, path.slice("/admin/banner-file/".length));
   }
   if (path === "/admin/events") return await eventsPage(env);
+  if (path === "/admin/merge") return await mergePage(env, url);
 
   return new Response("Не найдено", { status: 404 });
 }
@@ -572,15 +587,202 @@ interface PoolRow {
   name: string;
 }
 
+/* ── Кто онлайн ─────────────────────────────────────────────────────────── */
+
+/**
+ * Сводка присутствия. Отдаётся и странице /admin/online, и опросу раз в 5 сек,
+ * поэтому запрос один и тот же — без дублей логики.
+ */
+async function liveSnapshot(env: Env): Promise<{
+  at: string;
+  total: number;
+  on: number;
+  off: number;
+  stale: number;
+  users: Array<{
+    id: number;
+    name: string;
+    tg: string;
+    state: string;
+    fresh: boolean;
+    country: string;
+    host: string;
+    age: number;
+    ageText: string;
+    source: string;
+  }>;
+}> {
+  const rows = await liveRows(env);
+  const total = (await one<{ n: number }>(env, "SELECT COUNT(*) AS n FROM users"))?.n ?? 0;
+
+  let on = 0;
+  let off = 0;
+  let stale = 0;
+  const users = rows.map((row) => {
+    const fresh = row.age <= FRESH_SECONDS;
+    if (!fresh) stale += 1;
+    else if (row.state === "on") on += 1;
+    else off += 1;
+
+    return {
+      id: row.user_id,
+      name: row.tg_username ? `@${row.tg_username}` : `id ${row.tg_id}`,
+      tg: row.tg_id,
+      state: row.state,
+      fresh,
+      country: row.via_country ?? "",
+      host: row.via_host ?? "",
+      age: row.age,
+      ageText: humanAge(row.age),
+      source: row.source,
+    };
+  });
+
+  return { at: new Date().toISOString(), total, on, off, stale, users };
+}
+
+function onlinePage(env: Env): Response {
+  const body = `
+<h1>Кто онлайн</h1>
+<div class="sub">Включён ли у человека туннель — по последнему обращению к подписке</div>
+
+<div class="kpis">
+  <div class="kpi" style="cursor:default"><div class="row"><span class="f">Включён</span><span class="ico">🟢</span></div>
+    <div class="n" id="k-on">—</div><div class="bar"><i style="width:0%" id="b-on"></i></div>
+    <div class="f"><span>свежий снимок</span><b>до 5 мин</b></div></div>
+  <div class="kpi" style="cursor:default"><div class="row"><span class="f">Выключен</span><span class="ico">⚪</span></div>
+    <div class="n" id="k-off">—</div><div class="bar"><i class="warn" style="width:0%" id="b-off"></i></div>
+    <div class="f"><span>пришёл напрямую</span><b>без туннеля</b></div></div>
+  <div class="kpi" style="cursor:default"><div class="row"><span class="f">Нет данных</span><span class="ico">⏳</span></div>
+    <div class="n" id="k-stale">—</div><div class="bar"><i style="width:0%" id="b-stale"></i></div>
+    <div class="f"><span>молчит дольше</span><b>5 мин</b></div></div>
+  <div class="kpi" style="cursor:default"><div class="row"><span class="f">Всего людей</span><span class="ico">👥</span></div>
+    <div class="n" id="k-total">—</div><div class="bar"><i style="width:0%" id="b-total"></i></div>
+    <div class="f"><span>в базе</span><b>штук</b></div></div>
+</div>
+
+<div class="card">
+  <div class="head"><h2>Живой список</h2><div class="spacer"></div>
+    <span class="pill ok" id="live-pulse">обновление каждые 5 сек</span>
+    <span class="muted" id="live-at">—</span>
+  </div>
+  <table>
+    <thead><tr><th>Кто</th><th>VPN</th><th>Страна выхода</th><th>Узел</th><th>Последний контакт</th><th>Сигнал</th></tr></thead>
+    <tbody id="live-rows"><tr><td colspan="6" class="muted">Загружаю…</td></tr></tbody>
+  </table>
+  <p class="muted" style="margin:12px 0 0">
+    Статус меняется, когда клиент обращается к подписке: автообновление раз в час,
+    при открытии приложения и при смене сервера. «Включён» ставится только если запрос
+    пришёл с выходного IP нашего узла — то есть трафик действительно шёл через туннель.
+    Если клиент качает подписку мимо туннеля, будет «выключен», хотя VPN может быть поднят.
+    Мгновенный снимок вручную — <span class="mono">/p/&lt;токен&gt;</span>.
+  </p>
+</div>
+<script>
+const fmt = (n) => (n === null || n === undefined ? "—" : String(n));
+function cell(text, cls){
+  const el = document.createElement("td");
+  if (cls) el.className = cls;
+  el.textContent = text;
+  return el;
+}
+function pill(state, fresh){
+  const span = document.createElement("span");
+  if (!fresh) { span.className = "pill warn"; span.textContent = "нет данных"; }
+  else if (state === "on") { span.className = "pill ok"; span.textContent = "включён"; }
+  else { span.className = "pill bad"; span.textContent = "выключен"; }
+  return span;
+}
+async function refreshLive(){
+  let data;
+  try {
+    const r = await fetch("/admin/live", { cache: "no-store" });
+    if (!r.ok) throw new Error("http " + r.status);
+    data = await r.json();
+  } catch (e) {
+    document.getElementById("live-pulse").className = "pill bad";
+    document.getElementById("live-pulse").textContent = "нет связи";
+    return;
+  }
+  const p = document.getElementById("live-pulse");
+  p.className = "pill ok";
+  p.textContent = "обновление каждые 5 сек";
+  document.getElementById("live-at").textContent = "обновлено " + new Date().toLocaleTimeString("ru-RU");
+
+  document.getElementById("k-on").textContent = fmt(data.on);
+  document.getElementById("k-off").textContent = fmt(data.off);
+  document.getElementById("k-stale").textContent = fmt(data.stale);
+  document.getElementById("k-total").textContent = fmt(data.total);
+  const pct = (v) => (data.total ? Math.round((v / data.total) * 100) : 0) + "%";
+  document.getElementById("b-on").style.width = pct(data.on);
+  document.getElementById("b-off").style.width = pct(data.off);
+  document.getElementById("b-stale").style.width = pct(data.stale);
+  document.getElementById("b-total").style.width = "100%";
+
+  const tbody = document.getElementById("live-rows");
+  tbody.textContent = "";
+  if (!data.users.length) {
+    const tr = document.createElement("tr");
+    const td = cell("Пока никто не обращался к подписке", "muted");
+    td.colSpan = 6; tr.appendChild(td); tbody.appendChild(tr);
+    return;
+  }
+  for (const u of data.users) {
+    const tr = document.createElement("tr");
+    const who = document.createElement("td");
+    const b = document.createElement("b");
+    b.textContent = u.name;
+    const small = document.createElement("div");
+    small.className = "muted mono";
+    small.textContent = u.tg;
+    who.appendChild(b); who.appendChild(small);
+    tr.appendChild(who);
+    const st = document.createElement("td"); st.appendChild(pill(u.state, u.fresh)); tr.appendChild(st);
+    tr.appendChild(cell(u.country || "—"));
+    tr.appendChild(cell(u.host || "—", u.host ? "mono" : "muted"));
+    tr.appendChild(cell(u.age < 5 ? "только что" : u.ageText + " назад"));
+    tr.appendChild(cell(u.source === "probe" ? "страница проверки" : "подписка", "muted"));
+    tbody.appendChild(tr);
+  }
+}
+let liveTimer = null;
+function scheduleLive(){
+  if (liveTimer) clearInterval(liveTimer);
+  // Скрытая вкладка не жжёт квоту D1: опрос только когда страница видна.
+  liveTimer = setInterval(() => { if (!document.hidden) refreshLive(); }, 8000);
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshLive(); });
+refreshLive();
+scheduleLive();
+</script>`;
+
+  return page("Кто онлайн", body, "online", env);
+}
+
 async function usersPage(env: Env, url: URL): Promise<Response> {
   const csrf = await csrfToken(env);
-  const users = await many<UserRow & { devices: number; servers: number }>(
+  const users = await many<
+    UserRow & {
+      devices: number;
+      servers: number;
+      presence_state: string | null;
+      presence_country: string | null;
+      presence_seen: string | null;
+      presence_age: number | null;
+    }
+  >(
     env,
     `SELECT u.*,
        (SELECT COUNT(*) FROM assignments a WHERE a.user_id = u.id) AS servers,
        (SELECT COUNT(DISTINCT f.ip_hash || ':' || f.ua_hash) FROM fetch_log f
-         WHERE f.user_id = u.id AND f.ts_hour >= strftime('%Y-%m-%dT%H', datetime('now','-24 hours'))) AS devices
-     FROM users u ORDER BY u.created_at DESC LIMIT 200`,
+         WHERE f.user_id = u.id AND f.ts_hour >= strftime('%Y-%m-%dT%H', datetime('now','-24 hours'))) AS devices,
+       p.state AS presence_state,
+       p.via_country AS presence_country,
+       p.last_seen AS presence_seen,
+       CAST((julianday('now') - julianday(p.last_seen)) * 86400 AS INTEGER) AS presence_age
+     FROM users u
+     LEFT JOIN user_presence p ON p.user_id = u.id
+     ORDER BY u.created_at DESC LIMIT 200`,
   );
   const pools = await many<PoolRow>(env, "SELECT id, name FROM pools ORDER BY id");
   const allSources = await many<{ id: number; name: string; max_devices: number }>(
@@ -606,9 +808,29 @@ async function usersPage(env: Env, url: URL): Promise<Response> {
       const name = user.tg_username ? `@${esc(user.tg_username)}` : `id ${esc(user.tg_id)}`;
       const cls = user.status === "active" ? "ok" : user.status === "banned" ? "bad" : "warn";
       const traffic = user.traffic_gb ? `${user.traffic_gb} ГБ` : "—";
+
+      // Присутствие: свежий снимок — это статус, старый — уже история.
+      const pAge = Number(user.presence_age ?? 0);
+      const pFresh =
+        user.presence_state !== null && user.presence_age !== null && pAge <= FRESH_SECONDS;
+      const pOn = pFresh && user.presence_state === "on";
+      const pFlag = flagOf(user.presence_country ?? "");
+      const pLabel =
+        user.presence_state === null
+          ? "не видели"
+          : pFresh
+            ? pOn
+              ? "включён"
+              : "выключен"
+            : `${humanAge(pAge)} назад`;
+      const pCls = user.presence_state === null ? "" : pFresh ? (pOn ? "ok" : "bad") : "warn";
+
       return `<tr data-row="${esc(user.tg_id)} ${esc(user.tg_username || "")}">
         <td>${name}<div class="muted mono">${esc(user.tg_id)}</div></td>
         <td><span class="pill ${cls}">${esc(user.status)}</span></td>
+        <td><span class="pill ${pCls}">${esc(pLabel)}</span>${
+          pFlag ? `<div class="muted">${pFlag} ${esc(user.presence_country ?? "")}</div>` : ""
+        }</td>
         <td>${esc(user.expires_at?.slice(0, 10) ?? "—")}</td>
         <td>${user.devices}/${user.device_limit}<div class="muted">серверов: ${user.servers}</div></td>
         <td>${traffic}</td>
@@ -692,8 +914,8 @@ ${err ? `<div class="err">${esc(err)}</div>` : ""}
     <span class="muted">покажет, сколько серверов реально уходит в Happ</span>
   </form>
   <table>
-    <thead><tr><th>Кто</th><th>Статус</th><th>До</th><th>Устройства</th><th>Трафик</th><th>Подписка</th><th>Действия</th></tr></thead>
-    <tbody>${rows || `<tr><td colspan="7" class="muted">Пока никого</td></tr>`}</tbody>
+    <thead><tr><th>Кто</th><th>Статус</th><th>VPN</th><th>До</th><th>Устройства</th><th>Трафик</th><th>Подписка</th><th>Действия</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="8" class="muted">Пока никого</td></tr>`}</tbody>
   </table>
 </div>
 
@@ -1092,6 +1314,162 @@ ${err ? `<div class="err">${esc(err)}</div>` : ""}
   return page("Источники", body, "sources", env);
 }
 
+/* ── Импорт: что пришло и почему не годится ───────────────────────────── */
+
+function parseRejects(raw: string): Record<string, number> {
+  try {
+    const parsed = JSON.parse(raw || "{}") as Record<string, unknown>;
+    const out: Record<string, number> = {};
+    for (const [code, value] of Object.entries(parsed)) {
+      const count = Number(value);
+      if (Number.isFinite(count) && count > 0) out[code] = count;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+async function importsPage(env: Env, url: URL): Promise<Response> {
+  const sources = await many<{ id: number; name: string }>(env, "SELECT id, name FROM sources");
+  const names = new Map(sources.map((source) => [source.id, source.name]));
+  const runs = await latestRuns(env);
+  const summary = await runsSummary(env);
+  const ok = url.searchParams.get("ok");
+
+  const rows = runs
+    .map((run) => {
+      const rejects = parseRejects(run.rejects);
+      const describe = describeRejects(rejects) || "—";
+      const ratio = run.parsed > 0 ? Math.round((run.publishable / run.parsed) * 100) : 0;
+      const pill = run.ok
+        ? `<span class="pill ok">ok</span>`
+        : `<span class="pill bad">ошибка</span>`;
+      return `<tr data-row="${esc(names.get(run.source_id) ?? run.source_id)}">
+        <td>${run.source_id}. ${esc(names.get(run.source_id) ?? "источник удалён")}</td>
+        <td>${pill}<div class="muted">${esc(run.ran_at)}</div></td>
+        <td>${run.lines}<div class="muted">${run.bytes} Б</div></td>
+        <td>${run.parsed}</td>
+        <td><b>${run.publishable}</b><div class="muted">${ratio}% от разобранных</div></td>
+        <td class="muted" style="max-width:340px">${esc(describe)}</td>
+        <td class="muted" style="max-width:260px">${esc(run.error ?? "")}</td>
+      </tr>`;
+    })
+    .join("");
+
+  const body = `
+<h1>Импорт</h1>
+<div class="sub">Последний прогон по каждому источнику: сколько строк пришло, сколько ушло в публичную выдачу и почему остальное отклонено</div>
+${ok ? `<div class="notice">${esc(ok)}</div>` : ""}
+
+<div class="card">
+  <div class="head"><h2>За сутки</h2></div>
+  <p style="margin:0">
+    прогонов <b>${summary.runs}</b> · разобрано <b>${summary.parsed}</b> ·
+    в REALITY-выдачу <b>${summary.publishable}</b> · с ошибкой <b>${summary.failed}</b>
+  </p>
+  <p class="muted" style="margin:8px 0 0">
+    «В выдачу» — только VLESS + REALITY с полным набором параметров (UUID, pbk, sni, sid, fp).
+    Остальные конфигурации остаются в базе как история, но в подписку не попадают.
+  </p>
+</div>
+
+<div class="card">
+  <table>
+    <thead><tr><th>Источник</th><th>Прогон</th><th>Строк</th><th>Разобрано</th><th>В выдачу</th><th>Причины отказа</th><th>Ошибка</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="7" class="muted">Прогонов ещё не было. Нажмите «Скачать сейчас» на странице источников.</td></tr>`}</tbody>
+  </table>
+</div>`;
+
+  return page("Импорт", body, "imports", env);
+}
+
+/* ── Версии подписок ───────────────────────────────────────────────────── */
+
+async function versionsPage(env: Env, url: URL): Promise<Response> {
+  const csrf = await csrfToken(env);
+  const userId = Number(url.searchParams.get("user") ?? 0) || 0;
+  const ok = url.searchParams.get("ok");
+  const err = url.searchParams.get("err");
+
+  if (userId) {
+    const user = await one<UserRow>(env, "SELECT * FROM users WHERE id = ?", userId);
+    if (!user) return new Response("Пользователь не найден", { status: 404 });
+    const versions = await listVersions(env, userId, 30);
+
+    const rows = versions
+      .map(
+        (version, index) => `<tr>
+        <td><b>v${version.version}</b>${index === 0 ? ` <span class="pill ok">текущая</span>` : ""}</td>
+        <td>${version.count}</td>
+        <td class="muted">${esc(version.created_at)}</td>
+        <td class="muted">${esc(version.note || "—")}</td>
+        <td>
+          ${
+            index === 0
+              ? `<span class="muted">—</span>`
+              : `<form method="post" action="/admin/action" class="inline"
+                        onsubmit="return confirm('Вернуть набор v${version.version}? Текущий состав будет заменён.')">
+                   <input type="hidden" name="csrf" value="${csrf}">
+                   <input type="hidden" name="action" value="rollback_version">
+                   <input type="hidden" name="id" value="${user.id}">
+                   <input type="hidden" name="version_id" value="${version.id}">
+                   <button class="btn">Откатить</button>
+                 </form>`
+          }
+        </td>
+      </tr>`,
+      )
+      .join("");
+
+    const body = `
+<h1>Версии подписки</h1>
+<div class="sub">Telegram ID <span class="mono">${esc(user.tg_id)}</span> · серверов сейчас: ${versions[0]?.count ?? 0}</div>
+${ok ? `<div class="notice">${esc(ok)}</div>` : ""}
+${err ? `<div class="err">${esc(err)}</div>` : ""}
+<div class="card">
+  <div class="head"><h2>История состава</h2><div class="spacer"></div>
+    <a class="btn" href="/admin/versions">Все пользователи</a></div>
+  <table>
+    <thead><tr><th>Версия</th><th>Серверов</th><th>Когда</th><th>Примечание</th><th></th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="5" class="muted">Версий ещё нет: они появляются при первой выдаче подписки.</td></tr>`}</tbody>
+  </table>
+  <p class="muted" style="margin-top:10px">
+    Откат возвращает человеку тот же набор серверов, что был в выбранной версии. Если сервер уже удалён из источника,
+    он не вернётся — об этом будет сказано в сообщении. Кэш подписки сбрасывается автоматически.
+  </p>
+</div>`;
+    return page("Версии подписки", body, "versions", env);
+  }
+
+  const versions = await recentVersions(env, 60);
+  const rows = versions
+    .map(
+      (version) => `<tr data-row="${esc(version.tg_id)}">
+        <td class="mono"><a href="/admin/versions?user=${version.user_id}">${esc(version.tg_id)}</a></td>
+        <td>v${version.version}</td>
+        <td>${version.count}</td>
+        <td class="muted">${esc(version.created_at)}</td>
+        <td class="muted">${esc(version.note || "—")}</td>
+      </tr>`,
+    )
+    .join("");
+
+  const body = `
+<h1>Версии подписок</h1>
+<div class="sub">Последние изменения состава у всех пользователей</div>
+${ok ? `<div class="notice">${esc(ok)}</div>` : ""}
+${err ? `<div class="err">${esc(err)}</div>` : ""}
+<div class="card">
+  <table>
+    <thead><tr><th>Telegram ID</th><th>Версия</th><th>Серверов</th><th>Когда</th><th>Примечание</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="5" class="muted">Версий ещё нет.</td></tr>`}</tbody>
+  </table>
+</div>`;
+
+  return page("Версии подписок", body, "versions", env);
+}
+
 /* ── Журнал ────────────────────────────────────────────────────────────── */
 
 async function eventsPage(env: Env): Promise<Response> {
@@ -1156,6 +1534,29 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
   };
 
   /* ── маркетинг: настройки, промокоды, баннеры, группы ── */
+
+  if (action === "merge_sync") {
+    try {
+      const status = await syncMerge(env, true);
+      await logEvent(env, "merge", null, `синхронизация: узлов ${status.total}`);
+      const failed = status.sources.filter((item) => !item.ok && !item.disabled);
+      return back(
+        "/admin/merge",
+        `Обновлено: узлов ${status.total}`,
+        failed.length ? failed.map((item) => `${item.key}: ${item.error ?? "ошибка"}`).join("; ") : "",
+      );
+    } catch (error) {
+      return back("/admin/merge", "", String(error).slice(0, 120));
+    }
+  }
+
+  if (action === "merge_toggle") {
+    const key = String(form.get("key") ?? "").trim();
+    const disabled = String(form.get("disabled") ?? "") === "1";
+    if (!key) return back("/admin/merge", "", "не выбран источник");
+    await setMergeDisabled(env, key, disabled);
+    return back("/admin/merge", disabled ? `Источник ${key} выключен` : `Источник ${key} включён`);
+  }
 
   if (action === "save_settings") {
     for (const key of SETTING_KEYS) {
@@ -1313,7 +1714,10 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
 
     await run(
       env,
-      "UPDATE users SET expires_at = ?, traffic_gb = ?, device_limit = ? WHERE id = ?",
+      // Статус сбрасываем вместе со сроком: иначе после продления он остаётся
+      // 'expired', панель считает человека истёкшим, а подписка упирается в
+      // проверку статуса.
+      "UPDATE users SET expires_at = ?, traffic_gb = ?, device_limit = ?, status = CASE WHEN status IN ('banned','pending') THEN status ELSE 'active' END WHERE id = ?",
       expires,
       Number.isFinite(traffic) ? traffic : 0,
       devicesLimit,
@@ -1708,6 +2112,18 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
     if (row) await invalidateSubscription(env, row.sub_token);
     await logEvent(env, "sub_revoke", id, "доступ отозван");
     return back("/admin/subs", "Доступ отозван");
+  }
+
+  if (action === "rollback_version") {
+    const userId = Number(form.get("id") ?? 0);
+    const versionId = Number(form.get("version_id") ?? 0);
+    const user = await one<UserRow>(env, "SELECT * FROM users WHERE id = ?", userId);
+    if (!user) return back("/admin/versions", "", "Пользователь не найден");
+    const result = await rollbackVersion(env, user, versionId);
+    const target = `/admin/versions?user=${userId}`;
+    return result.ok
+      ? back(target, `Откат выполнен: серверов ${result.count}`)
+      : back(target, "", result.error);
   }
 
   if (action === "maintenance") {
@@ -2332,6 +2748,8 @@ async function serverEditPage(env: Env, url: URL): Promise<Response> {
     city: string | null;
     latency_ms: number | null;
     last_check_at: string | null;
+    verified_at: string | null;
+    verified_latency_ms: number | null;
     link: string;
   }>(env, "SELECT * FROM servers WHERE id = ?", id);
 
@@ -2340,9 +2758,15 @@ async function serverEditPage(env: Env, url: URL): Promise<Response> {
       <a class="btn" href="/admin/servers">← К списку</a></div>`, "servers", env);
   }
 
-  const checks = await many<{ checked_at: string; result: string; latency_ms: number | null; error: string | null }>(
+  const checks = await many<{
+    checked_at: string;
+    result: string;
+    latency_ms: number | null;
+    error: string | null;
+    kind: string;
+  }>(
     env,
-    "SELECT checked_at, result, latency_ms, error FROM server_checks WHERE server_id = ? ORDER BY id DESC LIMIT 12",
+    "SELECT checked_at, result, latency_ms, error, kind FROM server_checks WHERE server_id = ? ORDER BY id DESC LIMIT 12",
     id,
   );
   const users = await one<{ n: number }>(
@@ -2355,6 +2779,7 @@ async function serverEditPage(env: Env, url: URL): Promise<Response> {
     .map(
       (check) =>
         `<tr><td class="muted">${esc(check.checked_at)}</td>
+         <td><span class="pill">${check.kind === "tunnel" ? "туннель" : "порт"}</span></td>
          <td>${check.result === "ok" ? `<span class="pill ok">ok</span>` : `<span class="pill bad">fail</span>`}</td>
          <td>${check.latency_ms ?? "—"} мс</td>
          <td class="muted">${esc(check.error ?? "")}</td></tr>`,
@@ -2363,7 +2788,8 @@ async function serverEditPage(env: Env, url: URL): Promise<Response> {
 
   const body = `
 <h1>Сервер #${server.id}</h1>
-<div class="sub mono">${esc(server.host)}:${server.port} · выдано людям: ${users?.n ?? 0}</div>
+<div class="sub mono">${esc(server.host)}:${server.port} · выдано людям: ${users?.n ?? 0} ·
+  туннель: ${server.verified_at ? `${server.verified_latency_ms ?? "—"} мс, ${esc(server.verified_at)}` : "не проверялся"}</div>
 ${ok ? `<div class="notice">${esc(ok)}</div>` : ""}
 ${err ? `<div class="err">${esc(err)}</div>` : ""}
 
@@ -2403,10 +2829,13 @@ ${err ? `<div class="err">${esc(err)}</div>` : ""}
 <div class="card">
   <div class="head"><h2>История проверок</h2></div>
   <table>
-    <thead><tr><th>Когда</th><th>Результат</th><th>Задержка</th><th>Ошибка</th></tr></thead>
-    <tbody>${checkRows || `<tr><td colspan="4" class="muted">Проверок ещё не было</td></tr>`}</tbody>
+    <thead><tr><th>Когда</th><th>Тип</th><th>Результат</th><th>Задержка</th><th>Ошибка</th></tr></thead>
+    <tbody>${checkRows || `<tr><td colspan="5" class="muted">Проверок ещё не было</td></tr>`}</tbody>
   </table>
-  <p class="muted" style="margin-top:10px">Проверка — TCP-коннект к порту. Туннель VLESS не проверяется.</p>
+  <p class="muted" style="margin-top:10px">
+    «Порт» — TCP-коннект к порту, доказывает только доступность адреса.
+    «Туннель» — настоящая проверка через Xray внешним агентом; только она влияет на рейтинг.
+  </p>
 </div>
 
 <a class="btn" href="/admin/servers">← К списку серверов</a>`;
@@ -2458,6 +2887,7 @@ async function subsPage(env: Env, url: URL): Promise<Response> {
         <td>${user.servers}</td>
         <td>${user.devices} / ${user.device_limit}</td>
         <td style="white-space:nowrap">
+          <a class="btn" href="/admin/versions?user=${user.id}" title="История состава подписки">Версии</a>
           <form method="post" action="/admin/action" class="inline">
             <input type="hidden" name="csrf" value="${csrf}">
             <input type="hidden" name="action" value="sub_extend">
@@ -2521,4 +2951,112 @@ ${err ? `<div class="err">${esc(err)}</div>` : ""}
 </div>`;
 
   return page("Подписки", body, "subs", env);
+}
+
+/* ── Внешние разрешённые подписки ──────────────────────────────────────── */
+
+function shortTime(value: string | null): string {
+  if (!value) return "—";
+  const ts = Date.parse(value);
+  if (!Number.isFinite(ts)) return "—";
+  const date = new Date(ts + 8 * 3600 * 1000);
+  return `${date.toISOString().slice(0, 10)} ${date.toISOString().slice(11, 16)} (Иркутск)`;
+}
+
+async function mergePage(env: Env, url: URL): Promise<Response> {
+  const csrf = await csrfToken(env);
+  const status = await mergeStatus(env);
+  const nodes = await mergedNodes(env);
+  const ok = url.searchParams.get("ok");
+  const err = url.searchParams.get("err");
+
+  const sourceRows = (status?.sources ?? [])
+    .map((source) => {
+      const cls = source.disabled ? "warn" : source.ok ? "ok" : "bad";
+      const state = source.disabled ? "выключен" : source.ok ? "работает" : "ошибка";
+      return `<tr data-row="${esc(source.label)}">
+        <td><b>${esc(source.label)}</b>
+          <div class="muted">ключ ${esc(source.key)}</div>
+          ${source.error ? `<div class="muted" style="color:#FFB454">${esc(source.error)}</div>` : ""}</td>
+        <td><span class="pill ${cls}">${esc(state)}</span></td>
+        <td>${source.nodes}</td>
+        <td>${Math.round(source.bytes / 1024)} КБ</td>
+        <td>${esc(shortTime(source.fetchedAt))}</td>
+        <td>
+          <form method="post" action="/admin/action" class="inline">
+            <input type="hidden" name="csrf" value="${csrf}">
+            <input type="hidden" name="action" value="merge_toggle">
+            <input type="hidden" name="key" value="${esc(source.key)}">
+            <input type="hidden" name="disabled" value="${source.disabled ? "0" : "1"}">
+            <button class="btn">${source.disabled ? "Включить" : "Выключить"}</button>
+          </form>
+        </td>
+      </tr>`;
+    })
+    .join("");
+
+  const nodeRows = nodes
+    .map((node) => {
+      const cls = node.status === "alive" ? "ok" : node.status === "dead" ? "bad" : "warn";
+      const state = node.status === "alive" ? "работает" : node.status === "dead" ? "мёртв" : "не проверен";
+      return `<tr data-row="${esc(`${node.label} ${node.host}`)}">
+        <td>${esc(flagOf(node.countryCode) || "—")} ${esc(node.countryName || node.host)}
+          <div class="muted">${esc(node.host)}:${node.port} · источник ${esc(node.source)}</div></td>
+        <td><span class="pill ${cls}">${esc(state)}</span></td>
+        <td>${node.latencyMs ? `${node.latencyMs} мс` : "—"}</td>
+        <td>${esc(shortTime(node.checkedAt))}</td>
+      </tr>`;
+    })
+    .join("");
+
+  const body = `
+<h1>Внешние подписки</h1>
+<div class="sub">Объединение разрешённых источников в одну подписку «Апельсинка VPN»</div>
+${ok ? `<div class="notice">${esc(ok)}</div>` : ""}
+${err ? `<div class="err">${esc(err)}</div>` : ""}
+
+<div class="card">
+  <div class="head"><h2>Состояние</h2>
+    <form method="post" action="/admin/action" class="inline">
+      <input type="hidden" name="csrf" value="${csrf}">
+      <input type="hidden" name="action" value="merge_sync">
+      <button class="btn primary">Синхронизировать сейчас</button>
+    </form>
+  </div>
+  <div class="grid">
+    <div><div class="muted">Последнее обновление</div><b>${esc(shortTime(status?.updatedAt ?? null))}</b></div>
+    <div><div class="muted">Последняя попытка</div><b>${esc(shortTime(status?.attemptAt ?? null))}</b></div>
+    <div><div class="muted">Всего узлов</div><b>${status?.total ?? nodes.length}</b></div>
+    <div><div class="muted">Работают / мертвы / не проверены</div>
+      <b>${status?.alive ?? 0} / ${status?.dead ?? 0} / ${status?.unknown ?? 0}</b></div>
+  </div>
+  <p class="muted" style="margin:10px 0 0">Автосинхронизация — раз в 30 минут внутри cron воркера.
+  Ручной запуск доступен всегда. Если источник не ответил, его узлы остаются из прошлой рабочей версии.</p>
+</div>
+
+<div class="card">
+  <div class="head"><h2>Источники</h2></div>
+  <table>
+    <thead><tr><th>Источник</th><th>Статус</th><th>Узлов</th><th>Размер</th><th>Получено</th><th>Действие</th></tr></thead>
+    <tbody>${sourceRows || `<tr><td colspan="6" class="muted">Источники не настроены: добавьте секреты MERGE_SOURCE_A, MERGE_SOURCE_B, MERGE_SOURCE_C и MERGE_HWID</td></tr>`}</tbody>
+  </table>
+</div>
+
+<div class="card">
+  <div class="head"><h2>Узлы</h2></div>
+  <table>
+    <thead><tr><th>Узел</th><th>Статус</th><th>Задержка</th><th>Проверен</th></tr></thead>
+    <tbody>${nodeRows || `<tr><td colspan="4" class="muted">Пока пусто — нажмите «Синхронизировать сейчас»</td></tr>`}</tbody>
+  </table>
+</div>
+
+<div class="card">
+  <div class="head"><h2>Как это устроено</h2></div>
+  <p class="muted" style="margin:0 0 8px">Ссылки источников и HWID хранятся только в Cloudflare Secrets и в панели
+  не показываются. Узлы источников идут в подписке после закреплённых якорей и проверенного резерва; дубли по паре
+  host:port отбрасываются.</p>
+  <p class="muted" style="margin:0">Проверку доступности выполняет отдельный агент (GitHub Actions + Xray) через
+  /api/merge/pool и /api/merge/results. Без агента узлы помечены «не проверен» и не выкидываются из списка.</p>
+</div>`;
+  return page("Внешние подписки", body, "merge", env);
 }

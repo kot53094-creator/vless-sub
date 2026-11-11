@@ -48,6 +48,9 @@ import {
 import { redeemInvite } from "../invites";
 import { humanDuration, mskDate, plural, round2 } from "../promotions";
 
+/** Сколько дней пробного доступа выдаётся сразу при /start. */
+const TRIAL_DAYS = 3;
+
 export interface TgFrom {
   id: number;
   username?: string;
@@ -175,20 +178,27 @@ export async function handleStart(
     return;
   }
 
+  // Пробный период: три дня сразу, без ожидания одобрения админом.
+  // Раньше человек висел в pending и не мог ничего получить, пока админ
+  // не нажмёт кнопку — для теста это слишком медленно.
+  await approveUser(env, userId, TRIAL_DAYS);
+
   await sendChannelGate(env, tgId, false);
 
+  // Админу — не «заявка», а уведомление: доступ уже выдан, кнопки нужны,
+  // чтобы продлить или отобрать.
   const name = escapeHtml(from.username ? `@${from.username}` : `id ${tgId}`);
   await sendMessage(
     env,
     String(env.ADMIN_TG_ID ?? "5680608085"),
-    `<b>Новая заявка</b>\n${name}\nВсего пользователей: ${(total?.n ?? 0) + 1}`,
+    `<b>Новый пользователь</b>\n${name}\nВыдан триал ${TRIAL_DAYS} дн. автоматически\nВсего пользователей: ${(total?.n ?? 0) + 1}`,
     {
       inline_keyboard: [
         [
-          { text: "Одобрить 7 дней", callback_data: `ap:7:${userId}` },
-          { text: "Одобрить 30 дней", callback_data: `ap:30:${userId}` },
+          { text: `Продлить +${TRIAL_DAYS}`, callback_data: `ap:${TRIAL_DAYS}:${userId}` },
+          { text: "Продлить 30", callback_data: `ap:30:${userId}` },
         ],
-        [{ text: "Отклонить", callback_data: `rj:${userId}` }],
+        [{ text: "Забанить", callback_data: `rj:${userId}` }],
       ],
     },
   );
@@ -406,7 +416,6 @@ export async function cabinetBody(env: Env, user: UserRow): Promise<string> {
       ? `<code>${escapeHtml(linkFor(env, user.sub_token))}</code>`
       : "Ссылка станет активной после одобрения.",
   );
-
   return lines.join("\n");
 }
 

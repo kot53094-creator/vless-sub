@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Cron «sync» — раз в 6 часов.
  *
  * Бюджет бесплатного плана: 10 мс CPU, 50 подзапросов, 6 соединений.
@@ -8,10 +8,15 @@
 
 import { batch, logEvent, many, one, prepare, run } from "./db";
 import { envStr } from "./security";
-import { isSingleKey, parseSubscription, parseUri, parseUserinfo } from "./parser";
+import { parseUserinfo } from "./parser";
+import { emptyStats, recordImportRun, scanSubscription } from "./intake";
+import { tagWhitelist } from "./whitelist";
 import type { Env, SourceRow } from "./types";
 
-const SOURCES_PER_RUN = 2;
+// Раньше было 2: за 4 запуска в сутки новые источники ждали очереди днями,
+// а карантин не мог их проверить. Четыре источника за прогон укладываются
+// в лимиты воркера и разбирают очередь за сутки-двое.
+const SOURCES_PER_RUN = 4;
 const MAX_KEYS = 120;
 const MAX_BODY = 300_000;
 const SOURCE_CACHE_TTL = 6 * 3600;
@@ -30,6 +35,7 @@ export async function syncOneSource(
   if (!source) return { servers: 0, error: "источник не найден" };
   try {
     const count = await syncOne(env, source);
+    await applyQuarantine(env, source);
     return { servers: count, error: "" };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -39,8 +45,25 @@ export async function syncOneSource(
       message.slice(0, 200),
       sourceId,
     );
+    // Неудачный прогон тоже попадает в статистику: иначе в админке видно
+    // только «серверов 0» без причины.
+    await recordImportRun(env, sourceId, emptyStats(), 0, message);
     return { servers: 0, error: message.slice(0, 160) };
   }
+}
+
+/**
+ * Карантин: узлы источника остаются в базе и проверяются, но в подписку не
+ * идут — их выключает флаг `enabled`, по которому фильтрует вся выдача.
+ * Снимает карантин discover.ts, когда источник докажет качество.
+ */
+async function applyQuarantine(env: Env, source: SourceRow): Promise<void> {
+  if (!source.quarantine) return;
+  await run(
+    env,
+    "UPDATE servers SET enabled = 0 WHERE source_id = ? AND enabled = 1",
+    source.id,
+  );
 }
 
 export interface SyncResult {
@@ -54,7 +77,7 @@ export async function runSync(env: Env): Promise<SyncResult> {
     env,
     `SELECT * FROM sources
      WHERE url_or_link <> ''
-       AND (last_sync_at IS NULL OR last_sync_at < datetime('now', '-6 hours'))
+       AND (last_sync_at IS NULL OR last_sync_at < datetime('now', '-12 hours'))
      ORDER BY last_sync_at IS NOT NULL, last_sync_at
      LIMIT ?`,
     SOURCES_PER_RUN,
@@ -65,6 +88,7 @@ export async function runSync(env: Env): Promise<SyncResult> {
   for (const source of due) {
     try {
       const count = await syncOne(env, source);
+      await applyQuarantine(env, source);
       result.sources += 1;
       result.servers += count;
     } catch (error) {
@@ -78,6 +102,7 @@ export async function runSync(env: Env): Promise<SyncResult> {
         message.slice(0, 200),
         source.id,
       );
+      await recordImportRun(env, source.id, emptyStats(), 0, message);
     }
   }
 
@@ -107,9 +132,25 @@ async function syncOne(env: Env, source: SourceRow): Promise<number> {
   // Ключи, добавленные руками через /addkey: и одна строка, и несколько.
   const isLink = /^https?:\/\//i.test(source.url_or_link.trim());
   if (!isLink && source.url_or_link.includes("://")) {
-    const local = parseSubscription(source.url_or_link, MAX_KEYS);
-    if (!local.length) throw new Error("в источнике нет валидных ключей");
-    for (const key of local) {
+    const intake = scanSubscription(source.url_or_link, MAX_KEYS);
+    if (!intake.keys.length) {
+      await recordImportRun(
+        env,
+        source.id,
+        intake.stats,
+        source.url_or_link.length,
+        "в источнике нет валидных ключей",
+      );
+      await run(
+        env,
+        `UPDATE sources SET status='dead', last_sync_at=datetime('now'), last_error=?
+         WHERE id=?`,
+        "в источнике нет валидных ключей",
+        source.id,
+      );
+      return 0;
+    }
+    for (const key of intake.keys) {
       await upsertServer(env, source.id, key.uri, key.host, key.port, key.remark);
     }
     await run(
@@ -118,8 +159,9 @@ async function syncOne(env: Env, source: SourceRow): Promise<number> {
        WHERE id=?`,
       source.id,
     );
+    await recordImportRun(env, source.id, intake.stats, source.url_or_link.length);
     await autoPool(env, source);
-    return local.length;
+    return intake.keys.length;
   }
 
   const cached = await readCachedSource(env, source.id);
@@ -135,7 +177,8 @@ async function syncOne(env: Env, source: SourceRow): Promise<number> {
   }
 
   const info = payload.userinfo;
-  const keys = parseSubscription(payload.text, MAX_KEYS);
+  const intake = scanSubscription(payload.text, MAX_KEYS);
+  const keys = intake.keys;
 
   await run(
     env,
@@ -153,12 +196,16 @@ async function syncOne(env: Env, source: SourceRow): Promise<number> {
   );
 
   if (!keys.length) {
+    const reason = `нет ключей: ${describeBody(payload.text)}, ${payload.text.length} байт`;
     await run(
       env,
       "UPDATE sources SET status='dead', last_error=? WHERE id=?",
-      `нет ключей: ${describeBody(payload.text)}, ${payload.text.length} байт`,
+      reason,
       source.id,
     );
+    // Пишем разбор: видно, что именно пришло — HTML, base64 или пустота,
+    // и по каким причинам строки не разобрались.
+    await recordImportRun(env, source.id, intake.stats, payload.text.length, reason);
     return 0;
   }
 
@@ -190,6 +237,10 @@ async function syncOne(env: Env, source: SourceRow): Promise<number> {
     source.id,
     stamp,
   );
+
+  // Разбор прогона: сколько строк пришло, сколько ушло в REALITY-выдачу
+  // и почему остальное отклонено. Секреты сюда не попадают.
+  await recordImportRun(env, source.id, intake.stats, payload.text.length);
 
   // Новые серверы сразу раскладываем по пулам по типу источника.
   await autoPool(env, source);

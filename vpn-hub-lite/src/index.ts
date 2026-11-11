@@ -19,16 +19,17 @@ import { runHealth } from "./health";
 import { GEOSITE_DAT_BASE64 } from "./geosite_data";
 import { expireSubscriptions } from "./maintenance";
 import { runNotifications } from "./notify";
-import { runPoll, watchWebhook } from "./polling";
+import { runPoll, setWebhook, watchWebhook } from "./polling";
 import { checkTokenOk, envStr, timingSafeEqual } from "./security";
 import { statusPage } from "./status_page";
 import { handleSubscription, invalidatePool, type SubMode } from "./sub";
-import { run } from "./db";
+import { one, run } from "./db";
 import { countWhitelist, tagWhitelist } from "./whitelist";
 import { loadWhitelistPool } from "./sub";
 import { loadPool } from "./sub";
 import { runSync } from "./sync";
 import { sendToAdmin, tgRaw } from "./bot/telegram";
+import { applyMergeChecks, mergeStatus, mergedNodes, syncMerge, syncMergeIfDue } from "./merge";
 import type { Env } from "./types";
 import { BRAND } from "./brand";
 
@@ -118,6 +119,168 @@ export default {
       return await handleStats(env, request);
     }
 
+    // Cloud fetch for blocked subscription domains.
+    // RU DPI cuts many subscription hosts (SSL EOF). Cloudflare reaches them,
+    // so the local importer asks this endpoint for the raw body.
+    if (path === "/api/fetch") {
+      if (!(await checkTokenOk(env, request))) {
+        return new Response("forbidden", { status: 403 });
+      }
+      const target = url.searchParams.get("url") ?? "";
+      if (!/^https:\/\//i.test(target) || target.length > 2048) {
+        return Response.json({ error: "bad url" }, { status: 400 });
+      }
+      try {
+        const upstream = await fetch(target, {
+          headers: { "User-Agent": "Happ/1.8.0", Accept: "*/*" },
+          redirect: "follow",
+        });
+        const text = (await upstream.text()).slice(0, 400_000);
+        return new Response(text, {
+          status: 200,
+          headers: { "content-type": "text/plain; charset=utf-8" },
+        });
+      } catch (error) {
+        return Response.json(
+          { error: String(error).slice(0, 200) },
+          { status: 502 },
+        );
+      }
+    }
+
+    // Геолокация пачки узлов без базы.
+    //
+    // Старый /api/geo писал результат в D1 и падал, когда квота кончилась:
+    // из-за этого узлы оставались без страны и в клиенте вместо
+    // «🇸🇪 Швеция · Стокгольм» висел голый домен. Здесь только справочник,
+    // без единой записи в базу.
+    if (path === "/api/geo/lookup" && request.method === "POST") {
+      if (!(await checkTokenOk(env, request))) {
+        return new Response("forbidden", { status: 403 });
+      }
+      try {
+        const body = (await request.json()) as { hosts?: string[] };
+        const hosts = (body.hosts ?? []).filter((h) => typeof h === "string").slice(0, 60);
+        const geo: Record<string, { cc: string; country: string; city: string }> = {};
+        for (let i = 0; i < hosts.length; i += 10) {
+          const chunk = hosts.slice(i, i + 10);
+          await Promise.all(
+            chunk.map(async (host) => {
+              try {
+                const res = await fetch(
+                  `https://ipwho.is/${encodeURIComponent(host)}?fields=success,country,country_code,city`,
+                );
+                const info = (await res.json()) as {
+                  success?: boolean;
+                  country?: string;
+                  country_code?: string;
+                  city?: string;
+                };
+                if (info.success && info.country_code) {
+                  geo[host] = {
+                    cc: info.country_code,
+                    country: info.country ?? "",
+                    city: info.city ?? "",
+                  };
+                  return;
+                }
+                // Второй справочник: первый часто молчит, когда запрос идёт
+                // из датацентра Cloudflare.
+                const alt = await fetch(
+                  `http://ip-api.com/json/${encodeURIComponent(host)}?fields=status,country,countryCode,city`,
+                );
+                const altInfo = (await alt.json()) as {
+                  status?: string;
+                  country?: string;
+                  countryCode?: string;
+                  city?: string;
+                };
+                if (altInfo.status === "success" && altInfo.countryCode) {
+                  geo[host] = {
+                    cc: altInfo.countryCode,
+                    country: altInfo.country ?? "",
+                    city: altInfo.city ?? "",
+                  };
+                }
+              } catch {
+                // узел останется без страны
+              }
+            }),
+          );
+        }
+        return Response.json({ geo });
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : String(error) },
+          { status: 500 },
+        );
+      }
+    }
+
+    // Что именно ломается в базе: квота, отсутствующая таблица или блокировка.
+    // Бот показывает "перегружено" на любую ошибку D1, поэтому нужен точный текст.
+    if (path === "/api/db/health") {
+      if (!(await checkTokenOk(env, request))) {
+        return new Response("forbidden", { status: 403 });
+      }
+      const probes: Record<string, string> = {};
+      const queries: Array<[string, string]> = [
+        ["servers", "SELECT COUNT(*) AS n FROM servers"],
+        ["users", "SELECT COUNT(*) AS n FROM users"],
+        ["sources", "SELECT COUNT(*) AS n FROM sources"],
+        ["settings", "SELECT COUNT(*) AS n FROM settings"],
+      ];
+      for (const [name, sql] of queries) {
+        try {
+          const row = await one<{ n: number }>(env, sql);
+          probes[name] = `ok: ${row?.n ?? "?"}`;
+        } catch (error) {
+          probes[name] = `FAIL: ${error instanceof Error ? error.message : String(error)}`;
+        }
+      }
+      return Response.json({ probes, at: new Date().toISOString() });
+    }
+
+    // Диагностика бота: жив ли токен, куда Telegram шлёт апдейты, есть ли
+    // ошибки доставки. Плюс сразу восстанавливаем вебхук, если он слетел.
+    if (path === "/api/bot/health") {
+      if (!(await checkTokenOk(env, request))) {
+        return new Response("forbidden", { status: 403 });
+      }
+      try {
+        const me = await tgRaw<{ username?: string; id?: number }>(env, "getMe");
+        const info = await tgRaw<{
+          url?: string;
+          pending_update_count?: number;
+          last_error_message?: string;
+          last_error_date?: number;
+        }>(env, "getWebhookInfo");
+        const expected = `${envStr(env.PUBLIC_BASE_URL).replace(/\/$/, "")}/webhook`;
+        let restored: boolean | null = null;
+        if (me.ok && info.ok) {
+          const current = String(info.result?.url ?? "");
+          if (!current || current !== expected) restored = await setWebhook(env);
+        }
+        return Response.json({
+          tokenOk: me.ok,
+          tokenError: me.ok ? null : (me as { description?: string }).description,
+          user: me.result?.username ?? null,
+          transport: env.BOT_TRANSPORT ?? "webhook",
+          expectedUrl: expected,
+          webhookUrl: info.result?.url ?? null,
+          pending: info.result?.pending_update_count ?? null,
+          lastError: info.result?.last_error_message ?? null,
+          lastErrorAt: info.result?.last_error_date ?? null,
+          webhookRestored: restored,
+        });
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : String(error) },
+          { status: 500 },
+        );
+      }
+    }
+
     // Диагностика пула: что реально видит сборка подписки.
     if (path === "/api/pool/debug") {
       if (!(await checkTokenOk(env, request))) {
@@ -151,8 +314,69 @@ export default {
       }
     }
 
+    // Внешние разрешённые подписки: статус, ручной синк и обмен с агентом
+    // проверок. Все ответы закрыты CHECK_TOKEN — внутри есть точные ссылки
+    // узлов, а они не должны быть публичными.
+    if (path === "/api/merge/status") {
+      if (!(await checkTokenOk(env, request))) {
+        return new Response("forbidden", { status: 403 });
+      }
+      return Response.json(await mergeStatus(env), {
+        headers: { "cache-control": "no-store" },
+      });
+    }
+
+    if (path === "/api/merge/sync" && request.method === "POST") {
+      if (!(await checkTokenOk(env, request))) {
+        return new Response("forbidden", { status: 403 });
+      }
+      const status = await syncMerge(env, true);
+      return Response.json(status, { headers: { "cache-control": "no-store" } });
+    }
+
+    if (path === "/api/merge/pool") {
+      if (!(await checkTokenOk(env, request))) {
+        return new Response("forbidden", { status: 403 });
+      }
+      const nodes = await mergedNodes(env);
+      return Response.json(
+        {
+          nodes: nodes.map((node) => ({
+            id: node.id,
+            link: node.link,
+            source: node.source,
+            status: node.status,
+          })),
+        },
+        { headers: { "cache-control": "no-store" } },
+      );
+    }
+
+    if (path === "/api/merge/results" && request.method === "POST") {
+      if (!(await checkTokenOk(env, request))) {
+        return new Response("forbidden", { status: 403 });
+      }
+      try {
+        const body = (await request.json()) as {
+          results?: Array<{ id?: string; ok?: boolean; latencyMs?: number | null; soft?: boolean }>;
+        };
+        const results = (body.results ?? [])
+          .filter((item) => typeof item.id === "string")
+          .slice(0, 300)
+          .map((item) => ({
+            id: String(item.id),
+            ok: item.ok === true,
+            latencyMs: typeof item.latencyMs === "number" ? Math.round(item.latencyMs) : null,
+            soft: item.soft === true,
+          }));
+        const updated = await applyMergeChecks(env, results);
+        return Response.json({ updated });
+      } catch (error) {
+        return Response.json({ error: String(error).slice(0, 200) }, { status: 400 });
+      }
+    }
+
     // Запись готового пула в KV под админ-токеном.
-    //
     // Wrangler с этой машины не умеет писать в удалённый KV (spawn EPERM),
     // а пересобрать подписку через базу нельзя, когда исчерпана суточная
     // квота D1. Поэтому узлы, проверенные туннелем локально, приходят сюда
@@ -528,6 +752,9 @@ export default {
       return;
     }
     if (event.cron === HEALTH_CRON) {
+      // Внешние подписки: свой интервал (30 минут) внутри функции, поэтому
+      // отдельный cron-триггер не нужен — на free-плане их всего пять.
+      ctx.waitUntil(syncMergeIfDue(env));
       ctx.waitUntil(
         (async () => {
           try {

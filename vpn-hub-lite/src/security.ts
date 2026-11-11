@@ -1,8 +1,37 @@
 /** Секреты, хэши, сравнение за постоянное время, лимиты частоты. */
 
+import { one } from "./db";
 import type { Env } from "./types";
 
 const encoder = new TextEncoder();
+
+/**
+ * Проверка общего токена агента/скриптов.
+ *
+ * Сначала секрет воркера, затем — резервная копия в `settings.api_token`.
+ * Резерв нужен, когда секрет не задан или его не удаётся обновить с машины
+ * (wrangler пишет «Success», а значение не доходит): тогда агент проверок
+ * молча получает 403 и перестаёт обновлять пул. Токен в D1 меняется обычным
+ * `wrangler d1 execute` и не требует перезапуска воркера.
+ */
+export async function checkTokenOk(env: Env, request: Request): Promise<boolean> {
+  const provided = (request.headers.get("x-check-token") ?? "").trim();
+  if (!provided) return false;
+
+  const secret = envStr(env.CHECK_TOKEN);
+  if (secret && timingSafeEqual(provided, secret)) return true;
+
+  try {
+    const row = await one<{ value: string }>(
+      env,
+      "SELECT value FROM settings WHERE key = 'api_token'",
+    );
+    const fallback = envStr(row?.value);
+    return Boolean(fallback) && timingSafeEqual(provided, fallback);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Значение секрета без хвостовых пробелов и переводов строк.

@@ -1,6 +1,6 @@
 /** Роутер обновлений Telegram. Команды только из личных чатов. */
 
-import { logEvent, one } from "../db";
+import { logEvent, many, one } from "../db";
 import { memRateLimit } from "../security";
 import type { Env, UserRow } from "../types";
 import * as admin from "./admin";
@@ -9,6 +9,8 @@ import * as user from "./user";
 import { rotateToken, setDeviceBlocked } from "../sub";
 import { runSync } from "../sync";
 import { parsePromoCommand } from "../promotions";
+import { cmdMarkAlive, cmdMarkDead } from "./manual";
+import { handleAiCommand } from "../ai";
 
 interface TgMessage {
   message_id: number;
@@ -150,6 +152,16 @@ export async function handleUpdate(env: Env, update: TgUpdate): Promise<void> {
   // Всё ниже — только админ. Остальным не отвечаем вовсе.
   if (!isAdmin) return;
 
+  // ИИ-админ: свободная фраза после /ai, подтверждение — «/ai да».
+  // Разбираем до runAdminCommand: здесь запрос — произвольный текст,
+  // а не набор аргументов команды.
+  if (command === "/ai") {
+    const query = text.replace(/^\/ai(@\S+)?\s*/i, "").trim();
+    const aiReply = await handleAiCommand(env, tgId, query);
+    if (aiReply) await sendMessage(env, message.chat.id, aiReply);
+    return;
+  }
+
   const reply = await runAdminCommand(env, command, args);
   if (reply) await sendMessage(env, message.chat.id, reply);
 }
@@ -162,6 +174,53 @@ async function runAdminCommand(
   const chat = chatOf(env);
 
   switch (command) {
+    // Живая сводка по узлам: «что с серверами». Отвечает по базе, никаких
+    // внешних сервисов и лимитов — в отличие от ИИ, который всё равно не
+    // умеет проверять туннели.
+    case "/servers":
+    case "/серверы":
+    case "/servers_status": {
+      const rows = await many<{ status: string; n: number }>(
+        env,
+        "SELECT status, COUNT(*) AS n FROM servers WHERE enabled = 1 GROUP BY status",
+      );
+      const pool = await one<{ n: number }>(
+        env,
+        `SELECT COUNT(*) AS n FROM servers
+          WHERE enabled = 1 AND verified_latency_ms > 0
+            AND verified_at >= datetime('now','-24 hours')`,
+      );
+      const hour = await one<{ n: number; ok: number }>(
+        env,
+        `SELECT COUNT(*) AS n, SUM(CASE WHEN result = 'ok' THEN 1 ELSE 0 END) AS ok
+           FROM server_checks WHERE checked_at >= datetime('now','-1 hour')`,
+      );
+      const countries = await many<{ country_code: string; n: number }>(
+        env,
+        `SELECT country_code, COUNT(*) AS n FROM servers
+          WHERE enabled = 1 AND verified_latency_ms > 0
+            AND verified_at >= datetime('now','-24 hours')
+            AND country_code IS NOT NULL AND country_code <> ''
+          GROUP BY country_code ORDER BY n DESC LIMIT 5`,
+      );
+
+      const byStatus = new Map(rows.map((r) => [r.status, Number(r.n)]));
+      const total = [...byStatus.values()].reduce((a, b) => a + b, 0);
+      const checked = Number(hour?.n ?? 0);
+      const okCount = Number(hour?.ok ?? 0);
+      const rate = checked > 0 ? Math.round((okCount / checked) * 100) : 0;
+      const top = countries.length
+        ? countries.map((c) => `${c.country_code} ${c.n}`).join(", ")
+        : "нет данных";
+
+      return [
+        `Узлы: ${total}`,
+        `живых ${byStatus.get("alive") ?? 0} · мёртвых ${byStatus.get("dead") ?? 0} · неясных ${byStatus.get("unknown") ?? 0}`,
+        `В подписке сейчас: ${pool?.n ?? 0}`,
+        `Проверено за час: ${checked}, прошло ${okCount} (${rate}%)`,
+        `Страны в подписке: ${top}`,
+      ].join("\n");
+    }
     case "/users":
       await admin.cmdUsers(env);
       return null;
@@ -172,6 +231,12 @@ async function runAdminCommand(
       const days = Number(args[1] ?? "30");
       return await admin.cmdApprove(env, args[0], Number.isFinite(days) ? days : 30);
     }
+    case "/dead":
+      // «Этот сервер не работает» — самый точный сигнал: проверка идёт из
+      // США, а человек сидит в России и видит реальный результат.
+      return await cmdMarkDead(env, args.join(" ").trim());
+    case "/alive":
+      return await cmdMarkAlive(env, args.join(" ").trim());
     case "/ban":
       return args[0] ? await admin.cmdSetStatus(env, args[0], "status", "banned") : "Формат: /ban &lt;tg_id&gt;";
     case "/unban":

@@ -158,7 +158,66 @@ textarea:focus, input:focus, select:focus, button:focus-visible, a:focus-visible
   100% { opacity: 0; }
 }
 
-/* ── Список источников ─────────────────────────────────────────────────── */
+/* ── Премиум-стили ──────────────────────────────────────────────────────── */
+.premium-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--s-4);
+  margin-bottom: var(--s-5);
+}
+
+.kpi.premium {
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+  border: 1px solid var(--line);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.kpi.premium::before {
+  content: "";
+  position: absolute;
+  top: -20px;
+  right: -20px;
+  width: 60px;
+  height: 60px;
+  background: radial-gradient(circle, rgba(79, 227, 193, 0.1) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.kpi-bar i.glow {
+  background: linear-gradient(90deg, var(--signal), #7C8CFF);
+  box-shadow: 0 0 10px var(--signal);
+}
+
+.brand span {
+  color: var(--signal);
+  text-shadow: 0 0 10px rgba(79, 227, 193, 0.3);
+  font-weight: 700;
+}
+
+.premium-card {
+  background: linear-gradient(165deg, var(--surface) 0%, #162c3e 100%);
+  border: 1px solid rgba(79, 227, 193, 0.2);
+}
+
+.nav-link.active {
+  background: rgba(79, 227, 193, 0.1);
+  color: var(--signal);
+  border-left: 3px solid var(--signal);
+  border-radius: 0 var(--r-field) var(--r-field) 0;
+}
+
+/* ── Анимации ───────────────────────────────────────────────────────────── */
+@keyframes pulse-glow {
+  0% { box-shadow: 0 0 5px var(--signal); }
+  50% { box-shadow: 0 0 15px var(--signal); }
+  100% { box-shadow: 0 0 5px var(--signal); }
+}
+
+.signal i {
+  animation: pulse-glow 2s infinite;
+}
 .source-row {
   display: grid; grid-template-columns: 1fr auto; gap: var(--s-3);
   padding: var(--s-3) 0; border-bottom: 1px solid var(--line);

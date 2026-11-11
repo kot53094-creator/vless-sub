@@ -10,13 +10,35 @@
  * из-за неё подписка раньше отдавала мёртвый список.
  */
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 import { join } from "node:path";
+
+/**
+ * Локальный запуск: настройки лежат в vpn-hub-lite/pool.env рядом с воркером.
+ * Так один и тот же скрипт работает и в GitHub Actions (переменные окружения),
+ * и двойным кликом на компьютере владельца.
+ */
+function loadPoolEnv() {
+  const path = join(HERE, "..", "..", "pool.env");
+  if (!existsSync(path)) return;
+  for (const line of readFileSync(path, "utf8").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq < 1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const value = trimmed.slice(eq + 1).trim();
+    if (!process.env[key]) process.env[key] = value;
+  }
+}
+
+loadPoolEnv();
 
 const BASE = (process.env.BASE_URL ?? "").replace(/\/$/, "");
 const TOKEN = process.env.CHECK_TOKEN ?? "";
@@ -112,6 +134,7 @@ async function collect() {
       const node = parseVless(line);
       if (!node) continue;
       if (BLOCK.has(node.country)) continue;
+      node.source = url;
       const key = `${node.host}:${node.port}`;
       if (seen.has(key)) continue;
       seen.set(key, node);
@@ -120,6 +143,43 @@ async function collect() {
     console.log(`источник ok: ${url.split("/")[3]} → ${nodes}`);
   }
   return { nodes: [...seen.values()], hy2 };
+}
+
+/**
+ * Быстрый отсев: отвечает ли порт вообще.
+ *
+ * Туннельная проверка одного узла стоит 5-10 секунд. В публичных списках
+ * большинство адресов уже не существует, и без отсева прогон сжигает всё
+ * время на чёрные дыры, не добираясь до живых узлов.
+ */
+function tcpReachable(host, port, timeoutMs = 2500) {
+  return new Promise((resolve) => {
+    const socket = connect({ host, port });
+    let settled = false;
+    const done = (ok) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(ok);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => done(true));
+    socket.once("timeout", () => done(false));
+    socket.once("error", () => done(false));
+  });
+}
+
+async function filterReachable(nodes, concurrency = 60) {
+  const result = new Array(nodes.length).fill(false);
+  let cursor = 0;
+  const workers = Array.from({ length: concurrency }, async () => {
+    while (cursor < nodes.length) {
+      const index = cursor++;
+      result[index] = await tcpReachable(nodes[index].host, nodes[index].port);
+    }
+  });
+  await Promise.all(workers);
+  return nodes.filter((_, index) => result[index]);
 }
 
 function runVerify(nodes) {
@@ -244,9 +304,39 @@ async function post(key, value, ttl = 172800) {
 const { nodes, hy2 } = await collect();
 console.log(`кандидатов VLESS: ${nodes.length}, hysteria2 в списках: ${hy2.length}`);
 
-// Белые списки первыми: они нужнее на мобильном интернете.
-nodes.sort((a, b) => Number(b.white) - Number(a.white));
-const candidates = nodes.slice(0, LIMIT);
+// Кандидаты набираются по кругу из всех источников.
+//
+// Раньше брались первые N после сортировки «белые сверху»: это оказывался
+// почти целиком один список, и прогон проверял 80 узлов одного провайдера —
+// ноль рабочих. Теперь каждый источник представлен равной долей.
+const bySource = new Map();
+for (const node of nodes) {
+  if (!bySource.has(node.source)) bySource.set(node.source, []);
+  bySource.get(node.source).push(node);
+}
+for (const list of bySource.values()) {
+  list.sort((a, b) => Number(b.white) - Number(a.white));
+}
+
+const pooled = [];
+const lists = [...bySource.values()];
+for (let round = 0; ; round++) {
+  let added = 0;
+  for (const list of lists) {
+    const node = list[round];
+    if (node) {
+      pooled.push(node);
+      added++;
+    }
+  }
+  if (added === 0) break;
+}
+
+console.log(`всего кандидатов до отсева: ${pooled.length}`);
+const reachable = await filterReachable(pooled.slice(0, LIMIT * 3));
+console.log(`порт отвечает у ${reachable.length}`);
+const candidates = reachable.slice(0, LIMIT);
+console.log(`в туннельную проверку: ${candidates.length}`);
 
 const results = await runVerify(candidates);
 const okResults = results.filter((r) => r.ok);

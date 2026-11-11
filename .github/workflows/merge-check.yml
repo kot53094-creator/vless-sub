@@ -1,0 +1,72 @@
+name: merge-check
+
+# Проверка узлов, импортированных из разрешённых внешних подписок.
+#
+# Пул из D1 проверяется отдельным workflow (verify.yml). Объединённый список
+# живёт в KV, поэтому у него свой конвейер:
+#   1. Worker отдаёт узлы по /api/merge/pool (закрыт CHECK_TOKEN);
+#   2. агент поднимает Xray на каждый узел и мерит задержку;
+#   3. результаты уходят в /api/merge/results, Worker обновляет статусы.
+#
+# Расписание: раз в 2 часа. Ручной запуск — workflow_dispatch.
+
+on:
+  schedule:
+    - cron: "23 */2 * * *"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Сколько узлов проверять за прогон (0 — все)"
+        required: false
+        default: "0"
+
+concurrency:
+  group: merge-check
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Xray (pinned + sha256)
+        run: |
+          set -euo pipefail
+          curl -fsSL -o xray.zip \
+            https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-64.zip
+          echo "23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae  xray.zip" \
+            | sha256sum -c -
+          unzip -q xray.zip -d "$GITHUB_WORKSPACE/xray-bin"
+          chmod +x "$GITHUB_WORKSPACE/xray-bin/xray"
+          "$GITHUB_WORKSPACE/xray-bin/xray" version | head -2
+
+      - name: Проверить объединённые узлы
+        working-directory: vpn-hub-lite/tools/agent
+        env:
+          BASE_URL: https://vpn-hub-lite.twistx-launcher.workers.dev
+          CHECK_TOKEN: ${{ secrets.CHECK_TOKEN }}
+          MERGE: "1"
+          XRAY_START_MS: "900"
+          CURL_TIMEOUT: "10"
+          SPEED_MIN_MBPS: "0"
+        run: node verify.mjs "$GITHUB_WORKSPACE/xray-bin/xray"
+
+      - name: Итог
+        if: always()
+        run: |
+          {
+            echo "## Внешние подписки"
+            echo ""
+            echo "- Проверка: Xray, реальный туннель, /api/merge/results"
+            echo "- Расписание: каждые 2 часа"
+            echo "- soft-провал (xhttp/grpc) не помечает узел мёртвым"
+          } >> "$GITHUB_STEP_SUMMARY"

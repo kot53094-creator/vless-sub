@@ -12,6 +12,7 @@ import { one, run } from "./db";
 import { tgApi, tgRaw } from "./bot/telegram";
 import { handleUpdate, type TgUpdate } from "./bot";
 import { logEvent } from "./db";
+import { envStr } from "./security";
 import type { Env } from "./types";
 
 const OFFSET_KEY = "tg_offset";
@@ -20,23 +21,65 @@ const OFFSET_KEY = "tg_offset";
 const MAX_UPDATES = 5;
 
 /**
+ * Ставим вебхук заново. Нужно не только админской кнопке: аварийное
+ * переключение на polling снимает вебхук, и без этого бот оставался мёртвым
+ * даже после восстановления базы — Telegram просто не знал, куда слать.
+ */
+export async function setWebhook(env: Env): Promise<boolean> {
+  const base = envStr(env.PUBLIC_BASE_URL).replace(/\/$/, "");
+  if (!base) return false;
+  const payload: Record<string, unknown> = {
+    url: `${base}/webhook`,
+    drop_pending_updates: false,
+  };
+  const secret = envStr(env.WEBHOOK_SECRET);
+  if (secret) payload.secret_token = secret;
+  const result = await tgRaw(env, "setWebhook", payload);
+  return result.ok;
+}
+
+/**
  * Страховка вебхука: раз в минуту смотрим, доставляет ли Telegram.
  * Если копятся необработанные апдейты или есть ошибка доставки — снимаем
  * вебхук и разбираем очередь опросом, чтобы бот не замолчал совсем.
  */
 export async function watchWebhook(env: Env): Promise<void> {
-  const info = await tgRaw<{ pending_update_count?: number; last_error_message?: string }>(
-    env,
-    "getWebhookInfo",
-  );
+  const info = await tgRaw<{
+    url?: string;
+    pending_update_count?: number;
+    last_error_message?: string;
+  }>(env, "getWebhookInfo");
   if (!info.ok) return;
+
+  const base = envStr(env.PUBLIC_BASE_URL).replace(/\/$/, "");
+  const current = String(info.result?.url ?? "");
+  // Вебхук мог быть снят аварийным переключением на polling — обратно его
+  // никто не ставил. Возвращаем адрес сами, иначе бот молчит навсегда.
+  if (base && (!current || !current.startsWith(base))) {
+    const restored = await setWebhook(env);
+    try {
+      await logEvent(
+        env,
+        "webhook_restored",
+        null,
+        restored ? "адрес восстановлен" : "не удалось восстановить",
+      );
+    } catch {
+      // журнал не важнее самого бота
+    }
+    if (!restored) return;
+  }
 
   const pending = Number(info.result?.pending_update_count ?? 0);
   const error = info.result?.last_error_message ?? "";
   // Порог 10, чтобы всплеск сообщений не принимался за поломку доставки.
   if (!error && pending < 10) return;
 
-  await logEvent(env, "webhook_down", null, `в очереди ${pending}${error ? `, ${error}` : ""}`);
+  try {
+    await logEvent(env, "webhook_down", null, `в очереди ${pending}${error ? `, ${error}` : ""}`);
+  } catch {
+    // D1 могла быть недоступна — переключение всё равно нужно
+  }
   await tgRaw(env, "deleteWebhook", { drop_pending_updates: false });
   await runPoll(env);
 }

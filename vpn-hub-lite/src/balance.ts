@@ -13,6 +13,7 @@ export interface Candidate {
   load: number;
   max_users: number;
   latency_ms: number | null;
+  verified?: number;
 }
 
 function ratio(candidate: Candidate): number {
@@ -25,6 +26,7 @@ export function rankCandidates(candidates: Candidate[], count: number): number[]
     .filter((c) => c.max_users <= 0 || c.load < c.max_users)
     .sort(
       (a, b) =>
+        (b.verified ?? 0) - (a.verified ?? 0) ||
         ratio(a) - ratio(b) ||
         (a.latency_ms ?? 9999) - (b.latency_ms ?? 9999) ||
         a.id - b.id,
@@ -37,6 +39,10 @@ const CANDIDATE_SQL = `
   SELECT s.id,
          s.max_users,
          s.latency_ms,
+         CASE WHEN s.verified_latency_ms > 0
+                   AND s.verified_at >= datetime('now', '-72 hours')
+                   AND (s.blocked_ok IS NULL OR s.blocked_ok = 1)
+              THEN 1 ELSE 0 END AS verified,
          (SELECT COUNT(*) FROM assignments a WHERE a.server_id = s.id) AS load
   FROM servers s
   JOIN sources src ON src.id = s.source_id
@@ -145,6 +151,28 @@ export async function topUpUser(env: Env, userId: number, target: number): Promi
   return picked.length;
 }
 
+/**
+ * Добрать до целевого числа именно ПОДТВЕРЖДЁННЫЕ узлы.
+ *
+ * Отличие от topUpUser: тот считает строки в assignments, а нам важно, сколько
+ * из них реально проверено туннелем. Узел может быть назначен, но лежать мёртвым
+ * — тогда человек видит пустой список, хотя «серверы у него есть».
+ */
+export async function topUpVerified(env: Env, userId: number, target = 15): Promise<number> {
+  const row = await many<{ n: number }>(
+    env,
+    `SELECT COUNT(*) AS n FROM assignments a JOIN servers s ON s.id = a.server_id
+      WHERE a.user_id = ? AND s.verified_latency_ms > 0
+        AND s.verified_at >= datetime('now', '-72 hours')`,
+    userId,
+  );
+  const have = row[0]?.n ?? 0;
+  const missing = Math.max(0, target - have);
+  if (missing === 0) return 0;
+  const picked = await assignForUser(env, userId, missing);
+  return picked.length;
+}
+
 /** Сколько серверов у пользователя сейчас. */
 export async function assignmentCount(env: Env, userId: number): Promise<number> {
   const row = await many<{ n: number }>(
@@ -155,21 +183,30 @@ export async function assignmentCount(env: Env, userId: number): Promise<number>
   return row[0]?.n ?? 0;
 }
 
+/** Кого и на какой узел перевели при замене. */
+export interface Replacement {
+  user_id: number;
+  server_id: number;
+}
+
 /**
  * Заменить мёртвый сервер у всех, кому он выдан.
- * Возвращает список пользователей, которых нужно уведомить.
+ *
+ * Возвращает пары «человек → новый узел»: по ним строится отчёт админу
+ * (страна умершего и страна замены) и уведомление человеку. Замена у
+ * каждого своя — зависит от загрузки и гео, поэтому одного id мало.
  */
 export async function replaceDeadServer(
   env: Env,
   deadServerId: number,
-): Promise<number[]> {
+): Promise<Replacement[]> {
   const affected = await many<{ user_id: number }>(
     env,
     "SELECT user_id FROM assignments WHERE server_id = ?",
     deadServerId,
   );
 
-  const notified: number[] = [];
+  const replaced: Replacement[] = [];
   for (const { user_id } of affected) {
     const candidates = (await candidatesForUser(env, user_id)).filter(
       (c) => c.id !== deadServerId,
@@ -185,9 +222,9 @@ export async function replaceDeadServer(
       deadServerId,
     );
     await logEvent(env, "replace", user_id, `сервер ${deadServerId} → ${replacement}`);
-    notified.push(user_id);
+    replaced.push({ user_id, server_id: replacement });
   }
-  return notified;
+  return replaced;
 }
 
 /** Выровнять загрузку: переносим часть назначений с самых полных серверов. */

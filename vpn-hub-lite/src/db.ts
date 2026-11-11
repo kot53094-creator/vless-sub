@@ -1,12 +1,14 @@
 /** Тонкая обёртка над D1: везде готовые запросы, не больше 50 на вызов. */
 
 import type { Env } from "./types";
+import { tMany, tOne, tursoEnabled } from "./turso";
 
 export async function one<T>(
   env: Env,
   sql: string,
   ...params: unknown[]
 ): Promise<T | null> {
+  if (tursoEnabled(env)) return await tOne<T>(env, sql, ...params);
   return await env.DB.prepare(sql)
     .bind(...params)
     .first<T>();
@@ -17,6 +19,7 @@ export async function many<T>(
   sql: string,
   ...params: unknown[]
 ): Promise<T[]> {
+  if (tursoEnabled(env)) return await tMany<T>(env, sql, ...params);
   const result = await env.DB.prepare(sql)
     .bind(...params)
     .all<T>();

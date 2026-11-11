@@ -229,9 +229,17 @@ export function withLabel(uri: string, label: string): string {
   return `${base}#${encodeURIComponent(label)}`;
 }
 
-/** base64-подписка в формате, который понимает Happ. */
-export function buildSubscription(uris: string[]): string {
-  const raw = uris.join("\n");
+/**
+ * base64-подписка в формате, который понимает Happ.
+ *
+ * Ссылка на профиль маршрутизации кладётся в само тело, а не только в
+ * заголовок `routing`. Заголовок Happ у части версий игнорирует — профиль
+ * тогда просто не появляется. В теле ссылку он разбирает так же, как
+ * присланную вручную, и правило приезжает ко всем автоматически.
+ * Остальные клиенты незнакомую строку с `happ://` пропускают.
+ */
+export function buildSubscription(uris: string[], routing?: string): string {
+  const raw = (routing ? [routing, ...uris] : uris).join("\n");
   const bytes = new TextEncoder().encode(raw);
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);

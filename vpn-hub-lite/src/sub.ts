@@ -31,6 +31,7 @@ import { normalizeVlessLink } from "./normalize";
 import { recordVersion } from "./sub_versions";
 import { recordPresence, snapshot } from "./presence";
 import { routingLink } from "./routing";
+import { appendMergedLinks } from "./merge";
 
 /**
  * Как часто клиент сам перечитывает подписку, часы.
@@ -272,6 +273,82 @@ const POOL_TTL = 3600;
  * поздно получит рабочий список снова.
  */
 const SNAPSHOT_TTL = 7 * 24 * 3600;
+
+/**
+ * Закреплённые узлы — якорь подписки.
+ *
+ * Ссылки заданы вручную и не зависят ни от базы, ни от пула, ни от проверок:
+ * они всегда стоят первыми в любой подписке и остаются в аварийном снимке.
+ * Если такой узел встречается в базе или прямом резерве, оттуда он
+ * выбрасывается — иначе в списке была бы вторая строка с той же парой
+ * host:port, но другой подписью.
+ */
+const PINNED_LINKS: { link: string; label: string }[] = [
+  {
+    link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@pl-users.golu-gulu.online:443?type=grpc&security=reality&sni=pl-users.golu-gulu.online&fp=firefox&pbk=vndjTES0bDFmT7rh4vpP8BVs8-J3TDsA5wVgct8cr20&sid=c4f2e8a16b903d75&serviceName=UserVideo",
+    label: "🇪🇺 Авто-выбор | Обычный VPN",
+  },
+  {
+    link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@pl-users.golu-gulu.online:443?type=grpc&security=reality&sni=pl-users.golu-gulu.online&fp=firefox&pbk=vndjTES0bDFmT7rh4vpP8BVs8-J3TDsA5wVgct8cr20&sid=c4f2e8a16b903d75&serviceName=UserVideo",
+    label: "🇵🇱 Польша",
+  },
+  {
+    link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@nl.golu-gulu.online:443?type=grpc&security=reality&sni=nl.golu-gulu.online&fp=qq&pbk=Nslv-ty-rHpyBL9jFin2qCYINXxdZNCC1P4wb2YJoiM&sid=a2380263612e79db&serviceName=grpc-vk",
+    label: "🇳🇱 Нидерланды",
+  },
+  {
+    link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@fr.golu-gulu.online:443?type=grpc&security=reality&sni=fr.golu-gulu.online&fp=qq&pbk=Nslv-ty-rHpyBL9jFin2qCYINXxdZNCC1P4wb2YJoiM&sid=a2380263612e79db&serviceName=grpc-vk",
+    label: "🇫🇷 Франция",
+  },
+  {
+    link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@ru2.golu-gulu.online:9999?type=tcp&security=reality&flow=xtls-rprx-vision&sni=ru2.golu-gulu.online&fp=firefox&pbk=KGU-UIM6HlNYuaBD5WMTLkG8mqR__mVSxF2smO_lTjw&sid=a2380263612e79db",
+    label: "🇷🇺 Ru-сервисы | Если вы зарубежом",
+  },
+  {
+    link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@ee-users.golu-gulu.online:443?type=grpc&security=reality&sni=ee-users.golu-gulu.online&fp=firefox&pbk=_46X6-C3E-Ks9pzAG4XBBH74uDAAAl0AoshlCbeKU0U&sid=c4f2e8a16b903d75&serviceName=ee-users",
+    label: "🇪🇪 Эстония",
+  },
+  {
+    link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@gr.golu-gulu.online:443?type=tcp&security=reality&flow=xtls-rprx-vision&sni=gr.golu-gulu.online&fp=qq&pbk=KGU-UIM6HlNYuaBD5WMTLkG8mqR__mVSxF2smO_lTjw&sid=a2380263612e79db",
+    label: "🇬🇷 Греция",
+  },
+  {
+    link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@alyt.golu-gulu.online:443?type=tcp&security=reality&flow=xtls-rprx-vision&sni=alyt.golu-gulu.online&fp=firefox&pbk=xkl9goRCVqCwoatSn_svrHkzlcmu7APwhr7XfdC6jTU&sid=a2380263612e79db",
+    label: "🇦🇱 Албания",
+  },
+  {
+    link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@fi.users.golu-gulu.online:443?type=tcp&security=reality&flow=xtls-rprx-vision&sni=fi.users.golu-gulu.online&fp=firefox&pbk=ZPjkqL8oFJ27Oa8ETFfSC_S2EHnGl8TyN5ujzYwMknw&sid=7d19a6e4c2f8305b",
+    label: "🇫🇮 Финляндия",
+  },
+  {
+    link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@jp-ch.users.golu-gulu.online:443?type=grpc&security=reality&sni=jp-ch.users.golu-gulu.online&fp=qq&pbk=ja7ib9JvaB3uUFPYz4X5IEAfl2IcLS694Vmq66waD38&sid=a34f8c1d6e2b9075&serviceName=jp-ch-users",
+    label: "🇯🇵 Япония",
+  },
+];
+
+/** host:port из ссылки — сравнение узлов без учёта подписи. */
+function endpointOfLink(link: string): string {
+  try {
+    const body = link.slice(link.indexOf("://") + 3).split("#")[0];
+    const hostPort = body.split("@").pop()?.split("?")[0] ?? "";
+    return hostPort.replace(/\/+$/, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Ставит якоря в начало и убирает их дубли из остального списка.
+ * Вызывается после прямого резерва, поэтому закреплённые узлы оказываются
+ * самыми первыми и не могут быть вытеснены ни базой, ни проверками.
+ */
+function applyPinnedLinks(uris: string[]): void {
+  const anchored = new Set(PINNED_LINKS.map((pin) => endpointOfLink(pin.link)));
+  for (let i = uris.length - 1; i >= 0; i -= 1) {
+    if (anchored.has(endpointOfLink(uris[i]))) uris.splice(i, 1);
+  }
+  uris.unshift(...PINNED_LINKS.map((pin) => withLabel(cleanLink(pin.link), pin.label)));
+}
 
 /**
  * От старых импортов Astra в базе остались строки с подписью «Премиум сервер»:
@@ -914,9 +991,52 @@ export async function handleSubscription(
     // есть рабочий список серверов; подменить его на «127.0.0.1:1» хуже,
     // чем отдать тот же список ещё раз.
     const rescued = await fallbackBody(env, mode);
-    if (rescued) return plain(env, rescued, null, null);
+    if (rescued) {
+      // JSON-режимы должны оставаться JSON даже в резерве: клиент, который
+      // ждёт конфиг Xray/sing-box, base64-список не разберёт.
+      const presented = rescuePresentation(env, mode, rescued);
+      if (presented) return presented;
+      return plain(env, rescued, null, null);
+    }
     return plain(env, stubBody(overloadText()), null, null);
   }
+}
+
+/** Ссылки из base64-тела подписки. */
+function bodyUris(body: string): string[] {
+  let text = body;
+  try {
+    text = atob(body);
+  } catch {
+    // тело уже текстом
+  }
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /^[a-z0-9]+:\/\//i.test(line));
+}
+
+/**
+ * Резервный JSON для режимов auto/sb. Без этого при сбое базы клиент
+ * получает base64-список и не показывает «Автоматический выбор».
+ */
+function rescuePresentation(
+  env: Env,
+  mode: SubMode,
+  body: string,
+): Response | null {
+  if (mode !== "auto" && mode !== "sb") return null;
+  const uris = bodyUris(body);
+  if (uris.length === 0) return null;
+  // Xray-JSON умеет только VLESS: если в резерве одни Hysteria2, честнее
+  // отдать список ссылок, чем конфиг без единого прокси.
+  if (mode === "auto" && !uris.some((uri) => /^vless:\/\//i.test(uri))) return null;
+  const config =
+    mode === "sb"
+      ? buildSingBoxConfig(uris, uris.length)
+      : buildAutoConfig(uris, uris.length);
+  if (!config) return null;
+  return autoResponse(env, config, null, null);
 }
 
 /**
@@ -994,7 +1114,14 @@ async function cleanFallback(env: Env, body: string): Promise<string> {
     // без резерва снимок всё равно лучше заглушки
   }
 
-  return btoa(lines.join("\n") + "\n");
+  // Якоря нужны и в аварийном снимке: он мог быть записан до того, как
+  // ссылки закрепили, и без этого человек при сбое их не увидит.
+  const anchored = new Set(PINNED_LINKS.map((pin) => endpointOfLink(pin.link)));
+  return btoa(
+    PINNED_LINKS.map((pin) => withLabel(cleanLink(pin.link), pin.label))
+      .concat(lines.filter((line) => !anchored.has(endpointOfLink(line))))
+      .join("\n") + "\n",
+  );
 }
 
 /**
@@ -1113,7 +1240,7 @@ async function serveSubscription(
   // до смены эпохи (15 минут), и мёртвый узел, уже найденный проверкой,
   // продолжал висеть у человека в списке.
   const poolStamp = cacheable ? ((await env.CACHE.get("pool:stamp")) ?? "0") : "0";
-  const cacheKey = `sub:v99:${mode}:${epoch}:${poolStamp}:${token}`;
+  const cacheKey = `sub:v100:${mode}:${epoch}:${poolStamp}:${token}`;
   const cached = cacheable ? await env.CACHE.get(cacheKey) : null;
   if (cached) {
     const parsed = JSON.parse(cached) as { body: string };
@@ -1513,6 +1640,18 @@ async function serveSubscription(
   // квоте базы — именно тогда люди и остаются без рабочих серверов.
   await appendDirectLinks(env, uris);
 
+  // Импортированные внешние подписки — после прямого резерва и до якорей:
+  // якоря обязаны остаться первыми, а узлы источников не должны вытеснять
+  // проверенный резерв. Дубли по host:port отбрасываются внутри функции.
+  try {
+    await appendMergedLinks(env, uris);
+  } catch {
+    // без импорта подписка всё равно собирается
+  }
+
+  // Якоря — после резерва: в любой подписке они обязаны быть первыми.
+  applyPinnedLinks(uris);
+
   // Пустой список не отправляем, пока есть резерв: заглушка выбивает из
   // клиента рабочие узлы, и человек остаётся без VPN при живых серверах
   // в базе (просто непроверенных в эту минуту).
@@ -1525,7 +1664,7 @@ async function serveSubscription(
   if (mode === "sb" && uris.length > 0) {
     return autoResponse(
       env,
-      buildSingBoxConfig(uris, 25),
+      buildSingBoxConfig(uris, uris.length),
       user ? await buildUserinfo(env, user) : null,
       user,
     );
@@ -1534,7 +1673,7 @@ async function serveSubscription(
   if (mode === "auto" && uris.length > 0) {
     return autoResponse(
       env,
-      buildAutoConfig(uris, 25),
+      buildAutoConfig(uris, uris.length),
       user ? await buildUserinfo(env, user) : null,
       user,
     );

@@ -1,9 +1,9 @@
 ﻿/**
- * РђРІС‚РѕСѓРІРµРґРѕРјР»РµРЅРёСЏ: СЃСЂРѕРє РїРѕРґРїРёСЃРєРё, РІРѕР·РІСЂР°С‚ РїРѕСЃР»Рµ РёСЃС‚РµС‡РµРЅРёСЏ.
+ * Автоуведомления: срок подписки, возврат после истечения.
  *
- * Р–РёРІС‘С‚ РІРЅСѓС‚СЂРё РїРѕР»СѓС‡Р°СЃРѕРІРѕРіРѕ cron. Р”РµРґСѓРїР»РёРєР°С†РёСЏ вЂ” С‚Р°Р±Р»РёС†Р° notify_log СЃ РїРµСЂРІРёС‡РЅС‹Рј
- * РєР»СЋС‡РѕРј (user_id, kind, period): РѕРґРЅР° Рё С‚Р° Р¶Рµ РЅРѕРІРѕСЃС‚СЊ РЅРµ СѓС…РѕРґРёС‚ РґРІР°Р¶РґС‹,
- * РґР°Р¶Рµ РµСЃР»Рё cron РѕС‚СЂР°Р±РѕС‚Р°Р» РЅРµСЃРєРѕР»СЊРєРѕ СЂР°Р·.
+ * Живёт внутри получасового cron. Дедупликация — таблица notify_log с первичным
+ * ключом (user_id, kind, period): одна и та же новость не уходит дважды,
+ * даже если cron отработал несколько раз.
  */
 
 import { logEvent, many, run } from "./db";
@@ -14,8 +14,8 @@ import { escapeHtml, sendToAdmin } from "./bot/telegram";
 import { mskDate, parseTs, plural } from "./promotions";
 import type { Env, UserRow } from "./types";
 
-// Р”РµСЂР¶РёРј Р·Р°РїР°СЃ РїРѕ Р»РёРјРёС‚Сѓ Р±РµСЃРїР»Р°С‚РЅРѕРіРѕ РїР»Р°РЅР°: 50 РїРѕРґР·Р°РїСЂРѕСЃРѕРІ РЅР° РёРЅРІРѕРєР°С†РёСЋ,
-// РёР· РЅРёС… С‡Р°СЃС‚СЊ СѓР¶Рµ СЃСЉРµРґР°РµС‚ РїСЂРѕРІРµСЂРєР° СЃРµСЂРІРµСЂРѕРІ РІ С‚РѕРј Р¶Рµ С‚РёРєРµ cron.
+// Держим запас по лимиту бесплатного плана: 50 подзапросов на инвокацию,
+// из них часть уже съедает проверка серверов в том же тике cron.
 const MAX_SENDS = 8;
 
 async function claimLog(env: Env, userId: number, kind: string, period: string): Promise<boolean> {
@@ -32,15 +32,15 @@ async function claimLog(env: Env, userId: number, kind: string, period: string):
 function expiryText(user: UserRow, days: number): string {
   if (days <= 0) {
     return (
-      `<b>РџРѕРґРїРёСЃРєР° Р·Р°РєРѕРЅС‡РёР»Р°СЃСЊ</b>\n` +
-      `Р”РѕСЃС‚СѓРї Рє СЃРµСЂРІРµСЂР°Рј РїСЂРёРѕСЃС‚Р°РЅРѕРІР»РµРЅ.\n\n` +
-      `Р—Р°Р±РµСЂРёС‚Рµ Р±РѕРЅСѓСЃ РґРЅСЏ РёР»Рё РїСЂРѕРґР»РёС‚Рµ Сѓ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР°.`
+      `<b>Подписка закончилась</b>\n` +
+      `Доступ к серверам приостановлен.\n\n` +
+      `Заберите бонус дня или продлите у администратора.`
     );
   }
   return (
-    `<b>РџРѕРґРїРёСЃРєР° Р·Р°РєР°РЅС‡РёРІР°РµС‚СЃСЏ</b>\n` +
-    `РћСЃС‚Р°Р»РѕСЃСЊ ${days} ${plural(days, "РґРµРЅСЊ", "РґРЅСЏ", "РґРЅРµР№")}.\n\n` +
-    `РџСЂРѕРґР»РёС‚Рµ Р·Р°СЂР°РЅРµРµ, С‡С‚РѕР±С‹ VPN РЅРµ РѕС‚РєР»СЋС‡РёР»СЃСЏ.`
+    `<b>Подписка заканчивается</b>\n` +
+    `Осталось ${days} ${plural(days, "день", "дня", "дней")}.\n\n` +
+    `Продлите заранее, чтобы VPN не отключился.`
   );
 }
 
@@ -89,9 +89,9 @@ export async function runNotifications(env: Env): Promise<{ sent: number; squads
       kind = "comeback";
       period = mskDate(ts);
       text =
-        `<b>Р’РѕР·РІСЂР°С‰Р°Р№С‚РµСЃСЊ</b>\n` +
-        `РџРѕРґРїРёСЃРєР° Р·Р°РєРѕРЅС‡РёР»Р°СЃСЊ ${overdueDays} ${plural(overdueDays, "РґРµРЅСЊ", "РґРЅСЏ", "РґРЅРµР№")} РЅР°Р·Р°Рґ.\n` +
-        `Р—Р°Р±РµСЂРёС‚Рµ Р±РѕРЅСѓСЃ РґРЅСЏ вЂ” Рё РґРѕСЃС‚СѓРї РІРµСЂРЅС‘С‚СЃСЏ.`;
+        `<b>Возвращайтесь</b>\n` +
+        `Подписка закончилась ${overdueDays} ${plural(overdueDays, "день", "дня", "дней")} назад.\n` +
+        `Заберите бонус дня — и доступ вернётся.`;
     }
 
     if (!kind) continue;
@@ -99,7 +99,7 @@ export async function runNotifications(env: Env): Promise<{ sent: number; squads
 
     const delivered = await sendBanner(env, user.tg_id, "expiring", text, expiringKeyboard());
     if (!delivered) {
-      // РќРµ СЃРјРѕРіР»Рё РґРѕСЃС‚Р°РІРёС‚СЊ вЂ” СЃРЅРёРјР°РµРј РѕС‚РјРµС‚РєСѓ, РїРѕРїСЂРѕР±СѓРµРј РІ СЃР»РµРґСѓСЋС‰РёР№ СЂР°Р·.
+      // Не смогли доставить — снимаем отметку, попробуем в следующий раз.
       await run(
         env,
         "DELETE FROM notify_log WHERE user_id = ? AND kind = ? AND period = ?",
@@ -112,11 +112,11 @@ export async function runNotifications(env: Env): Promise<{ sent: number; squads
     sent += 1;
   }
 
-  if (sent > 0) await logEvent(env, "notify", null, `РѕС‚РїСЂР°РІР»РµРЅРѕ СѓРІРµРґРѕРјР»РµРЅРёР№: ${sent}`);
+  if (sent > 0) await logEvent(env, "notify", null, `отправлено уведомлений: ${sent}`);
   return { sent, squads };
 }
 
-/** РЈС‚СЂРµРЅРЅСЏСЏ СЃРІРѕРґРєР° Р°РґРјРёРЅСѓ: РєС‚Рѕ РЅР° РёСЃС…РѕРґРµ, СЃРєРѕР»СЊРєРѕ РЅР°С‡РёСЃР»РµРЅРёР№ Р·Р° СЃСѓС‚РєРё. */
+/** Утренняя сводка админу: кто на исходе, сколько начислений за сутки. */
 export async function dailyDigest(env: Env): Promise<void> {
   const expiring = await many<{ tg_id: string; expires_at: string }>(
     env,
@@ -125,13 +125,13 @@ export async function dailyDigest(env: Env): Promise<void> {
         AND expires_at <= datetime('now', '+3 days') ORDER BY expires_at LIMIT 20`,
   );
   const lines = expiring.map(
-    (row) => `${escapeHtml(row.tg_id)} вЂ” РґРѕ ${row.expires_at.slice(0, 10)}`,
+    (row) => `${escapeHtml(row.tg_id)} — до ${row.expires_at.slice(0, 10)}`,
   );
   await sendToAdmin(
     env,
-    `<b>РЎРІРѕРґРєР°</b>\n` +
-      `Р—Р°РєР°РЅС‡РёРІР°СЋС‚СЃСЏ: ${expiring.length}\n` +
-      (lines.length ? lines.join("\n") : "РЅРёРєС‚Рѕ"),
+    `<b>Сводка</b>\n` +
+      `Заканчиваются: ${expiring.length}\n` +
+      (lines.length ? lines.join("\n") : "никто"),
   );
 }
 

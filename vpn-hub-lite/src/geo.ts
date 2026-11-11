@@ -33,21 +33,40 @@ function isIpv4(value: string): boolean {
 export async function fillGeo(env: Env, limit = MAX_PER_RUN): Promise<number> {
   const limitValue = Math.max(1, Math.min(MAX_PER_RUN, limit));
 
-  const rows = await many<{ id: number; host: string; country_code: string | null }>(
+  // Домен сам по себе для ip-api бесполезен, но у узла есть измеренный
+  // выходной IP (exit_ip) — именно он определяет страну. Поэтому сначала
+  // берём exit_ip, и только если его нет — литеральный IP из host.
+  const rows = await many<{
+    id: number;
+    host: string;
+    exit_ip: string | null;
+    country_code: string | null;
+  }>(
     env,
-    `SELECT id, host, country_code FROM servers
-      WHERE country_code IS NULL AND host <> ''
-      ORDER BY (status = 'alive') DESC, id
+    `SELECT id, host, exit_ip, country_code FROM servers
+      WHERE (country_code IS NULL
+             OR (country_code = '' AND exit_ip IS NOT NULL AND exit_ip <> ''))
+        AND host <> ''
+      ORDER BY (exit_ip IS NOT NULL) DESC, (status = 'alive') DESC, id
       LIMIT ?`,
     limitValue,
   );
   if (!rows.length) return 0;
 
-  const targets = rows.filter((row) => isIpv4(row.host));
+  const ipOf = (row: { host: string; exit_ip: string | null }): string | null => {
+    const exit = (row.exit_ip ?? "").trim();
+    if (isIpv4(exit)) return exit;
+    return isIpv4(row.host) ? row.host : null;
+  };
 
-  // Домены сюда не попадают: ip-api работает только с IP. Помечаем их
-  // пустой строкой, чтобы не выбирать заново каждый прогон.
-  const skipped = rows.filter((row) => !isIpv4(row.host));
+  const targets = rows
+    .map((row) => ({ id: row.id, ip: ipOf(row) }))
+    .filter((row): row is { id: number; ip: string } => Boolean(row.ip));
+
+  // Ни exit_ip, ни литерального адреса — запоминаем пустой строкой, чтобы
+  // не занимать очередь каждый прогон. Когда появится exit_ip, условие
+  // выборки вернёт такую строку обратно.
+  const skipped = rows.filter((row) => !ipOf(row));
   if (skipped.length) {
     await env.DB.batch(
       skipped.map((row) =>
@@ -63,7 +82,7 @@ export async function fillGeo(env: Env, limit = MAX_PER_RUN): Promise<number> {
     const response = await fetch(ENDPOINT, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(targets.map((row) => row.host)),
+      body: JSON.stringify(targets.map((row) => row.ip)),
       signal: AbortSignal.timeout(8000),
     });
     if (!response.ok) throw new Error(`geo http ${response.status}`);
@@ -83,7 +102,7 @@ export async function fillGeo(env: Env, limit = MAX_PER_RUN): Promise<number> {
   let updated = 0;
 
   for (const server of targets) {
-    const item = byHost.get(server.host);
+    const item = byHost.get(server.ip);
     if (!item) continue;
     if (item.status !== "success" || !item.countryCode) {
       statements.push(

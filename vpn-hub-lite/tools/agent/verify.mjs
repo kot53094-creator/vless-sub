@@ -112,6 +112,14 @@ function parseVless(uri) {
     sni,
     fp,
     flow: q.get("flow") ?? "",
+    // Транспорт нужен всем типам маскировки, не только TLS: узлы внешних
+    // подписок — это REALITY поверх XHTTP, и без path/mode/extra проверка
+    // поднимала бы заведомо нерабочий туннель.
+    path: q.get("path") ?? "/",
+    hostHeader,
+    mode: q.get("mode") ?? "",
+    serviceName: q.get("serviceName") ?? q.get("service") ?? "",
+    extra: q.get("extra") ?? "",
   };
 
   if (security === "reality") {
@@ -129,8 +137,6 @@ function parseVless(uri) {
     return {
       ...base,
       sni: sni || hostHeader,
-      hostHeader,
-      path: q.get("path") ?? "/",
       // gRPC без HTTP/2 не поднимается вовсе, а XHTTP в РФ обычно идёт
       // по h2 с откатом на http/1.1. Если клиент не указал ALPN — ставим сами.
       alpn:
@@ -140,8 +146,6 @@ function parseVless(uri) {
           : network === "xhttp" || network === "splithttp"
             ? "h2,http/1.1"
             : ""),
-      serviceName: q.get("serviceName") ?? q.get("service") ?? "",
-      mode: q.get("mode") ?? "",
     };
   }
 
@@ -160,10 +164,22 @@ function buildConfig(p, port) {
     stream.grpcSettings = { serviceName: p.serviceName || "" };
   }
   if (net === "xhttp") {
+    // extra — xmux/паддинг из панели: без него часть серверов принимает
+    // соединение и молча не пропускает данные.
+    let extra = null;
+    if (p.extra) {
+      try {
+        const parsed = JSON.parse(p.extra);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) extra = parsed;
+      } catch {
+        extra = null;
+      }
+    }
     stream.xhttpSettings = {
       path: p.path || "/",
       ...(p.hostHeader ? { host: p.hostHeader } : {}),
       ...(p.mode ? { mode: p.mode } : {}),
+      ...(extra ? { extra } : {}),
     };
   }
   if (p.network === "ws") {
@@ -388,8 +404,25 @@ const queueUrl = CHECK_ID
 // HTTPS к Worker из Node не проходит (DPI режет TLS-отпечаток Node): очередь
 // тогда забирает curl, а сюда она приходит файлом.
 const NODES_FILE = process.env.NODES_FILE ?? "";
+// MERGE=1 — проверяем не пул из D1, а объединённые внешние подписки из KV.
+// Формат ответа другой (/api/merge/pool), поэтому ветка отдельная.
+const MERGE = process.env.MERGE === "1";
 let queue = [];
-if (NODES_FILE) {
+if (MERGE) {
+  const poolUrl = `${BASE}/api/merge/pool`;
+  const viaCurl = httpJson(poolUrl);
+  if (viaCurl && viaCurl.status === 200) {
+    queue = (JSON.parse(viaCurl.text).nodes ?? []).map((node) => ({ id: node.id, link: node.link }));
+  } else {
+    const response = await fetch(poolUrl, { headers: { "x-check-token": TOKEN } });
+    if (!response.ok) {
+      console.error("список узлов не получен:", response.status);
+      process.exit(1);
+    }
+    queue = ((await response.json()).nodes ?? []).map((node) => ({ id: node.id, link: node.link }));
+  }
+  console.log(`в объединённом списке: ${queue.length}`);
+} else if (NODES_FILE) {
   queue = JSON.parse(readFileSync(NODES_FILE, "utf8"));
   console.log(`в очереди (файл): ${queue.length}`);
 } else {
@@ -533,24 +566,52 @@ if (RESULTS_FILE) {
 // пустом RESULTS_FILE условие всегда истинно — цикл бесконечно отправлял
 // пустые пачки, воркер отвечал updated:0, а настоящие результаты так и не
 // доходили. Именно из-за этого пул оставался без свежих проверок.
-const sendCount = RESULTS_FILE ? 0 : results.length;
-for (let i = 0; i < sendCount; i += 20) {
-  const chunk = results.slice(i, i + 20);
-  const body = JSON.stringify({ results: chunk, region: (process.env.REGION || "").trim() });
-  const viaCurl = httpJson(`${BASE}/api/checks`, { method: "POST", body });
+const RESULT_COUNT = results.length;
+if (MERGE) {
+  // Объединённый список живёт в KV, а не в D1: у него свой приёмник.
+  // soft-провал (xhttp/grpc через CDN) не превращаем в «мёртв» — иначе
+  // рабочий узел исчезнет из подписки из-за ограничения пробника.
+  const payload = results.map((item) => ({
+    id: item.id,
+    ok: item.ok,
+    latencyMs: item.latency,
+    soft: item.soft,
+  }));
+  const body = JSON.stringify({ results: payload });
+  const viaCurl = httpJson(`${BASE}/api/merge/results`, { method: "POST", body });
   if (viaCurl) {
-    console.log(`отправлено ${i + chunk.length}/${results.length}:`, viaCurl.status, viaCurl.text);
+    console.log("результаты объединённого списка:", viaCurl.status, viaCurl.text);
   } else {
-    const posted = await fetch(`${BASE}/api/checks`, {
+    const posted = await fetch(`${BASE}/api/merge/results`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-check-token": TOKEN },
       body,
     });
-    console.log(
-      `отправлено ${i + chunk.length}/${results.length}:`,
-      posted.status,
-      await posted.text(),
-    );
+    console.log("результаты объединённого списка:", posted.status, await posted.text());
+  }
+  for (const child of running) killChild(child);
+  running.clear();
+  const done = setTimeout(() => process.exit(0), 3000);
+  done.unref();
+} else {
+  for (let i = 0; i < RESULT_COUNT; i += 20) {
+    const chunk = results.slice(i, i + 20);
+    const body = JSON.stringify({ results: chunk, region: (process.env.REGION || "").trim() });
+    const viaCurl = httpJson(`${BASE}/api/checks`, { method: "POST", body });
+    if (viaCurl) {
+      console.log(`отправлено ${i + chunk.length}/${results.length}:`, viaCurl.status, viaCurl.text);
+    } else {
+      const posted = await fetch(`${BASE}/api/checks`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-check-token": TOKEN },
+        body,
+      });
+      console.log(
+        `отправлено ${i + chunk.length}/${results.length}:`,
+        posted.status,
+        await posted.text(),
+      );
+    }
   }
 }
 

@@ -3,28 +3,72 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Вход · VPN Hub</title>
+<title>Вход · VPN Hub PRO</title>
 <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&family=Unbounded:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/app.css">
+<link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
-<body>
-<main class="content" style="max-width:420px;margin:12vh auto">
-  <div class="card">
-    <div class="brand" style="font-family:var(--f-head);font-size:22px;margin-bottom:4px">VPN <span style="color:var(--signal)">Hub</span></div>
-    <p class="muted">Вход в панель. Пароль — из файла .env.</p>
-    {% if error %}<div class="card tight" style="border-color:var(--danger);color:var(--danger)">{{ error }}</div>{% endif %}
+<body class="login-page">
+<main class="content" style="max-width:440px;margin:15vh auto">
+  <div class="card premium-card">
+    <div class="brand" style="font-family:var(--f-head);font-size:28px;margin-bottom:8px;text-align:center">VPN <span>Hub PRO</span></div>
+    <p class="muted" style="text-align:center;margin-bottom:24px">Доступ к вашей персональной сети безопасности</p>
+    
+    {% if error %}
+      <div class="card tight" style="border-color:var(--danger);color:var(--danger);background:rgba(255,107,107,0.1);margin-bottom:16px">
+        {{ error }}
+      </div>
+    {% endif %}
+    
     <form method="post" action="/login">
-      <label class="muted" for="username">Логин</label>
-      <input id="username" name="username" autocomplete="username" autofocus>
-      <label class="muted" for="password" style="display:block;margin-top:12px">Пароль</label>
-      <input id="password" name="password" type="password" autocomplete="current-password">
+      <div class="input-group">
+        <label class="muted" for="username">Имя пользователя</label>
+        <input id="username" name="username" autocomplete="username" placeholder="admin" autofocus>
+      </div>
+      
+      <div class="input-group" style="margin-top:16px">
+        <label class="muted" for="password">Мастер-пароль</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" placeholder="••••••••">
+      </div>
+      
       {% if totp %}
-        <label class="muted" for="totp" style="display:block;margin-top:12px">Код из приложения</label>
-        <input id="totp" name="totp" inputmode="numeric" autocomplete="one-time-code" maxlength="7">
+        <div class="input-group" style="margin-top:16px">
+          <label class="muted" for="totp">2FA Код подтверждения</label>
+          <input id="totp" name="totp" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="000000">
+        </div>
       {% endif %}
-      <button class="btn" type="submit" style="width:100%;margin-top:16px">Войти</button>
+      
+      <button class="btn glow" type="submit" style="width:100%;margin-top:24px;height:54px;font-size:18px">
+        Авторизоваться
+      </button>
     </form>
+    
+    <div style="margin-top:24px;text-align:center;font-size:13px" class="muted">
+      Забыли пароль? Проверьте ваш <code>.env</code> файл на сервере.
+    </div>
   </div>
 </main>
+
+<style>
+.login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.input-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.btn.glow {
+  background: linear-gradient(90deg, var(--signal), #7C8CFF);
+  box-shadow: 0 0 15px rgba(79, 227, 193, 0.4);
+  color: #08211C;
+}
+.btn.glow:hover {
+  box-shadow: 0 0 25px rgba(79, 227, 193, 0.6);
+  transform: translateY(-1px);
+}
+</style>
 </body>
 </html>

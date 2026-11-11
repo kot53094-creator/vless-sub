@@ -15,10 +15,14 @@
 <body>
 <div class="app">
   <aside class="sidebar">
-    <div class="brand">VPN <span>Hub</span></div>
+    <div class="brand">VPN <span>Hub PRO</span></div>
     <a class="nav-link {{ 'active' if active == 'home' }}" href="/">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h7l2-6 3 12 2-6h4"/></svg>
-      Главная
+      Дашборд
+    </a>
+    <a class="nav-link {{ 'active' if active == 'servers' }}" href="/servers">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+      Серверы
     </a>
     <a class="nav-link {{ 'active' if active == 'sources' }}" href="/#sources">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="5" rx="2"/><rect x="3" y="14" width="18" height="5" rx="2"/></svg>
@@ -54,17 +58,17 @@
 </div>
 
 <nav class="bottom-nav">
-  <a href="/" class="active">
+  <a href="/" class="{{ 'active' if active == 'home' }}">
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h7l2-6 3 12 2-6h4"/></svg>
-    Главная
+    Инфо
   </a>
-  <a href="/#sources">
+  <a href="/servers" class="{{ 'active' if active == 'servers' }}">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+    Локации
+  </a>
+  <a href="/#sources" class="{{ 'active' if active == 'sources' }}">
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="5" rx="2"/><rect x="3" y="14" width="18" height="5" rx="2"/></svg>
-    Источники
-  </a>
-  <a href="{% if people_enabled %}/people{% else %}/#help{% endif %}">
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5"/></svg>
-    Люди
+    База
   </a>
   <a href="/#more">
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>

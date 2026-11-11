@@ -332,3 +332,21 @@ def people(request: Request):
         return templates.TemplateResponse("people_off.html", {"request": request,
                                                               "warnings": settings.warnings()})
     return templates.TemplateResponse("people.html", {"request": request})
+    
+    
+@router.get("/servers", response_class=HTMLResponse)
+def servers_page(request: Request, db: Session = Depends(get_db)):
+    if not security.current_user(request):
+        return RedirectResponse("/login", status_code=303)
+    
+    from ..models import NodeKey
+    keys = db.execute(select(NodeKey).order_by(NodeKey.latency_ms.asc())).scalars().all()
+    
+    # Группируем по странам (упрощенно по ремарку или хосту)
+    # В идеале тут нужен GeoIP, но для начала можно просто список.
+    
+    return templates.TemplateResponse("servers.html", {
+        "request": request,
+        "keys": keys,
+        "csrf": security.csrf_token(request),
+    })
