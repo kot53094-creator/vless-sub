@@ -1,8 +1,13 @@
 /** Сравнивает то, что отдаёт подписка, с исходными конфигами из источника. */
 import { readFileSync } from "node:fs";
 
-const subUrl =
-  "https://vpn-hub-lite.twistx-launcher.workers.dev/sub/REDACTED_SUB_TOKEN";
+// Ссылка подписки содержит личный токен. В репозитории её быть не должно:
+// передаём через окружение, чтобы скрипт не работал с зашитым секретом.
+const subUrl = process.env.SUB_URL;
+if (!subUrl) {
+  console.error("Задайте SUB_URL — полную ссылку подписки — в окружении.");
+  process.exit(1);
+}
 
 const response = await fetch(subUrl, { headers: { "user-agent": "Happ/2.7.1 (iPhone; iOS 18.2)" } });
 const body = (await response.text()).trim();

@@ -1,6 +1,10 @@
 /** Показывает, как выглядит подписка глазами Happ: порядок и подписи. */
-const url =
-  "https://vpn-hub-lite.twistx-launcher.workers.dev/sub/REDACTED_SUB_TOKEN";
+// Ссылка подписки содержит личный токен — только из окружения, не из кода.
+const url = process.env.SUB_URL;
+if (!url) {
+  console.error("Задайте SUB_URL — полную ссылку подписки — в окружении.");
+  process.exit(1);
+}
 
 const response = await fetch(url, { headers: { "user-agent": "Happ/2.7.1 (iPhone; iOS 18.2)" } });
 const body = (await response.text()).trim();
