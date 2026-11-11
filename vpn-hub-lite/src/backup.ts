@@ -32,8 +32,19 @@ const TABLES = [
   "user_pools",
   "user_sources",
   "assignments",
+  "plans",
+  "payments",
   "promos",
+  "promo_uses",
   "accruals",
+  "daily_claims",
+  "referrals",
+  "invites",
+  "user_devices",
+  "user_squads",
+  "sub_versions",
+  "banners",
+  "notify_log",
 ];
 
 export interface BackupResult {
@@ -81,7 +92,7 @@ export async function runBackup(env: Env, force = false): Promise<BackupResult> 
   form.append(
     "caption",
     `Бэкап базы · ${day}\nстрок: ${rows} · ${(bytes / 1024).toFixed(0)} КБ\n` +
-      `восстановление: wrangler d1 execute vpn-hub-lite --remote --file <файл>`,
+      `восстановление: node tools/restore-backup.mjs <файл> --apply`,
   );
   form.append(
     "document",

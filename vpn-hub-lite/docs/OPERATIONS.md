@@ -126,22 +126,66 @@ jobs:
 
 ## 4. Резервное копирование
 
+Два независимых механизма.
+
+**Ежедневный JSON в Telegram.** Крон собирает дамп внутри Worker и присылает
+документ админу — это хранилище не зависит от Cloudflare:
+
 ```bash
-npx wrangler d1 export vpn-hub-lite --remote --output backup-2026-10-23.sql
+curl -s -X POST https://vpn-hub-lite.twistx-launcher.workers.dev/api/backup \
+  -H "x-check-token: $CHECK_TOKEN"
 ```
 
-Что важно хранить кроме базы: `wrangler.toml`, список секретов (сами значения
-— в менеджере паролей), этот репозиторий.
+В дамп входят пользователи, серверы, источники, назначения, тарифы, платежи,
+промокоды, начисления, устройства и версии подписок. Журналы (`events`,
+`server_checks`, `import_runs`, `fetch_log`) не входят — они не нужны для
+восстановления доступа.
 
-Восстановление в новую базу:
+**SQL-дамп по требованию** (полная копия, включая служебные таблицы):
+
+```bash
+npm run db:export          # backups/vpn-hub-export.sql
+npm run db:export:schema   # backups/schema.sql — только DDL
+```
+
+Каталог `backups/` в `.gitignore`: в файлах есть токены подписок и ссылки
+источников.
+
+### Восстановление из JSON
+
+```bash
+node tools/restore-backup.mjs vpn-hub-backup-2026-11-11.json
+node tools/restore-backup.mjs vpn-hub-backup-2026-11-11.json --apply
+```
+
+Первая команда только собирает SQL (`backups/restore-<дата>.sql`), вторая —
+сразу применяет его к D1. Переменные: `D1_NAME` (по умолчанию `vpn-hub-lite`),
+`RESTORE_OUT` (путь к SQL). Скрипт использует `INSERT OR REPLACE` и не удаляет
+строки, которых не было в дампе; лучше восстанавливать в пустую базу.
+
+### Восстановление из SQL в новую базу
 
 ```bash
 npx wrangler d1 create vpn-hub-lite-restore
-npx wrangler d1 execute vpn-hub-lite-restore --remote --file backup-2026-10-23.sql
+npx wrangler d1 execute vpn-hub-lite-restore --remote --file backups/vpn-hub-export.sql
 ```
 
 Дополнительно у D1 есть Time Travel: точка восстановления на любой момент за
 последние 7 дней (бесплатный план), доступна в панели Cloudflare.
+
+### Резервная база Turso
+
+Если D1 упирается в суточную квоту, включается Turso/libSQL:
+
+```bash
+npx wrangler secret put TURSO_URL
+npx wrangler secret put TURSO_TOKEN
+npx wrangler deploy
+```
+
+При заданных обоих секретах **и чтение, и запись** идут в Turso. Подробный
+порядок: создание базы, схема, перенос данных, миграции и откат — в
+[MIGRATION.md](MIGRATION.md).
 
 ## 5. Регламентные операции
 
@@ -151,8 +195,10 @@ npx wrangler d1 execute vpn-hub-lite-restore --remote --file backup-2026-10-23.s
 | Проверка портов | cron `*/20 * * * *` | 20 минут |
 | Проверка туннеля | агент `.github/workflows/verify.yml` | 30 минут |
 | Закрытие просроченных | cron + кнопка «Закрыть просроченные» | 20 минут |
+| Бэкап в Telegram | cron или `POST /api/backup` | раз в сутки |
 | Чистка `events` | вручную SQL | по мере роста |
-| Экспорт базы | `wrangler d1 export` | раз в неделю |
+| SQL-дамп базы | `npm run db:export` | раз в неделю |
+| Проверка восстановления | `tools/restore-backup.mjs` в тестовую базу | раз в месяц |
 
 ## 6. Админ-панель
 
@@ -193,7 +239,10 @@ npx wrangler d1 execute vpn-hub-lite-restore --remote --file backup-2026-10-23.s
 | В импорте много «security не reality» | источник отдаёт TLS/WS | это ожидаемо: в выдачу идут только REALITY |
 | Ошибка 1102 | превышен CPU 10 мс | уменьшить `MAX_KEYS`, число источников за прогон |
 | Ошибка 1027 | суточный лимит запросов | поднять `SUB_CACHE_TTL`, дождаться 00:00 UTC |
-| Ошибки D1 «daily limit» | исчерпаны строки чтения/записи | снизить частоту проверок, почистить `events` |
+| D1: `code: 7500` | исчерпан суточный лимит строк чтения | `/sub` живёт на KV; админка и экспорт — после 00:00 UTC или включить Turso |
+| D1: ошибки записи | исчерпан лимит строк записи | снизить частоту проверок, почистить `events`/`import_runs` |
+| Turso: `invalid location` | регион недоступен на тарифе | выбрать другой регион в `turso db locations` |
+| Turso: `turso http 401` | неверный или отозванный токен | создать новый `turso db tokens create` |
 | Агент: `xray не запустился` | неверный путь к бинарнику | передать полный путь к `xray`/`xray.exe` |
 | Агент: все `fail` | узлы недоступны из вашей сети | это реальный результат; часть узлов в РФ не работает |
 
@@ -202,7 +251,9 @@ npx wrangler d1 execute vpn-hub-lite-restore --remote --file backup-2026-10-23.s
 1. `npm run typecheck` — без ошибок.
 2. `npm test` — все тесты зелёные.
 3. `npx wrangler d1 migrations apply ... --remote`.
-4. `npx wrangler deploy`.
+4. `npx wrangler deploy` и `npm run deploy:apelsinka` (если зеркало включено).
 5. `GET /api/v1/status` → `ok: true`.
 6. `GET /api/v1/servers` → нет полей `link`, `host`, `port`.
 7. `GET /sub/<свой токен>` → Base64, заголовок `subscription-userinfo` с ненулевым `expire`.
+8. `POST /api/backup` → документ приходит в Telegram.
+9. `node tools/restore-backup.mjs <дамп>` → SQL собирается без ошибок.

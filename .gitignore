@@ -64,3 +64,7 @@ vpn-hub-lite/tools/agent/*.log
 vpn-hub-lite/tools/agent/checks.log
 vpn-hub-lite/tools/agent/links-test.txt
 vpn-hub-lite/tools/agent/nodes.json
+
+# Дампы базы: содержат токены подписок и ссылки источников
+backups/
+vpn-hub-lite/backups/

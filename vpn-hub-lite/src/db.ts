@@ -1,7 +1,20 @@
-/** Тонкая обёртка над D1: везде готовые запросы, не больше 50 на вызов. */
+/**
+ * Тонкая обёртка над базой: везде готовые запросы, не больше 50 на вызов.
+ *
+ * По умолчанию работает D1. Если заданы TURSO_URL и TURSO_TOKEN, ВСЕ
+ * операции (чтение и запись) идут в Turso/libSQL: иначе записи остались бы
+ * в D1, а чтения ушли в Turso, и данные разошлись бы. Переключение — это
+ * пара секретов, код менять не нужно (см. docs/MIGRATION.md).
+ */
 
 import type { Env } from "./types";
-import { tMany, tOne, tursoEnabled } from "./turso";
+import { tBatch, tMany, tOne, tRun, tursoEnabled } from "./turso";
+
+/** Переносимое выражение: одинаково исполняется и в D1, и в Turso. */
+export interface SqlStatement {
+  sql: string;
+  params: unknown[];
+}
 
 export async function one<T>(
   env: Env,
@@ -31,27 +44,32 @@ export async function run(
   sql: string,
   ...params: unknown[]
 ): Promise<D1Result> {
+  if (tursoEnabled(env)) {
+    await tRun(env, sql, ...params);
+    // Вызывающие проверяют только успешность; meta у Turso не нужна.
+    return { success: true, meta: {} } as unknown as D1Result;
+  }
   return await env.DB.prepare(sql)
     .bind(...params)
     .run();
 }
 
-export function prepare(
-  env: Env,
-  sql: string,
-  ...params: unknown[]
-): D1PreparedStatement {
-  return env.DB.prepare(sql).bind(...params);
-}
-
 /** Батч экономит квоту: один вызов вместо N. */
 export async function batch(
   env: Env,
-  statements: D1PreparedStatement[],
+  statements: SqlStatement[],
 ): Promise<void> {
   if (!statements.length) return;
+  if (tursoEnabled(env)) {
+    await tBatch(env, statements);
+    return;
+  }
   for (let i = 0; i < statements.length; i += 25) {
-    await env.DB.batch(statements.slice(i, i + 25));
+    await env.DB.batch(
+      statements
+        .slice(i, i + 25)
+        .map((item) => env.DB.prepare(item.sql).bind(...item.params)),
+    );
   }
 }
 
@@ -61,13 +79,20 @@ export async function logEvent(
   userId: number | null,
   details: string,
 ): Promise<void> {
-  await run(
-    env,
-    "INSERT INTO events (type, user_id, details) VALUES (?, ?, ?)",
-    type,
-    userId,
-    details.slice(0, 400),
-  );
+  // Журнал событий — диагностика, а не данные пользователя. При исчерпанной
+  // квоте D1 (или недоступной резервной базе) запись в events падает, и без
+  // этого try/catch человек не получил бы продление из-за сбоя журнала.
+  try {
+    await run(
+      env,
+      "INSERT INTO events (type, user_id, details) VALUES (?, ?, ?)",
+      type,
+      userId,
+      details.slice(0, 400),
+    );
+  } catch {
+    // Событие потеряется — доступ важнее.
+  }
 }
 
 export function nowIso(): string {

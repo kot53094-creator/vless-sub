@@ -5,6 +5,7 @@ import { deliverSource, topUpAllActive } from "./delivery";
 import { createInvite, inviteLink, listInvites, revokeInvite } from "./invites";
 import { flagOf } from "./labels";
 import { invalidateSubscription } from "./sub";
+import { recordPayment } from "./payments";
 import { logEvent, many, one, run } from "./db";
 import { syncOneSource } from "./sync";
 import { maskLink, maskToken } from "./labels";
@@ -1730,6 +1731,18 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
       await run(env, "DELETE FROM assignments WHERE user_id = ?", id);
     }
     await logEvent(env, "admin_update", id, `до ${expires ?? "—"}, ${traffic} ГБ, ${devicesLimit} устройств`);
+    // В журнал выдач попадает только реальное продление: если новая дата
+    // раньше старой (урезание доступа) или не изменилась — писать нечего.
+    const beforeMs = user.expires_at
+      ? Date.parse(user.expires_at.replace(" ", "T") + "Z")
+      : Date.now();
+    const afterMs = expires ? Date.parse(expires.replace(" ", "T") + "Z") : NaN;
+    const deltaDays = Number.isFinite(afterMs)
+      ? Math.round((afterMs - Math.max(beforeMs, Date.now())) / 86400_000)
+      : 0;
+    if (deltaDays > 0) {
+      await recordPayment(env, id, deltaDays, `панель: до ${(expires ?? "—").slice(0, 10)}`);
+    }
     return back("/admin/users", "Сохранено");
   }
 
@@ -1754,6 +1767,7 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
       await run(env, "INSERT OR IGNORE INTO user_pools (user_id, pool_id) VALUES (?, ?)", user.id, pool);
     }
     await logEvent(env, "grant", user.id, `${days || 30} дн., ${traffic} ГБ`);
+    await recordPayment(env, user.id, days || 30, `панель: ${traffic} ГБ`);
     return back("/admin/users", `Выдано ${tgId} на ${days || 30} дн.`);
   }
 

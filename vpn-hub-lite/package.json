@@ -11,6 +11,10 @@
     "test": "vitest run",
     "db:migrate:local": "wrangler d1 migrations apply vpn-hub-lite --local",
     "db:migrate": "wrangler d1 migrations apply vpn-hub-lite --remote",
+    "db:export": "wrangler d1 export vpn-hub-lite --remote --output backups/vpn-hub-export.sql",
+    "db:export:schema": "wrangler d1 export vpn-hub-lite --remote --no-data --output backups/schema.sql",
+    "db:restore": "node tools/restore-backup.mjs",
+    "db:to-turso": "node tools/export-to-turso.mjs",
     "tail": "wrangler tail"
   },
   "devDependencies": {

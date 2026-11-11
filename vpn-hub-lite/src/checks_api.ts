@@ -13,7 +13,7 @@
  * случайной (сеть раннера), две подряд — уже устойчивая недоступность.
  */
 
-import { batch, logEvent, many, prepare, run } from "./db";
+import { batch, logEvent, many, run, type SqlStatement } from "./db";
 import { invalidateExitMap } from "./presence";
 import { invalidatePool, loadPool, loadWhitelistPool } from "./sub";
 import { checkTokenOk, envStr, timingSafeEqual } from "./security";
@@ -266,7 +266,7 @@ export async function handleChecks(env: Env, request: Request): Promise<Response
     }
   }
 
-  const statements: D1PreparedStatement[] = [];
+  const statements: SqlStatement[] = [];
   const dead: number[] = [];
   let updated = 0;
   let exitSeen = false;
@@ -313,21 +313,17 @@ export async function handleChecks(env: Env, request: Request): Promise<Response
     const keepVerified = !row.ok && status !== "dead";
 
     if (fromRu) {
-      statements.push(
-        prepare(
-          env,
-          row.ok
-            ? "UPDATE servers SET ru_dead_at = NULL WHERE id = ?"
-            : "UPDATE servers SET ru_dead_at = datetime('now') WHERE id = ?",
-          id,
-        ),
-      );
+      statements.push({
+        sql: row.ok
+          ? "UPDATE servers SET ru_dead_at = NULL WHERE id = ?"
+          : "UPDATE servers SET ru_dead_at = datetime('now') WHERE id = ?",
+        params: [id],
+      });
     }
 
     statements.push(
-      prepare(
-        env,
-        keepVerified
+      {
+        sql: keepVerified
           ? `UPDATE servers SET status = ?, last_check_at = datetime('now') WHERE id = ?`
           : `UPDATE servers SET status = ?,
                   verified_at = datetime('now'),
@@ -336,19 +332,20 @@ export async function handleChecks(env: Env, request: Request): Promise<Response
                   exit_ip = COALESCE(?, exit_ip),
                   speed_mbps = COALESCE(?, speed_mbps)
             WHERE id = ?`,
-        ...(keepVerified
+        params: keepVerified
           ? [status, id]
-          : [status, row.ok ? latency : null, exitIp, row.speed ?? null, id]),
-      ),
-      prepare(
-        env,
-        `INSERT INTO server_checks (server_id, result, latency_ms, error, kind)
+          : [status, row.ok ? latency : null, exitIp, row.speed ?? null, id],
+      },
+      {
+        sql: `INSERT INTO server_checks (server_id, result, latency_ms, error, kind)
          VALUES (?, ?, ?, ?, 'tunnel')`,
-        id,
-        row.ok ? "ok" : "fail",
-        latency,
-        row.ok ? null : (row.error ?? "tunnel failed").slice(0, 160),
-      ),
+        params: [
+          id,
+          row.ok ? "ok" : "fail",
+          latency,
+          row.ok ? null : (row.error ?? "tunnel failed").slice(0, 160),
+        ],
+      },
     );
     // Открывает ли узел Telegram и Discord. Проверяется только у живого:
     // у мёртвого и так нечего мерить, а старую метку не затираем.
@@ -360,21 +357,20 @@ export async function handleChecks(env: Env, request: Request): Promise<Response
       if (flags.length) {
         const passed = flags.filter(([, ok]) => ok).length;
         const summary = flags.map(([key, ok]) => `${key}:${ok ? "ok" : "fail"}`).join(",");
-        statements.push(
-          prepare(
-            env,
-            `UPDATE servers SET blocked_ok = ?, blocked_probe = ?, blocked_at = datetime('now')
+        statements.push({
+          sql: `UPDATE servers SET blocked_ok = ?, blocked_probe = ?, blocked_at = datetime('now')
               WHERE id = ?`,
-            // Годность определяют только обязательные сервисы. Необязательные
-            // влияют на сортировку, но не выбрасывают узел из подписки.
+          // Годность определяют только обязательные сервисы. Необязательные
+          // влияют на сортировку, но не выбрасывают узел из подписки.
+          params: [
             (row.services as Record<string, boolean>).tg === true &&
               (row.services as Record<string, boolean>).yt === true
               ? 1
               : 0,
             summary.slice(0, 60),
             id,
-          ),
-        );
+          ],
+        });
       }
     }
 

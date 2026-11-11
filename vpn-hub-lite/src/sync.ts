@@ -6,7 +6,7 @@
  * разбираем не больше 120 ключей и пишем пачками.
  */
 
-import { batch, logEvent, many, one, prepare, run } from "./db";
+import { batch, logEvent, many, one, run } from "./db";
 import { envStr } from "./security";
 import { parseUserinfo } from "./parser";
 import { emptyStats, recordImportRun, scanSubscription } from "./intake";
@@ -210,24 +210,23 @@ async function syncOne(env: Env, source: SourceRow): Promise<number> {
   }
 
   const stamp = new Date().toISOString().slice(0, 19).replace("T", " ");
-  const statements = keys.map((key) =>
-    prepare(
-      env,
-      `INSERT INTO servers (source_id, remark, link, host, port, status, seen_at, max_users)
+  const statements = keys.map((key) => ({
+    sql: `INSERT INTO servers (source_id, remark, link, host, port, status, seen_at, max_users)
        VALUES (?, ?, ?, ?, ?, 'alive', ?, 10)
        ON CONFLICT (source_id, host, port) DO UPDATE SET
          link = excluded.link,
          remark = excluded.remark,
          seen_at = excluded.seen_at,
          status = CASE WHEN servers.status = 'dead' THEN 'unknown' ELSE servers.status END`,
+    params: [
       source.id,
       key.remark.slice(0, 120),
       key.uri,
       key.host,
       key.port,
       stamp,
-    ),
-  );
+    ],
+  }));
   await batch(env, statements);
 
   // Серверы, которых больше нет в источнике, помечаем мёртвыми.

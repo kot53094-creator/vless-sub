@@ -11,7 +11,7 @@
  * «VLESS · Регион неизвестен». Это честнее, чем угадывать по названию.
  */
 
-import { logEvent, many } from "./db";
+import { batch, logEvent, many } from "./db";
 import type { Env } from "./types";
 
 const ENDPOINT = "http://ip-api.com/batch?fields=status,country,countryCode,city,query";
@@ -68,10 +68,12 @@ export async function fillGeo(env: Env, limit = MAX_PER_RUN): Promise<number> {
   // выборки вернёт такую строку обратно.
   const skipped = rows.filter((row) => !ipOf(row));
   if (skipped.length) {
-    await env.DB.batch(
-      skipped.map((row) =>
-        env.DB.prepare("UPDATE servers SET country_code = '' WHERE id = ?").bind(row.id),
-      ),
+    await batch(
+      env,
+      skipped.map((row) => ({
+        sql: "UPDATE servers SET country_code = '' WHERE id = ?",
+        params: [row.id],
+      })),
     );
   }
 
@@ -98,27 +100,27 @@ export async function fillGeo(env: Env, limit = MAX_PER_RUN): Promise<number> {
     if (item && typeof item.query === "string") byHost.set(item.query, item);
   }
 
-  const statements: D1PreparedStatement[] = [];
+  const statements: Array<{ sql: string; params: unknown[] }> = [];
   let updated = 0;
 
   for (const server of targets) {
     const item = byHost.get(server.ip);
     if (!item) continue;
     if (item.status !== "success" || !item.countryCode) {
-      statements.push(
-        env.DB.prepare("UPDATE servers SET country_code = '' WHERE id = ?").bind(server.id),
-      );
+      statements.push({
+        sql: "UPDATE servers SET country_code = '' WHERE id = ?",
+        params: [server.id],
+      });
       continue;
     }
-    statements.push(
-      env.DB.prepare(
-        "UPDATE servers SET country_code = ?, country_name = ?, city = ? WHERE id = ?",
-      ).bind(item.countryCode, item.country ?? "", item.city ?? "", server.id),
-    );
+    statements.push({
+      sql: "UPDATE servers SET country_code = ?, country_name = ?, city = ? WHERE id = ?",
+      params: [item.countryCode, item.country ?? "", item.city ?? "", server.id],
+    });
     updated += 1;
   }
 
-  if (statements.length) await env.DB.batch(statements);
+  if (statements.length) await batch(env, statements);
   if (updated) await logEvent(env, "geo", null, `определено стран: ${updated}`);
 
   return updated;

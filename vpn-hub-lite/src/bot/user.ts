@@ -895,6 +895,7 @@ export async function handleHelp(env: Env, user: UserRow | null): Promise<void> 
       "/newkey — перевыпустить ссылку",
       "/bonus — бонус дня",
       "/promo КОД — активировать промокод",
+      "/plans — тарифы и сроки",
       "/help — эта справка",
       "",
       "Если ничего не работает — напишите админу, он проверит серверы.",

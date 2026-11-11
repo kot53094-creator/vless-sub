@@ -6,7 +6,7 @@
  * Worker, а скрипт только шлёт HTTP.
  */
 
-import { batch, many, one, prepare, run } from "./db";
+import { batch, many, one, run } from "./db";
 import { checkTokenOk, envStr, timingSafeEqual } from "./security";
 import type { Env } from "./types";
 
@@ -144,12 +144,11 @@ export async function handleImport(env: Env, request: Request): Promise<Response
   );
   if (!source) return Response.json({ error: "не удалось создать источник" }, { status: 500 });
 
-  const statements = parsed.map((row) =>
-    prepare(
-      env,
-      `INSERT OR IGNORE INTO servers
+  const statements = parsed.map((row) => ({
+    sql: `INSERT OR IGNORE INTO servers
          (source_id, remark, link, host, port, status, enabled, city, country_name, country_code)
        VALUES (?, ?, ?, ?, ?, 'unknown', 1, '', ?, ?)`,
+    params: [
       source.id,
       row.remark,
       row.link,
@@ -157,8 +156,8 @@ export async function handleImport(env: Env, request: Request): Promise<Response
       row.port,
       CODE_TO_NAME[row.code] ?? "",
       row.code,
-    ),
-  );
+    ],
+  }));
   await batch(env, statements);
 
   const stored = await many<{ id: number; host: string; port: number; country_code: string }>(

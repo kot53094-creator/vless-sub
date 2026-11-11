@@ -1,6 +1,6 @@
 /** Роутер обновлений Telegram. Команды только из личных чатов. */
 
-import { logEvent, many, one } from "../db";
+import { logEvent, many, one, run } from "../db";
 import { memRateLimit } from "../security";
 import type { Env, UserRow } from "../types";
 import * as admin from "./admin";
@@ -11,6 +11,7 @@ import { runSync } from "../sync";
 import { parsePromoCommand } from "../promotions";
 import { cmdMarkAlive, cmdMarkDead } from "./manual";
 import { handleAiCommand } from "../ai";
+import { paymentsText, plansText, recordMoneyPayment } from "../plans";
 
 interface TgMessage {
   message_id: number;
@@ -145,6 +146,10 @@ export async function handleUpdate(env: Env, update: TgUpdate): Promise<void> {
     case "/help":
       await user.handleHelp(env, existing);
       return;
+    case "/plans":
+    case "/тарифы":
+      await sendMessage(env, message.chat.id, await plansText(env));
+      return;
     default:
       break;
   }
@@ -249,6 +254,26 @@ async function runAdminCommand(
       return args[0] && args[1]
         ? await admin.cmdSetStatus(env, args[0], "limit", args[1])
         : "Формат: /limit &lt;tg_id&gt; &lt;число&gt;";
+    case "/pay": {
+      const amount = Number(args[1] ?? "");
+      if (!args[0] || !Number.isFinite(amount)) {
+        return "Формат: /pay &lt;tg_id&gt; &lt;сумма&gt; [дней] [заметка]";
+      }
+      const days = args[2] === undefined ? undefined : Number(args[2]);
+      if (days !== undefined && !Number.isFinite(days)) {
+        return "Дней должно быть числом.";
+      }
+      const result = await recordMoneyPayment(env, {
+        tgId: args[0],
+        amountRub: amount,
+        days,
+        note: args.slice(3).join(" "),
+        actor: `tg:${chat}`,
+      });
+      return result.message;
+    }
+    case "/payments":
+      return await paymentsText(env, Number(args[0] ?? "10") || 10);
     case "/pools":
       return await admin.cmdPools(env);
     case "/grant":
@@ -556,9 +581,7 @@ async function handleCallback(
 
   if (action === "rj" && userRow) {
     await answerCallback(env, query.id, "Отклонено");
-    await env.DB.prepare("UPDATE users SET status='banned' WHERE id = ?")
-      .bind(userRow.id)
-      .run();
+    await run(env, "UPDATE users SET status='banned' WHERE id = ?", userRow.id);
     await logEvent(env, "reject", userRow.id, "заявка отклонена");
     await sendMessage(env, userRow.tg_id, "Заявка отклонена администратором.");
     return;

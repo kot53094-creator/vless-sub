@@ -4,6 +4,7 @@ import { assignForUser, rebalance, serverLoads } from "../balance";
 import { topUpAllActive } from "../delivery";
 import { daysFromNowIso, logEvent, many, one, run } from "../db";
 import { parseSubscription, parseUri } from "../parser";
+import { recordPayment } from "../payments";
 import { buildReport } from "../reports";
 import { invalidateSubscription } from "../sub";
 import type { Env, UserRow } from "../types";
@@ -70,6 +71,7 @@ export async function cmdApprove(env: Env, tgId: string, days: number): Promise<
   if (!user) return "Не нашёл такого пользователя.";
   const { approveUser } = await import("./user");
   await approveUser(env, user.id, days);
+  await recordPayment(env, user.id, days, "одобрение заявки");
   return `Одобрен ${tgId} на ${days} дн.`;
 }
 
@@ -97,6 +99,7 @@ export async function cmdSetStatus(
     await run(env, "UPDATE users SET status='active', expires_at=? WHERE id=?", next, user.id);
     await invalidateSubscription(env, user.sub_token);
     await logEvent(env, "extend", user.id, `+${days} дн.`);
+    await recordPayment(env, user.id, days, `продление до ${next.slice(0, 10)}`);
     return `Продлён ${tgId} до ${next.slice(0, 10)}.`;
   }
   const limit = Number(value);

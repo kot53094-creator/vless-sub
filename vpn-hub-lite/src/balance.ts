@@ -5,7 +5,7 @@
  * исключён всегда), не превышаем max_users, сортируем по загрузке.
  */
 
-import { batch, logEvent, many, one, prepare, run } from "./db";
+import { batch, logEvent, many, one, run } from "./db";
 import type { Env, ServerRow } from "./types";
 
 export interface Candidate {
@@ -106,14 +106,10 @@ export async function assignForUser(
 
   await batch(
     env,
-    picked.map((serverId) =>
-      prepare(
-        env,
-        "INSERT OR IGNORE INTO assignments (user_id, server_id) VALUES (?, ?)",
-        userId,
-        serverId,
-      ),
-    ),
+    picked.map((serverId) => ({
+      sql: "INSERT OR IGNORE INTO assignments (user_id, server_id) VALUES (?, ?)",
+      params: [userId, serverId],
+    })),
   );
   // Занимаем слот на лимитированных источниках (например, платный ключ на 3 устройства)
   const sourcesUsed = await many<{ source_id: number; max_devices: number }>(

@@ -7,7 +7,10 @@
  * Запуск (нужны TURSO_URL и TURSO_TOKEN в окружении):
  *   $env:TURSO_URL="libsql://..."; $env:TURSO_TOKEN="..."; node tools/export-to-turso.mjs
  *
- * Схему создаём отдельно: tools/turso-schema.sql (там же, где миграции).
+ * Схему создаём отдельно из живой базы:
+ *   npx wrangler d1 export vpn-hub-lite --remote --no-data --output schema.sql
+ *   turso db shell <имя-базы> < schema.sql
+ * (SQLite-диалект тот же, поэтому DDL переносится без правок.)
  */
 
 import { execFileSync } from "node:child_process";
