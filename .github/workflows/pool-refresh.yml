@@ -16,7 +16,7 @@ name: pool-refresh
 on:
   schedule:
     - cron: "47 6 * * *"
-    - cron: "0 21 * * *"
+    - cron: "0 14 * * *"
   workflow_dispatch:
     inputs:
       limit:

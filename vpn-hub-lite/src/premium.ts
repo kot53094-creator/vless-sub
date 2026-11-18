@@ -57,17 +57,21 @@ export function expirySeconds(user: Pick<UserRow, "expires_at">): number {
 /**
  * Значение `subscription-userinfo`.
  *
- * `download=0` — не враньё про расход: воркер не видит трафик через чужие
- * узлы, поэтому честно показывает ноль потраченного при большом остатке.
- * Если в базе задан свой лимит или срок, берутся они.
+ * `download` берётся из `traffic_used_mb`, который наполняет агент узлов.
+ * Пока агент не подключён, там ноль — и это честный ноль, а не «примерно
+ * 12 ГБ»: клиент показывает реальный расход ровно в той мере, в какой мы его
+ * действительно знаем.
  */
 export function subscriptionUserinfo(
-  user: Pick<UserRow, "traffic_gb" | "expires_at">,
+  user: Pick<UserRow, "traffic_gb" | "expires_at" | "traffic_used_mb" | "traffic_extra_gb">,
   defaults: PlanDefaults,
   now = Date.now(),
 ): string {
   const ownGb = Number(user.traffic_gb ?? 0);
-  const gb = ownGb > 0 ? ownGb : defaults.enabled ? defaults.trafficGb : 0;
+  // Докупленные гигабайты входят в общий лимит: клиент должен видеть
+  // увеличенную квоту, иначе после покупки полоса не сдвинется.
+  const extraGb = Math.max(0, Number(user.traffic_extra_gb ?? 0));
+  const gb = ownGb > 0 ? ownGb + extraGb : defaults.enabled ? defaults.trafficGb : 0;
   const total = Math.max(0, Math.round(gb * 1024 ** 3));
 
   const ownExpire = expirySeconds(user);
@@ -75,7 +79,10 @@ export function subscriptionUserinfo(
     ? Math.floor((now + defaults.days * 86_400_000) / 1000)
     : 0;
 
-  return `upload=0; download=0; total=${total}; expire=${ownExpire || fallbackExpire}`;
+  const usedMb = Math.max(0, Number(user.traffic_used_mb ?? 0));
+  const download = Math.round(usedMb * 1024 ** 2);
+
+  return `upload=0; download=${download}; total=${total}; expire=${ownExpire || fallbackExpire}`;
 }
 
 /**

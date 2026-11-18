@@ -56,12 +56,17 @@ export interface KeyboardOptions {
   promo?: boolean;
   bypass?: boolean;
   active?: boolean;
+  appUrl?: string;
 }
 
 export function mainKeyboard(options: KeyboardOptions = {}): ReplyMarkup {
-  const rows: ReplyMarkup["inline_keyboard"] = [
-    [{ text: "⚡️ Включить VPN", callback_data: "act:devices" }],
-  ];
+  const rows: ReplyMarkup["inline_keyboard"] = [];
+
+  if (options.appUrl) {
+    rows.push([{ text: "🍊 Личный кабинет (Mini App)", web_app: { url: options.appUrl } }]);
+  }
+
+  rows.push([{ text: "⚡️ Включить VPN", callback_data: "act:devices" }]);
 
   if (options.daily !== false) {
     rows.push([{ text: "🎁 Бонус дня", callback_data: "bon:claim" }]);
@@ -85,14 +90,18 @@ export function mainKeyboard(options: KeyboardOptions = {}): ReplyMarkup {
 }
 
 export function cabinetKeyboard(options: KeyboardOptions = {}): ReplyMarkup {
+  const rows: ReplyMarkup["inline_keyboard"] = [];
+
+  if (options.appUrl) {
+    rows.push([{ text: "🍊 Открыть Личный кабинет", web_app: { url: options.appUrl } }]);
+  }
+
   // Первый ряд повторяет чипы с баннера «Ваш аккаунт»: Срок · Трафик · Устройства.
-  const rows: ReplyMarkup["inline_keyboard"] = [
-    [
-      { text: "📅 Срок", callback_data: "act:term" },
-      { text: "📊 Трафик", callback_data: "act:traffic" },
-      { text: "📱 Устройства", callback_data: "act:devs" },
-    ],
-  ];
+  rows.push([
+    { text: "📅 Срок", callback_data: "act:term" },
+    { text: "📊 Трафик", callback_data: "act:traffic" },
+    { text: "📱 Устройства", callback_data: "act:devs" },
+  ]);
 
   if (options.daily !== false) {
     rows.push([{ text: "🎁 Забрать бонус дня", callback_data: "bon:claim" }]);

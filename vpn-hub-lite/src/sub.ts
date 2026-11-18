@@ -22,7 +22,9 @@ import {
 import type { DeliverableServer, Env, UserRow } from "./types";
 import { BRAND_PREMIUM } from "./brand";
 import { planDefaults, premiumHeaders, subscriptionUserinfo } from "./premium";
-import { buildAutoConfig } from "./xray_json";
+import { deviceLimitOf, trafficQuotaGb } from "./limits";
+import { ownNodeLink } from "./node_clients";
+import { AUTO_LABEL, buildAutoConfig, buildSingleProfile } from "./xray_json";
 import { buildSingBoxConfig } from "./singbox_json";
 import { assignIfEmpty } from "./balance";
 import { compareServers, isModern, rotateTail } from "./ranking";
@@ -31,7 +33,9 @@ import { normalizeVlessLink } from "./normalize";
 import { recordVersion } from "./sub_versions";
 import { recordPresence, snapshot } from "./presence";
 import { routingLink } from "./routing";
-import { appendMergedLinks } from "./merge";
+import { appendMergedLinks, mergedNodes } from "./merge";
+import { GROUP_TITLES, isGroupMode, type GroupKey } from "./groups";
+import { buildGroupLinks, buildGroupsJson } from "./sub_groups";
 
 /**
  * Как часто клиент сам перечитывает подписку, часы.
@@ -143,7 +147,7 @@ function stubBody(reason: string): string {
 
 function timedOutStatus(user: UserRow | null): string | null {
   if (!user) return "Подписка не найдена — напишите боту /start";
-  if (user.status === "banned") return "Доступ закрыт — напишите админу";
+  if (user.status === "banned") return "Доступ закрыт — напишите в поддержку";
   if (user.status === "pending") return "Заявка ещё не одобрена — подождите";
   // Дата важнее статуса. Поле status выставляет автоматика по расписанию, и
   // после продления срока вручную оно остаётся 'expired' — из-за этого
@@ -152,12 +156,96 @@ function timedOutStatus(user: UserRow | null): string | null {
     const ts = Date.parse(user.expires_at.replace(" ", "T") + "Z");
     if (Number.isFinite(ts)) {
       if (ts > Date.now()) return null;
-      return "Срок истёк — напишите боту";
+      // Дата в тексте: «срок истёк» без неё человек видит месяцами и не
+      // понимает, закончился доступ вчера или полгода назад.
+      const day = user.expires_at.slice(0, 10).split("-").reverse().join(".");
+      return `Подписка закончилась ${day} — продлить /buy`;
     }
   }
-  if (user.status === "expired") return "Срок истёк — напишите боту";
+  if (user.status === "expired") return "Подписка закончилась — продлить /buy";
   return null;
 }
+
+/**
+ * Исчерпан ли трафик тарифа.
+ *
+ * Проверяется отдельно от срока: человек может оплатить новый месяц, но
+ * выбрать тариф с квотой и упереться в неё раньше даты. Ноль в `traffic_gb`
+ * означает «без лимита» — так исторически записаны все тарифы без квоты.
+ */
+function trafficLimitStatus(user: UserRow | null): string | null {
+  if (!user) return null;
+  // Квота = тарифная + докупленная. Ноль в базе — безлимит.
+  const quota = trafficQuotaGb(user);
+  if (quota === null) return null;
+  const usedMb = Number(user.traffic_used_mb ?? 0);
+  if (!Number.isFinite(usedMb) || usedMb < quota * 1024) return null;
+  return `Трафик ${Math.round(quota)} ГБ израсходован — докупить /topup`;
+}
+
+/**
+ * «Трафик тарифа кончился» — в Telegram, раз в 12 часов.
+ *
+ * Клиент опрашивает подписку по расписанию, поэтому без ограничителя человек
+ * получал бы поток одинаковых сообщений. Внутри заглушки причина видна и
+ * так, но в чате её замечают быстрее и оттуда же можно докупить гигабайты.
+ */
+async function notifyTrafficLimit(env: Env, user: UserRow): Promise<void> {
+  try {
+    const key = `trafflimit:${user.id}`;
+    if (await env.CACHE.get(key)) return;
+    await env.CACHE.put(key, "1", { expirationTtl: 43_200 });
+
+    const quota = trafficQuotaGb(user) ?? 0;
+    const { sendMessage } = await import("./bot/telegram");
+    await sendMessage(
+      env,
+      user.tg_id,
+      [
+        `📊 <b>Трафик ${Math.round(quota)} ГБ израсходован</b>`,
+        "",
+        "Серверы остановлены до пополнения: так тариф не уходит в минус.",
+        "Докупить гигабайты: /topup",
+        "Продлить тариф с новым объёмом: /buy",
+      ].join("\n"),
+    );
+  } catch {
+    // уведомление не должно ломать выдачу подписки
+  }
+}
+
+/**
+ * Сообщение «вы упёрлись в лимит» — один раз в 12 часов.
+ *
+ * Клиент опрашивает подписку часто (в том числе по расписанию), поэтому без
+ * ограничителя человек получал бы десяток одинаковых сообщений в сутки.
+ */
+async function notifyDeviceLimit(env: Env, user: UserRow, limit: number): Promise<void> {
+  try {
+    const key = `devlimit:${user.id}`;
+    if (await env.CACHE.get(key)) return;
+    await env.CACHE.put(key, "1", { expirationTtl: 43_200 });
+    const { sendMessage } = await import("./bot/telegram");
+    await sendMessage(
+      env,
+      user.tg_id,
+      [
+        `📱 <b>Лимит устройств: ${limit}</b>`,
+        "",
+        "Новое устройство не подключилось, потому что все места заняты.",
+        "Отвяжите лишнее в кабинете: /app → «Подключённые устройства».",
+        "Если это ваш новый телефон — сначала отвяжите старый.",
+      ].join("\n"),
+    );
+  } catch {
+    // уведомление не должно ломать выдачу подписки
+  }
+}
+
+/** Сколько устройств разрешено: тариф, но не меньше одного и не больше 10. */
+// Правило лимита живёт в limits.ts: его же использует кабинет, и числа
+// обязаны совпадать. Здесь — только реэкспорт для старых вызовов.
+export { deviceLimitOf };
 
 /**
  * Строгий режим подписки: только VLESS + REALITY, которые прошли настоящую
@@ -173,6 +261,25 @@ export function isStrictDefault(env: Env): boolean {
  * Xray-протокол (REALITY или WS+TLS) плюс успешная проверка через туннель.
  * Синтаксической корректности недостаточно — нужен факт соединения.
  */
+/**
+ * Сколько часов считается «свежая проверка».
+ *
+ * 72 часа — компромисс: проверки идут пачками и не успевают обойти пул
+ * быстрее. Но публичные узлы живут меньше: за трое суток узел успевает
+ * умереть, оставаясь в списке «рабочим». Когда пул собран из чужих подписок,
+ * разумно опустить окно до 6–12 часов: список станет короче, зато живой.
+ */
+export function verifiedMaxAgeHours(env: Env): number {
+  const raw = Number(env.VERIFIED_MAX_AGE_H ?? "");
+  if (!Number.isFinite(raw) || raw <= 0) return 72;
+  return Math.min(Math.max(Math.round(raw), 1), 168);
+}
+
+/** SQL-условие свежести — одно на все запросы пула. */
+function ageFilter(env: Env): string {
+  return `s.verified_at >= datetime('now','-${verifiedMaxAgeHours(env)} hours')`;
+}
+
 export function isWorkingServer(
   server: {
     link: string;
@@ -236,11 +343,13 @@ export type SubMode =
   | "plain"
   /** sing-box конфиг с urltest: автоматический выбор узла. */
   | "sb"
-  /** Обычный список ссылок: резерв для клиентов без поддержки JSON. */
-  | "plain"
-  /** sing-box конфиг с urltest: автоматический выбор узла. */
-  | "sb"
-  | "byedpi";
+  /** Только Hysteria2: отдельная подписка для QUIC-узлов. */
+  | "hy2"
+  | "byedpi"
+  /** JSON-массив профилей AUTO / EUROPE / RUSSIA / BACKUP / ALL. */
+  | "groups"
+  /** Отдельная группа: base64-список только этих узлов. */
+  | GroupKey;
 
 /**
  * Внешняя обёртка: при исчерпании лимитов D1 Worker не должен отдавать
@@ -286,7 +395,7 @@ const SNAPSHOT_TTL = 7 * 24 * 3600;
 const PINNED_LINKS: { link: string; label: string }[] = [
   {
     link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@pl-users.golu-gulu.online:443?type=grpc&security=reality&sni=pl-users.golu-gulu.online&fp=firefox&pbk=vndjTES0bDFmT7rh4vpP8BVs8-J3TDsA5wVgct8cr20&sid=c4f2e8a16b903d75&serviceName=UserVideo",
-    label: "🇪🇺 Авто-выбор | Обычный VPN",
+    label: AUTO_LABEL,
   },
   {
     link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@pl-users.golu-gulu.online:443?type=grpc&security=reality&sni=pl-users.golu-gulu.online&fp=firefox&pbk=vndjTES0bDFmT7rh4vpP8BVs8-J3TDsA5wVgct8cr20&sid=c4f2e8a16b903d75&serviceName=UserVideo",
@@ -474,7 +583,7 @@ export async function loadPool(
         -- обойти пул за день. Свежие всё равно идут первыми (сортировка
         -- ниже), но резерв не обнуляется — иначе подписка «худеет» до
         -- нескольких узлов и человек видит старый мёртвый список.
-        AND s.verified_at >= datetime('now','-72 hours')
+        AND s.verified_at >= ${ageFilter(env)}
         -- Мягкий потолок: до 600 мс узлы идут первыми, до 800 добирают
         -- остаток. Жёсткие 600 при текущих источниках оставляли шесть строк
         -- из тысячи восьмисот — пусть лучше будет запасной вариант на
@@ -618,7 +727,7 @@ export async function loadPool(
          FROM servers s
          JOIN sources src ON src.id = s.source_id
         WHERE s.verified_latency_ms > 0
-          AND s.verified_at >= datetime('now','-72 hours')
+          AND s.verified_at >= ${ageFilter(env)}
           AND s.verified_latency_ms <= 1100
           AND s.status IN ('alive','unknown')
           -- blocked_ok = 0 значит «узел проверен и не открывает Telegram»:
@@ -735,7 +844,7 @@ export async function loadPool(
           -- иначе в подписку попадали все импортированные узлы скопом,
           -- включая давно мёртвые.
           AND s.verified_latency_ms > 0
-          AND s.verified_at >= datetime('now','-72 hours')
+          AND s.verified_at >= ${ageFilter(env)}
           AND s.status = 'alive'
           AND (
             s.verified_latency_ms <= 800
@@ -761,7 +870,9 @@ export async function loadPool(
   // либо уйдёт — держать непроверенное дольше нельзя.
   try {
     const rescue = await env.CACHE.get<DeliverableServer[]>("pool:rescue:v1", "json");
-    if (rescue && rescue.length) base = [...rescue, ...base];
+    // Набор владельца полностью заменяет пул: он уже отобран и проверен,
+    // и в списке не должно оставаться узлов, которые не проходят фильтр.
+    if (rescue && rescue.length) base = [...rescue];
   } catch {
     // KV недоступен — обходимся базой
   }
@@ -1196,6 +1307,126 @@ async function serveSubscription(
     return plain(env, stubBody(blocked), null, user);
   }
 
+  // Квота трафика проверяется ДО любого пути выдачи — включая аварийный
+  // набор из KV. Раньше проверка стояла ниже, и основная подписка (она как
+  // раз отдаётся из KV) обходила лимит: человек с израсходованными 10 ГБ
+  // продолжал получать серверы.
+  const trafficOut = trafficLimitStatus(user);
+  if (trafficOut) {
+    await notifyTrafficLimit(env, user);
+    return plain(env, stubBody(trafficOut), null, user);
+  }
+
+  // Аварийный путь без базы: если владелец залил проверенный набор в KV,
+  // отдаём его сразу, до любого чтения таблицы servers. Иначе при мёртвом D1
+  // сборка падает и уходит в старый снимок — новые узлы не появляются.
+  if (mode === "default" || mode === "auto" || mode === "sb" || mode === "hy2") {
+    try {
+      const only = await env.CACHE.get<DeliverableServer[]>("pool:rescue:v1", "json");
+      if (only && only.length) {
+        // Лимит устройств проверяем и на аварийном пути: иначе при мёртвой
+        // базе третье устройство спокойно получило бы подписку.
+        const limit = deviceLimitOf(user, env);
+        try {
+          const device = await touchDevice(
+            env,
+            user.id,
+            request.headers.get("User-Agent") ?? "",
+            limit,
+          );
+          if (device?.blocked) {
+            const reason =
+              device.reason === "limit"
+                ? `Лимит устройств (${limit}). Отвяжите лишнее: /app → Устройства`
+                : "Это устройство отвязано. Вернуть: /app → Устройства";
+            return plain(env, stubBody(reason), null, user);
+          }
+        } catch {
+          // не смогли учесть устройство — не блокируем доступ
+        }
+
+        const links = only.map((row) => row.link);
+
+        // Отдельная подписка только из Hysteria2: в общий Xray-массив они не
+        // влезают, а человеку нужен способ забрать их в тот же клиент.
+        if (mode === "hy2") {
+          const quic = links.filter((link) => /^hysteria2:\/\//i.test(link));
+          return plain(
+            env,
+            quic.length ? buildSubscription(quic) : stubBody("Hysteria2-узлов пока нет"),
+            await buildUserinfo(env, user),
+            user,
+          );
+        }
+        // Авто-режимы отдают JSON с балансировщиком: тот же набор, что и в
+        // обычной подписке, иначе «Авто» ходил бы по старым мёртвым узлам.
+        if (mode !== "default") {
+          // Авто должно охватывать оба мира, а не первые 25 строк подряд:
+          // список отсортирован «улица → дом», и срез подряд оставлял без
+          // зарубежных узлов. Берём половину улицы и половину дома.
+          // «Авто» не должен вообще видеть узлы с фильтром провайдера: он
+          // выбирает по задержке, а такой узел быстрый и при этом режет
+          // ChatGPT/Gemini и обычные сайты. Берём только прошедшие проверку
+          // по назначению; если их мало — добавляем остальные как резерв.
+          const fullLinks = only.filter((row) => row.blocked_ok === 1).map((row) => row.link);
+          const autoLinks = fullLinks.length >= 2 ? fullLinks.slice(0, 25) : links.slice(0, 25);
+          const aiLinks = only.filter((row) => row.ai_ok === 1).map((row) => row.link);
+          const json = buildAutoConfig(autoLinks, 25, aiLinks);
+          return new Response(json, {
+            headers: {
+              "content-type": "application/json; charset=utf-8",
+              "cache-control": "no-store",
+            },
+          });
+        }
+        // Основная подписка — мульти-профиль: первым «Авто-выбор», ниже
+        // серверы. Клиенты INCY и Happ показывают JSON-массив списком
+        // профилей, поэтому авто и узлы живут в одной ссылке, как в платных
+        // сервисах.
+        // Массив профилей понимают не все клиенты. Если отдаём его всем, у
+        // человека с v2rayNG или старым Happ подписка просто не загрузится —
+        // и он придёт в бот с «не работает». Поэтому массив только тем, кто
+        // его поддерживает, остальным — привычный список ссылок.
+        const userAgent = (request.headers.get("User-Agent") ?? "").toLowerCase();
+        const supportsMulti = /incy|happ/.test(userAgent);
+
+        try {
+          if (!supportsMulti) throw new Error("multi not supported");
+          // В «Авто» внутри мульти-подписки — только узлы без фильтрации
+          // доменов, иначе балансировщик снова выберет быстрый, но урезанный.
+          const fullLinks = only.filter((row) => row.blocked_ok === 1).map((row) => row.link);
+          const autoLinks = fullLinks.length >= 2 ? fullLinks : links;
+          // Нейросети уводим на узлы с рабочим Gemini: у российского выхода
+          // Gemini недоступен, хотя остальное через него открывается.
+          const aiLinks = only.filter((row) => row.ai_ok === 1).map((row) => row.link);
+          const auto = JSON.parse(buildAutoConfig(autoLinks, 25, aiLinks)) as Record<string, unknown>;
+          auto.remarks = AUTO_LABEL;
+          // В массив профилей Xray кладём только VLESS: Hysteria2 — это QUIC,
+          // Xray его не исполняет, и одна такая ссылка ломала сборку всего
+          // массива, из-за чего Happ вместо «Авто» получал плоский список.
+          const vlessLinks = links.filter((link) => /^vless:\/\//i.test(link));
+          const profiles = [auto, ...vlessLinks.map((link) => buildSingleProfile(link))];
+          return new Response(JSON.stringify(profiles), {
+            headers: {
+              "content-type": "application/json; charset=utf-8",
+              "cache-control": "no-store",
+              "profile-update-interval": "12",
+              "subscription-userinfo": await buildUserinfo(env, user),
+            },
+          });
+        } catch {
+          // не собрали массив — отдаём привычный список ссылок
+        }
+
+        // userinfo обязателен: без него клиент показывает «срок: 0» и не
+        // предупреждает об окончании подписки.
+        return plain(env, toBase64(links.join("\n")), await buildUserinfo(env, user), user);
+      }
+    } catch {
+      // KV недоступен — идём обычным путём
+    }
+  }
+
   // Присутствие: откуда пришёл запрос — из туннеля или напрямую.
   // Пишем один UPSERT, он сам себя тормозит до раза в две минуты.
   // Служебные записи не должны ронять выдачу: при недоступной базе подписка
@@ -1209,18 +1440,29 @@ async function serveSubscription(
 
   // Устройство могли отвязать вручную — тогда именно ему отдаём отказ.
   let device: Awaited<ReturnType<typeof touchDevice>> = null;
+  const limit = deviceLimitOf(user, env);
   try {
-    device = await touchDevice(env, user.id, request.headers.get("User-Agent") ?? "");
+    device = await touchDevice(env, user.id, request.headers.get("User-Agent") ?? "", limit);
   } catch {
     device = null;
   }
   if (device?.blocked) {
-    return plain(
-      env,
-      stubBody("Это устройство отключено. Откройте бота → «📱 Устройства»"),
-      null,
-      user,
-    );
+    // Причина важна: «лимит» лечится отвязкой в кабинете, «вручную» — тем,
+    // что человек сам вернёт устройство. Без разделения оба случая выглядели
+    // как поломка сервиса.
+    const text =
+      device.reason === "limit"
+        ? `Лимит устройств (${limit}). Отвяжите лишнее: /app → Устройства`
+        : "Это устройство отвязано. Вернуть: /app → Устройства";
+    if (device.reason === "limit") await notifyDeviceLimit(env, user, limit);
+    return plain(env, stubBody(text), null, user);
+  }
+
+  // Группы собираются только из объединённого пула внешних подписок: это
+  // отдельный контур, он не зависит от квоты D1 и живёт в KV.
+  // Внимание: «auto» — старый JSON-балансировщик, его не перехватываем.
+  if (mode === "groups" || (isGroupMode(mode) && mode !== "auto")) {
+    return await serveGroups(env, mode, user);
   }
 
   // Кэшируем только основную подписку: у режимов своя фильтрация,
@@ -1240,7 +1482,7 @@ async function serveSubscription(
   // до смены эпохи (15 минут), и мёртвый узел, уже найденный проверкой,
   // продолжал висеть у человека в списке.
   const poolStamp = cacheable ? ((await env.CACHE.get("pool:stamp")) ?? "0") : "0";
-  const cacheKey = `sub:v100:${mode}:${epoch}:${poolStamp}:${token}`;
+  const cacheKey = `sub:v101:${mode}:${epoch}:${poolStamp}:${token}`;
   const cached = cacheable ? await env.CACHE.get(cacheKey) : null;
   if (cached) {
     const parsed = JSON.parse(cached) as { body: string };
@@ -1368,7 +1610,7 @@ async function serveSubscription(
     // Узел без гео показывается доменом вместо «страны · города», но это
     // лучше, чем потерять единственный живой сервер: проверка через туннель
     // уже доказала, что он работает. Гео дозаполняет tools/geo_fill.py.
-    if (!country && !isWorkingServer(server, 72 * 60 * 60 * 1000)) return false;
+    if (!country && !isWorkingServer(server, verifiedMaxAgeHours(env) * 3600_000)) return false;
     // Режим byedpi: узлы «белых списков» проверяются на доступность белых
     // доменов, а не через туннель — verified_latency_ms у них нет. Требуем
     // только живой порт (настоящую работу покажет сам клиент).
@@ -1378,7 +1620,7 @@ async function serveSubscription(
     // Премиум-узлы раньше шли мимо проверки («проверены владельцем»), и в
     // автовыборе сверху висели мёртвые astra/spacessupport. Теперь правило
     // одно для всех: показываем только то, что прошло туннель за 72 часа.
-    if (isWorkingServer(server, 72 * 60 * 60 * 1000)) {
+    if (isWorkingServer(server, verifiedMaxAgeHours(env) * 3600_000)) {
       return String(server.status ?? "alive") !== "dead";
     }
     // Запас: узел уже проходил туннель (есть выходной IP), просто проверка
@@ -1396,13 +1638,25 @@ async function serveSubscription(
     );
   });
 
+  // Набор владельца — финальное слово. Ставим его ПОСЛЕ всех фильтров:
+  // раньше rescue подмешивался в пул, но обычный пользователь получает
+  // назначенные узлы напрямую из базы (ветка usePool=false), и до пула дело
+  // не доходило — поэтому присланный список не применялся. Здесь он
+  // заменяет выдачу целиком и не требует чтения серверов из D1.
+  try {
+    const rescue = await env.CACHE.get<DeliverableServer[]>("pool:rescue:v1", "json");
+    if (rescue && rescue.length) deliverable = [...rescue];
+  } catch {
+    // KV недоступен — остаётся то, что собрали выше
+  }
+
   // Запасные узлы не должны заполонить список: свежих проверенных отдаём
   // все, непроверенных — не больше восьми. Человек листает короткий список,
   // а не сотню строк, половина из которых вчера умерла.
   {
     let reserve = 0;
     deliverable = deliverable.filter((server) => {
-      if (isWorkingServer(server, 72 * 60 * 60 * 1000)) return true;
+      if (isWorkingServer(server, verifiedMaxAgeHours(env) * 3600_000)) return true;
       reserve += 1;
       return reserve <= 8;
     });
@@ -1615,7 +1869,7 @@ async function serveSubscription(
     // запасной, и человек шёл именно в него.
     const fresh =
       (server.verified_latency_ms ?? 0) > 0 &&
-      isWorkingServer(server, 72 * 60 * 60 * 1000);
+      isWorkingServer(server, verifiedMaxAgeHours(env) * 3600_000);
     // Одна метка на строку: «🎮 · ⚡ быстрый» в карточке читается как мусор,
     // а игровой узел и так в верхушке — второе слово ему ничего не добавляет.
     // Замера нет — остаётся словесная метка, но врать цифрой нельзя.
@@ -1651,6 +1905,22 @@ async function serveSubscription(
 
   // Якоря — после резерва: в любой подписке они обязаны быть первыми.
   applyPinnedLinks(uris);
+
+  // Свой узел (если настроен) — самый первый пункт. Его UUID выводится из
+  // токена подписки, поэтому ключ принадлежит аккаунту: он отзывается вместе
+  // с подпиской и не зависит от чужих источников.
+  try {
+    const own = await ownNodeLink(env, user);
+    if (own) {
+      const ownEndpoint = endpointOfLink(own);
+      for (let i = uris.length - 1; i >= 0; i -= 1) {
+        if (endpointOfLink(uris[i]) === ownEndpoint) uris.splice(i, 1);
+      }
+      uris.unshift(own);
+    }
+  } catch {
+    // без своего узла подписка собирается из остального пула
+  }
 
   // Пустой список не отправляем, пока есть резерв: заглушка выбивает из
   // клиента рабочие узлы, и человек остаётся без VPN при живых серверах
@@ -1737,6 +2007,79 @@ async function serveSubscription(
   }
 
   return plain(env, body, userinfo, user);
+}
+
+/**
+ * Подписка по группам: AUTO / EUROPE / RUSSIA / BACKUP / ALL.
+ *
+ * `/groups` — один JSON-массив, в клиенте это пять записей, каждая со своим
+ * балансировщиком. `/europe`, `/russia`, `/backup`, `/all` — обычные
+ * base64-списки для клиентов, которые JSON не понимают.
+ *
+ * Источник данных — объединённый пул внешних подписок (KV). Если пул пуст,
+ * группа честно отвечает заглушкой, а не пустым телом.
+ */
+async function serveGroups(
+  env: Env,
+  mode: "groups" | GroupKey,
+  user: UserRow,
+): Promise<Response> {
+  let nodes: Awaited<ReturnType<typeof mergedNodes>> = [];
+  try {
+    nodes = await mergedNodes(env);
+  } catch {
+    nodes = [];
+  }
+  let userinfo: string | null = null;
+  try {
+    userinfo = await buildUserinfo(env, user);
+  } catch {
+    userinfo = null;
+  }
+
+  const options = {
+    autoTop: Number(envStr(env.GROUP_AUTO_TOP) || "12") || 12,
+    limit: Number(envStr(env.GROUP_LIMIT) || "40") || 40,
+  };
+  const base = {
+    baseUrl: env.PUBLIC_BASE_URL ?? "",
+    botUsername: env.BOT_USERNAME ?? "",
+    refreshHours: PROFILE_REFRESH_HOURS,
+  };
+
+  if (mode === "groups") {
+    const body = buildGroupsJson(nodes, options);
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json; charset=utf-8",
+      ...premiumHeaders({ ...base, title: "Апельсинка · группы" }),
+      routing: routingLink(),
+      "cache-control": "no-store",
+      "x-sub-build": "v61-groups",
+      "subscription-userinfo": userinfo ?? "upload=0; download=0; total=0; expire=0",
+    };
+    return new Response(body, { status: 200, headers });
+  }
+
+  const title = GROUP_TITLES[mode];
+  const links = buildGroupLinks(nodes, mode, options);
+  if (links.length === 0) {
+    return plain(
+      env,
+      stubBody(`Группа ${mode.toUpperCase()} пока пуста — серверы появятся после синхронизации`),
+      userinfo,
+      user,
+      title,
+    );
+  }
+  return plain(env, buildSubscription(links), userinfo, user, title);
+}
+
+/** base64 от UTF-8: btoa сам по себе падает на кириллице в названиях. */
+function toBase64(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
 }
 
 function plain(
@@ -1839,6 +2182,68 @@ export interface UserDevice {
   label: string;
   last_seen: string;
   blocked: number;
+  /** "limit" — не влезло в лимит, "manual" — отвязано человеком. */
+  blocked_reason?: string;
+  /** Имя, которое человек задал сам: «Samsung A25», «Ноутбук сына». */
+  custom_name?: string | null;
+}
+
+/**
+ * Семейство платформы: нужно, чтобы сопоставить устройство из подписки
+ * с устройством, на котором открыт мини-кабинет.
+ */
+export function deviceFamily(ua: string): "android" | "ios" | "ipados" | "macos" | "windows" | "linux" | "" {
+  if (/android/i.test(ua)) return "android";
+  if (/ipad/i.test(ua)) return "ipados";
+  if (/iphone|ios/i.test(ua)) return "ios";
+  if (/windows nt/i.test(ua)) return "windows";
+  if (/mac os x|macintosh/i.test(ua)) return "macos";
+  if (/linux/i.test(ua)) return "linux";
+  return "";
+}
+
+/**
+ * Только модель устройства, без платформы и клиента:
+ * «Samsung SM-A336E», «Google Pixel 8», «iPhone», «Windows PC».
+ *
+ * Нужна мини-кабинету: Telegram подставляет в User-Agent модель телефона,
+ * а VPN-клиент — нет. По этой модели кабинет сам подписывает устройство.
+ */
+export function deviceModel(ua: string): string {
+  const text = String(ua || "");
+  if (!text) return "";
+
+  if (/android/i.test(text)) {
+    const tail = /Android\s+[\d.]+([^)]*)/i.exec(text);
+    if (tail) {
+      for (const segment of tail[1].split(";")) {
+        const cleaned = segment
+          .split(/\s+Build\//)[0]
+          .replace(/\)\s*$/, "")
+          .replace(/^wv\b\s*/i, "")
+          .trim();
+        if (!cleaned) continue;
+        if (/^([a-z]{2}[-_][a-z]{2}|u|k)$/i.test(cleaned)) continue;
+        if (/^sm-/i.test(cleaned)) return `Samsung ${cleaned.toUpperCase()}`;
+        if (/^pixel/i.test(cleaned)) return `Google ${cleaned}`;
+        if (/^(redmi|poco|mi\b|xiaomi|rmx|realme|oneplus|oppo|vivo|honor|huawei)/i.test(cleaned)) {
+          return cleaned.replace(/\s+/g, " ");
+        }
+        return cleaned;
+      }
+    }
+    const sm = /\bSM-([A-Z0-9]+)\b/i.exec(text);
+    if (sm) return `Samsung SM-${sm[1].toUpperCase()}`;
+    const other = /\b(Redmi[ A-Za-z0-9+]+|POCO[ A-Za-z0-9+]+|Pixel[ A-Za-z0-9]+)\b/i.exec(text);
+    if (other) return other[1].trim();
+    return "Android";
+  }
+  if (/ipad/i.test(text)) return "iPad";
+  if (/iphone|ios/i.test(text)) return "iPhone";
+  if (/windows nt/i.test(text)) return "Windows PC";
+  if (/mac os x|macintosh/i.test(text)) return "Mac";
+  if (/linux/i.test(text)) return "Linux PC";
+  return "";
 }
 
 /** «iPhone · Happ», «Windows · Happ» — без сырого User-Agent. */
@@ -1859,21 +2264,98 @@ export function deviceLabel(ua: string): string {
                 ? "Clash"
                 : "Клиент";
 
-  const os = /ipad/i.test(ua)
-    ? "iPad"
-    : /iphone|ios/i.test(ua)
-      ? "iPhone"
-      : /android/i.test(ua)
-        ? "Android"
-        : /windows/i.test(ua)
-          ? "Windows"
-          : /macintosh|mac os/i.test(ua)
-            ? "macOS"
-            : /linux/i.test(ua)
-              ? "Linux"
-              : "Устройство";
+  // Модель и версия ОС: «Samsung SM-A336E · Android 16», «iPhone · iOS 18.1».
+  // Без этого в кабинете висело «Android · Happ» — по такой подписи человек
+  // не понимает, какое из его устройств отвязывать.
+  const pick = (re: RegExp): string => (re.exec(ua) ?? [])[1] ?? "";
 
-  return `${os} · ${app}`;
+  // Модель есть не во всех клиентах: Happ шлёт «Happ/2.5 (Android 14)» без
+  // модели, а WebView (Telegram, Chrome) — «Linux; Android 13; SM-A336E
+  // Build/…». Поэтому модель и платформа считаются отдельно, и если модели
+  // нет, в подписи остаётся платформа с версией, а не голое «Android».
+  const androidModel = (): string => {
+    // 1. Поиск в скобках после Android
+    const tail = /Android\s+[\d.]+([^)]*)/i.exec(ua);
+    if (tail) {
+      for (const segment of tail[1].split(";")) {
+        const cleaned = segment
+          .split(/\s+Build\//)[0]
+          .replace(/\)\s*$/, "")
+          .replace(/^wv\b\s*/i, "")
+          .trim();
+        if (!cleaned) continue;
+        if (/^([a-z]{2}[-_][a-z]{2}|u|k)$/i.test(cleaned)) continue;
+        if (/^sm-/i.test(cleaned)) {
+          return `Samsung ${cleaned.toUpperCase()}`;
+        }
+        if (/^pixel/i.test(cleaned)) return `Google ${cleaned}`;
+        return cleaned;
+      }
+    }
+    // 2. Если модель указана явно в конце UA
+    const smMatch = /\bSM-([A-Z0-9]+)\b/i.exec(ua);
+    if (smMatch) {
+      return `Samsung SM-${smMatch[1].toUpperCase()}`;
+    }
+    const redmiMatch = /\b(Redmi\s+[\w\s+]+|POCO\s+[\w\s+]+|Xiaomi\s+[\w\s+]+)/i.exec(ua);
+    if (redmiMatch) return redmiMatch[1].trim();
+
+    return "";
+  };
+
+  let model = "";
+  let platform = "";
+  let version = "";
+
+  if (/android/i.test(ua)) {
+    model = androidModel();
+    platform = "Android";
+    version = pick(/Android\s+([\d.]+)/i);
+  } else if (/ipad/i.test(ua)) {
+    model = "iPad";
+    platform = "iPadOS";
+    version = pick(/(?:iPad)?\s?OS\s+([\d_.]+)/i).replace(/_/g, ".");
+  } else if (/iphone|ios/i.test(ua)) {
+    model = "iPhone";
+    platform = "iOS";
+    version = pick(/(?:iPhone)?\s?OS\s+([\d_.]+)/i).replace(/_/g, ".");
+  } else if (/windows nt/i.test(ua)) {
+    model = "Windows PC";
+    platform = "Windows";
+    const nt = pick(/Windows NT\s*([\d.]+)/i);
+    version = nt === "10.0" ? "10 / 11" : nt;
+  } else if (/mac os x|macintosh/i.test(ua)) {
+    model = "Apple Mac";
+    platform = "macOS";
+    version = pick(/Mac OS X\s*([\d_.]+)/i).replace(/_/g, ".");
+  } else if (/linux/i.test(ua)) {
+    model = "Linux PC";
+    platform = "Linux";
+  }
+
+  // Если модель совпала с платформой (например "iPhone" и "iOS"), не дублируем
+  if (model === "Apple iPhone") {
+    return version ? `iPhone · iOS ${version}` : `iPhone · ${app}`;
+  }
+  if (model === "Apple iPad") {
+    return version ? `iPad · iPadOS ${version}` : `iPad · ${app}`;
+  }
+  if (model === "Apple Mac") {
+    return version ? `Mac · macOS ${version}` : `Mac · ${app}`;
+  }
+  if (model === "Windows PC") {
+    return version ? `Windows PC · ${version}` : `Windows PC · ${app}`;
+  }
+  if (model === "Linux PC") {
+    return `Linux PC · ${app}`;
+  }
+
+  const platformLabel = platform ? `${platform}${version ? " " + version : ""}` : "";
+  if (model) {
+    return platformLabel ? `${model} · ${platformLabel}` : `${model} · ${app}`;
+  }
+  if (platformLabel) return `${platformLabel} · ${app}`;
+  return `Устройство · ${app}`;
 }
 
 /**
@@ -1884,36 +2366,158 @@ export async function touchDevice(
   env: Env,
   userId: number,
   ua: string,
-): Promise<{ blocked: boolean } | null> {
+  limit = 2,
+): Promise<{ blocked: boolean; reason: "manual" | "limit" | ""; label: string } | null> {
   if (!ua || ua === "-") return null;
   const key = await hashValue(ua, envStr(env.SALT));
+  const label = deviceLabel(ua);
 
-  await run(
-    env,
-    `INSERT INTO user_devices (user_id, device_key, label) VALUES (?, ?, ?)
-     ON CONFLICT (user_id, device_key)
-     DO UPDATE SET last_seen = datetime('now'), label = excluded.label`,
-    userId,
-    key,
-    deviceLabel(ua),
-  );
+  // До применения 0023 колонки blocked_reason ещё нет. Код деплоится
+  // отдельно от миграции, поэтому читаем с запасным вариантом: без причины
+  // блокировка всё равно работает, просто текст будет общим.
+  let existing: { blocked: number; blocked_reason: string } | null = null;
+  try {
+    existing = await one<{ blocked: number; blocked_reason: string }>(
+      env,
+      "SELECT blocked, blocked_reason FROM user_devices WHERE user_id = ? AND device_key = ?",
+      userId,
+      key,
+    );
+  } catch {
+    const legacy = await one<{ blocked: number }>(
+      env,
+      "SELECT blocked FROM user_devices WHERE user_id = ? AND device_key = ?",
+      userId,
+      key,
+    );
+    existing = legacy ? { blocked: legacy.blocked, blocked_reason: "" } : null;
+  }
 
-  const row = await one<{ blocked: number }>(
-    env,
-    "SELECT blocked FROM user_devices WHERE user_id = ? AND device_key = ?",
-    userId,
-    key,
-  );
-  return { blocked: row?.blocked === 1 };
+  if (existing) {
+    try {
+      // user_agent пишем, чтобы разбор модели можно было улучшать по факту,
+      // а не по догадкам: клиенты присылают очень разные строки.
+      await run(
+        env,
+        "UPDATE user_devices SET last_seen = datetime('now'), label = ?, user_agent = ? WHERE user_id = ? AND device_key = ?",
+        label,
+        ua.slice(0, 240),
+        userId,
+        key,
+      );
+    } catch {
+      await run(
+        env,
+        "UPDATE user_devices SET last_seen = datetime('now'), label = ? WHERE user_id = ? AND device_key = ?",
+        label,
+        userId,
+        key,
+      );
+    }
+    const reason = existing.blocked === 1 ? ((existing.blocked_reason as "manual" | "limit") || "manual") : "";
+
+    // Блокировка «по лимиту» временная: место освободилось — устройство
+    // возвращается само. Раньше отметка оставалась навсегда, и телефон
+    // продолжал получать заглушку даже после отвязки лишних.
+    if (reason === "limit") {
+      let active = 0;
+      try {
+        const row = await one<{ n: number }>(
+          env,
+          `SELECT COUNT(*) AS n FROM user_devices
+            WHERE user_id = ? AND blocked = 0 AND last_seen >= datetime('now', '-30 days')`,
+          userId,
+        );
+        active = Number(row?.n ?? 0);
+      } catch {
+        active = limit;
+      }
+      if (active < limit) {
+        await run(
+          env,
+          "UPDATE user_devices SET blocked = 0, blocked_reason = '', blocked_at = NULL WHERE user_id = ? AND device_key = ?",
+          userId,
+          key,
+        );
+        return { blocked: false, reason: "", label };
+      }
+    }
+
+    return { blocked: existing.blocked === 1, reason, label };
+  }
+
+  // Новое устройство. Считаем только «живые»: устройство, которое не
+  // открывало подписку 30 дней, место не занимает — иначе после смены
+  // телефона лимит съедали бы записи годичной давности.
+  let active = 0;
+  try {
+    const row = await one<{ n: number }>(
+      env,
+      `SELECT COUNT(*) AS n FROM user_devices
+        WHERE user_id = ? AND blocked = 0 AND last_seen >= datetime('now', '-30 days')`,
+      userId,
+    );
+    active = Number(row?.n ?? 0);
+  } catch {
+    active = 0;
+  }
+
+  const over = active >= limit;
+  try {
+    await run(
+      env,
+      `INSERT INTO user_devices (user_id, device_key, label, blocked, blocked_reason, blocked_at, user_agent)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      userId,
+      key,
+      label,
+      over ? 1 : 0,
+      over ? "limit" : "",
+      over ? new Date().toISOString().slice(0, 19).replace("T", " ") : null,
+      ua.slice(0, 240),
+    );
+  } catch {
+    // Миграция 0023 ещё не применена: пишем без причины блокировки.
+    await run(
+      env,
+      "INSERT INTO user_devices (user_id, device_key, label, blocked) VALUES (?, ?, ?, ?)",
+      userId,
+      key,
+      label,
+      over ? 1 : 0,
+    );
+  }
+
+  return { blocked: over, reason: over ? "limit" : "", label };
 }
 
 export async function listDevices(env: Env, userId: number): Promise<UserDevice[]> {
-  return await many<UserDevice>(
-    env,
-    `SELECT id, label, last_seen, blocked FROM user_devices
-      WHERE user_id = ? ORDER BY blocked ASC, last_seen DESC LIMIT 10`,
-    userId,
-  );
+  try {
+    return await many<UserDevice>(
+      env,
+      `SELECT id, label, last_seen, blocked, blocked_reason, custom_name FROM user_devices
+        WHERE user_id = ? ORDER BY blocked ASC, last_seen DESC LIMIT 10`,
+      userId,
+    );
+  } catch {
+    try {
+      // Схема без custom_name (миграция 0026 ещё не применена).
+      return await many<UserDevice>(
+        env,
+        `SELECT id, label, last_seen, blocked, blocked_reason FROM user_devices
+          WHERE user_id = ? ORDER BY blocked ASC, last_seen DESC LIMIT 10`,
+        userId,
+      );
+    } catch {
+      // Совсем старая схема: без blocked_reason.
+      return await many<UserDevice>(
+        env,
+        `SELECT id, label, last_seen, blocked FROM user_devices
+          WHERE user_id = ? ORDER BY blocked ASC, last_seen DESC LIMIT 10`,
+        userId,
+      );
+    }
+  }
 }
 
 export async function setDeviceBlocked(
@@ -2017,3 +2621,4 @@ export async function listAvailableServers(
       };
     });
 }
+

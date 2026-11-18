@@ -116,8 +116,26 @@ export async function tOne<T>(
   return rows[0] ?? null;
 }
 
-export async function tRun(env: Env, sql: string, ...params: unknown[]): Promise<void> {
-  await pipeline(env, [{ sql, args: params.map(encodeArg) }]);
+export async function tRun(env: Env, sql: string, ...params: unknown[]): Promise<number> {
+  return await tRunCount(env, sql, ...params);
+}
+
+/**
+ * Сколько строк реально изменилось.
+ *
+ * Нужно там, где решение зависит от факта записи: идемпотентность платежа
+ * (`UPDATE orders ... WHERE status='pending'`) и журнал начислений. Без этого
+ * числа Turso отвечал «0 изменений» на любую запись, и повторная оплата
+ * выглядела как дубликат.
+ */
+export async function tRunCount(env: Env, sql: string, ...params: unknown[]): Promise<number> {
+  const results = await pipeline(env, [{ sql, args: params.map(encodeArg) }]);
+  const result = results?.[0]?.response?.result as
+    | { affected_row_count?: number; rows?: Arg[][] }
+    | undefined;
+  if (typeof result?.affected_row_count === "number") return result.affected_row_count;
+  // Старые версии libSQL не отдают счётчик: считаем, что запись прошла.
+  return 1;
 }
 
 /** Пачка выражений одним запросом: экономит и время, и лимиты. */

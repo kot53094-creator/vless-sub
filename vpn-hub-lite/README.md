@@ -14,6 +14,10 @@ Happ ──GET /sub/<токен>─┘        cron: sync + health
 
 ## Документация
 
+- [**Платный контур: оплата, заказы, возвраты, запуск**](docs/PAID-LAUNCH.md)
+- [Аудит проекта, ноябрь 2026](docs/AUDIT-2026-11.md)
+- [Архитектура платформы и выбор площадки](docs/PLATFORM.md)
+- [Быстрый старт: 8 шагов](docs/QUICKSTART.md)
 - [Архитектура и потоки данных](docs/ARCHITECTURE.md)
 - [Схема базы: таблицы, связи, миграции, бэкап](docs/SCHEMA.md)
 - [Перенос базы и бэкенда: D1 → Turso, другой хостинг, домен](docs/MIGRATION.md)
@@ -22,12 +26,38 @@ Happ ──GET /sub/<токен>─┘        cron: sync + health
 - [Эксплуатация: деплой, агент проверки, бэкапы, диагностика](docs/OPERATIONS.md)
 - [Что не реализовано и почему](docs/KNOWN-LIMITS.md)
 - [Внешние подписки: импорт, синхронизация, проверка](docs/MERGE.md)
+- [Группы серверов AUTO / EUROPE / RUSSIA / BACKUP / ALL](docs/GROUPS.md)
+- [Совместимость с INCY: что реально поддерживается](docs/INCY.md)
+- [Telegram Mini App: личный кабинет в стиле Song69](docs/MINIAPP.md)
+- [Перенос на другого провайдера: Turso, Postgres, экспорт](docs/PORTABILITY.md)
+- [Свой сервер: что переносится, а что нет](docs/SELF-HOSTING.md)
 
 Живые адреса:
 
-- панель — `/admin`
+- сайт — `/`
+- панель — `/admin`, деньги и заказы — `/admin/money`
 - состояние — `/status`
 - API — `/api/v1/status`, описание — `/api/v1/openapi.json`
+- документы — `/legal/oferta`, `/legal/refund`, `/legal/privacy`
+
+## Платный сервис
+
+Сервис продаёт подписку, а не просто выдаёт ссылку:
+
+| Где | Что происходит |
+|---|---|
+| бот, `/buy` | тарифы, счёт звёздами Telegram, «я оплатил», `/orders`, `/paysupport` |
+| мини-апп, вкладка «Подписка» | выбор тарифа и способа оплаты, `openInvoice` для звёзд |
+| `/pay/<id>` | страница оплаты картой и криптой, автообновление статуса |
+| `/admin/money` | выручка за день/неделю/месяц, заказы, возврат в один клик |
+
+Доступ выдаётся только после подтверждённой оплаты и ровно один раз: заказ
+переводится в `paid` условным `UPDATE`, а дни начисляются через
+`accruals.ref = order:<id>`. Повторная доставка вебхука не продлевает
+подписку второй раз.
+
+Включение, переменные окружения, экономика и юридические ограничения —
+в [docs/PAID-LAUNCH.md](docs/PAID-LAUNCH.md).
 
 ## Что внутри
 
@@ -51,6 +81,11 @@ Happ ──GET /sub/<токен>─┘        cron: sync + health
 | `src/bot/*` | вебхук, команды пользователя и админа |
 | `src/plans.ts` | тарифы и ручной журнал денежных платежей |
 | `src/payments.ts` | журнал фактов выдачи доступа (`kind`, `days`) |
+| `src/orders.ts` | заказы: pending → paid, выдача дней, возврат, выручка |
+| `src/pay/*` | касса: Stars, Crypto Pay, ЮKassa, страница оплаты |
+| `src/bot/buy.ts` | витрина тарифов и счёт в боте, `/paysupport` |
+| `src/site.ts` | публичный сайт с тарифами из базы |
+| `src/legal.ts` | оферта, оплата и возврат, конфиденциальность |
 | `src/db.ts` | слой базы: D1 или Turso по двум секретам |
 | `src/turso.ts` | клиент libSQL `/v2/pipeline` |
 | `src/admin.ts` | админка на простом HTML |
@@ -691,3 +726,6 @@ curl -s -X POST https://vpn-hub-lite.twistx-launcher.workers.dev/api/discover \
 
 Схема и связи — в [docs/SCHEMA.md](docs/SCHEMA.md), перенос базы — в
 [docs/MIGRATION.md](docs/MIGRATION.md).
+
+
+

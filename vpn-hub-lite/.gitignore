@@ -4,3 +4,8 @@ node_modules/
 dist/
 *.log
 .DS_Store
+
+# Локальный рантайм: база и сборка не коммитятся
+runtime/node/*.sqlite*
+runtime/node/build/
+runtime/node/*.out

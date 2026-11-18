@@ -33,6 +33,17 @@ export interface Env {
   /** Общий секрет агента проверок: заголовок x-check-token. */
   CHECK_TOKEN?: string;
 
+  // ── свой узел ───────────────────────────────────────────────────────────
+  /** IP или домен своего сервера. Пусто — узел не используется. */
+  NODE_HOST?: string;
+  NODE_PORT?: string;
+  /** Публичный ключ REALITY (xray x25519 → Public key). */
+  NODE_PUBKEY?: string;
+  NODE_SID?: string;
+  NODE_SNI?: string;
+  /** Подпись узла в списке серверов, например «🇷🇺 Россия · свой». */
+  NODE_NAME?: string;
+
   // «Платный» вид карточки подписки в клиенте.
   /** "0" — не подставлять тариф по умолчанию, показывать только данные из базы. */
   PREMIUM_LOOK?: string;
@@ -45,6 +56,49 @@ export interface Env {
 
   /** Необязательный токен GitHub: поднимает лимит поиска источников. */
   GITHUB_TOKEN?: string;
+
+  // ── платный контур ──────────────────────────────────────────────────────
+  /**
+   * Какие способы оплаты включены: "stars,cryptopay,yookassa".
+   * Пусто — включаются сами те, для которых заданы секреты (Stars — всегда).
+   * Провайдер без секретов не показывается пользователю и не принимает
+   * вебхуки: «кнопка есть, а оплата не проходит» — худший вариант витрины.
+   */
+  PAY_PROVIDERS?: string;
+  /** Токен Crypto Bot (@CryptoBot → Crypto Pay). Оплата в USDT/TON. */
+  CRYPTOPAY_TOKEN?: string;
+  /** ЮKassa: shopId и секретный ключ. Оплата картой РФ на сайте. */
+  YOOKASSA_SHOP_ID?: string;
+  YOOKASSA_SECRET?: string;
+  /** Почта для чека 54-ФЗ; без неё чек не отправляется. */
+  YOOKASSA_RECEIPT_EMAIL?: string;
+  /** Сколько рублей стоит одна звезда Telegram (для пересчёта цены). */
+  STAR_RUB?: string;
+  /** Сколько дней живёт неоплаченный заказ (по умолчанию 24 ч). */
+  ORDER_TTL_HOURS?: string;
+  /** "0" — не выдавать 7-дневный пробный доступ новым пользователям. */
+  TRIAL_ENABLED?: string;
+  /** Длина пробного периода в днях (по умолчанию 3). */
+  TRIAL_DAYS?: string;
+  /** Лимит устройств на пробном периоде. */
+  TRIAL_DEVICES?: string;
+  /** Лимит устройств по умолчанию, если в тарифе не задан (2). */
+  DEVICE_LIMIT?: string;
+  /** "0" — выключить массовую проверку узлов и утреннюю пересборку пула. */
+  CHECKS_ENABLED?: string;
+  /** Сколько часов проверка узла считается свежей (по умолчанию 72). */
+  VERIFIED_MAX_AGE_H?: string;
+  /** Токен агента узлов для POST /api/traffic. */
+  TRAFFIC_TOKEN?: string;
+  /** Перевод без эквайринга: телефон СБП, номер карты, имя получателя. */
+  PAY_PHONE?: string;
+  PAY_CARD?: string;
+  PAY_RECEIVER?: string;
+  /** Куда приходят деньги: реквизиты для страницы оферты. */
+  LEGAL_ENTITY?: string;
+  LEGAL_INN?: string;
+  LEGAL_EMAIL?: string;
+  LEGAL_TG?: string;
 
   /** "0" — у каждого свой набор узлов; по умолчанию у всех одинаковый. */
   SHARED_LIST?: string;
@@ -63,6 +117,16 @@ export interface Env {
   MERGE_HWID?: string;
   /** "0" — не подмешивать импортированные узлы в подписку. */
   MERGE_ENABLED?: string;
+  /** Безопасный период после исчезновения узла из источника, часы (24). */
+  MERGE_GRACE_HOURS?: string;
+  /** Сколько узлов класть в группу AUTO (12). */
+  GROUP_AUTO_TOP?: string;
+  /** Тихие часы по местному времени, «23-8»; off — выключить. */
+  QUIET_HOURS?: string;
+  /** Смещение местного времени от UTC в часах (8). */
+  QUIET_UTC_OFFSET?: string;
+  /** Потолок узлов на группу (40). */
+  GROUP_LIMIT?: string;
 
   // Remnawave (необязательно). Пусто — группы работают только в нашей D1.
   REMNAWAVE_URL?: string;
@@ -93,6 +157,12 @@ export interface UserRow {
   sub_token: string;
   last_fetch_at: string | null;
   traffic_gb?: number;
+  /** Израсходовано с последнего сброса, МБ. Заполняет агент узлов. */
+  traffic_used_mb?: number;
+  /** Докупленные гигабайты сверх тарифной квоты (0025). */
+  traffic_extra_gb?: number;
+  traffic_reset_at?: string | null;
+  traffic_reported_at?: string | null;
   tier?: string;
   preferred_server?: number | null;
   preferred_country?: string | null;
@@ -155,4 +225,11 @@ export interface DeliverableServer extends ServerRow {
   blocked_ok?: number | null;
   /** Скорость скачивания через туннель, Мбит/с (замер агента). */
   speed_mbps?: number | null;
+  /**
+   * Открывает ли Gemini. Нужен отдельно от blocked_ok: узел с российским
+   * выходом тянет YouTube и ChatGPT, но Gemini в РФ недоступен, и в общем
+   * автоотборе такой узел ломает именно нейросети.
+   */
+  ai_ok?: number | null;
 }
+

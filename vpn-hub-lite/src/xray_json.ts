@@ -11,6 +11,34 @@
  * клиенте. JSON — дополнительный профиль для Happ, где нужен автоподбор.
  */
 
+/**
+ * Имя авто-профиля в клиенте. Иконка в VLESS-подписке — это только эмодзи:
+ * ни Happ, ни INCY не принимают картинку в профиле. Молния отличает авто от
+ * строк-стран с флагами и совпадает с тем, что обещает бот в инструкции.
+ */
+export const AUTO_LABEL = "⚡️ Авто-выбор";
+
+/**
+ * Домены нейросетей. Идут отдельным маршрутом, потому что Gemini недоступен
+ * с российских адресов, а ChatGPT отдаёт ошибку на «грязных» выходных IP —
+ * общий балансировщик об этом не знает и выбирает узел по задержке.
+ */
+const AI_DOMAINS = [
+  "domain:gemini.google.com",
+  "domain:gemini.google",
+  "domain:aistudio.google.com",
+  "domain:generativelanguage.googleapis.com",
+  "domain:makersuite.google.com",
+  "domain:bard.google.com",
+  "domain:chatgpt.com",
+  "domain:chat.openai.com",
+  "domain:openai.com",
+  "domain:claude.ai",
+  "domain:anthropic.com",
+  "domain:perplexity.ai",
+  "domain:copilot.microsoft.com",
+];
+
 interface VlessOutbound {
   tag: string;
   protocol: "vless";
@@ -137,11 +165,13 @@ export function toOutbound(uri: string, index: number): VlessOutbound | null {
  * до каждого outbound и отправляет новый поток на самый быстрый живой.
  * `strategySettings` не задаём — для leastPing он не нужен.
  */
-export function buildAutoConfig(uris: string[], limit = 25): string {
-  const outbounds = uris
+export function buildAutoConfig(uris: string[], limit = 25, aiUris: string[] = []): string {
+  const built = uris
     .slice(0, limit)
-    .map((uri, index) => toOutbound(uri, index))
-    .filter((item): item is VlessOutbound => item !== null);
+    .map((uri, index) => ({ uri, outbound: toOutbound(uri, index) }))
+    .filter((item): item is { uri: string; outbound: VlessOutbound } => item.outbound !== null);
+  const outbounds = built.map((item) => item.outbound);
+  const aiSet = new Set(aiUris);
 
   // Имена профилей в клиенте — это теги outbound'ов. Берём их из подписи
   // ссылки, а селектор балансировщика перечисляет теги явно: префикс
@@ -156,8 +186,22 @@ export function buildAutoConfig(uris: string[], limit = 25): string {
   }
   const tags = outbounds.map((item) => item.tag);
 
+  // Узлы, где нейросети реально открываются. Если таких нет — правило
+  // не добавляем: пустой селектор в Xray ломает весь конфиг.
+  const aiTags = built
+    .filter((item) => aiSet.has(item.uri))
+    .map((item) => item.outbound.tag)
+    .filter((tag) => tags.includes(tag));
+  const useAiBalancer = aiTags.length > 0;
+
   const config = {
     log: { loglevel: "warning" },
+    // DNS нужен балансировщику: без него probeUrl резолвится системным
+    // резолвером, а в некоторых клиентах он отключён.
+    dns: {
+      servers: ["1.1.1.1", "1.0.0.1"],
+      queryStrategy: "UseIP",
+    },
     inbounds: [
       {
         tag: "socks-in",
@@ -180,22 +224,97 @@ export function buildAutoConfig(uris: string[], limit = 25): string {
       { tag: "direct", protocol: "freedom", settings: {} },
       { tag: "block", protocol: "blackhole", settings: {} },
     ],
+    // Имя профиля в клиенте. Без него Happ показывает техническое имя файла,
+    // и в списке серверов не видно, что это «Авто».
+    remarks: AUTO_LABEL,
     routing: {
       domainStrategy: "IPIfNonMatch",
       rules: [
+        // Российские домены и локальные сети — напрямую: через чужой узел
+        // они только медленнее, а иногда и вовсе не открываются.
+        { type: "field", domain: ["domain:ru", "domain:su", "domain:xn--p1ai"], outboundTag: "direct" },
+        { type: "field", ip: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8"], outboundTag: "direct" },
+        // Нейросети — на отдельный балансировщик. Российский выход тянет
+        // YouTube и ChatGPT, но Gemini там недоступен, и общий leastPing
+        // выбирал именно такой узел как самый быстрый.
+        ...(useAiBalancer
+          ? [{ type: "field" as const, domain: AI_DOMAINS, balancerTag: "auto-ai" }]
+          : []),
+        // DNS-запросы тоже идут через узел. Если резолвить локально, провайдер
+        // подменяет ответы, и сайты «не открываются», хотя ютуб и телеграм
+        // работают: у них адреса уже прописаны в приложении.
+        { type: "field", port: "53", balancerTag: "auto" },
         { type: "field", network: "tcp,udp", balancerTag: "auto" },
       ],
       balancers: [
         { tag: "auto", selector: tags, strategy: { type: "leastPing" } },
+        ...(useAiBalancer
+          ? [{ tag: "auto-ai", selector: aiTags, strategy: { type: "leastPing" } }]
+          : []),
       ],
     },
     observatory: {
       subjectSelector: tags,
       probeUrl: "https://www.gstatic.com/generate_204",
-      probeInterval: "30s",
+      // 60 секунд вместо 10 минут: при переключении сети (Wi-Fi ↔ LTE)
+      // задержки старых путей устаревают мгновенно, и «Авто» до перезамера
+      // держал мёртвый узел. Минимум Xray — 10 с, минута не жжёт батарею.
+      probeInterval: "60s",
       enableConcurrency: true,
+    },
+    // Второй API наблюдателя — для ядер Xray 1.7 и для сборок, где
+    // `observatory` ещё не понимают. Балансировщик leastPing читает тот
+    // объект, который поддерживает клиент; лишний ключ ядро игнорирует.
+    // Без этого «Авто» в старом Happ подключался, но не выпускал трафик:
+    // селектор оставался без данных о задержках.
+    burstObservatory: {
+      subjectSelector: tags,
+      pingConfig: {
+        destination: "https://www.gstatic.com/generate_204",
+        interval: "60s",
+        timeout: "5s",
+        sampling: 2,
+      },
     },
   };
 
   return JSON.stringify(config, null, 2);
+}
+
+/**
+ * Один узел как самостоятельный JSON-профиль.
+ *
+ * Нужен для мульти-подписки: клиент показывает такие записи отдельными
+ * строками («· JSON»), как в платных клиентах — «Авто-выбор», ниже страны.
+ */
+export function buildSingleProfile(uri: string, remarks?: string): Record<string, unknown> {
+  const outbound = toOutbound(uri, 0);
+  if (!outbound) throw new Error("bad uri");
+
+  const name = remarks ?? (() => {
+    const hash = uri.indexOf("#");
+    return hash >= 0 ? decodeURIComponent(uri.slice(hash + 1)) : "Сервер";
+  })();
+
+  return {
+    remarks: name,
+    log: { loglevel: "warning" },
+    dns: { servers: ["1.1.1.1", "8.8.8.8"], queryStrategy: "UseIP" },
+    inbounds: [
+      {
+        tag: "socks",
+        port: 10808,
+        listen: "127.0.0.1",
+        protocol: "socks",
+        settings: { auth: "noauth", udp: true },
+        sniffing: { enabled: true, destOverride: ["http", "tls", "quic"] },
+      },
+    ],
+    outbounds: [
+      outbound,
+      { tag: "direct", protocol: "freedom", settings: {} },
+      { tag: "block", protocol: "blackhole", settings: {} },
+    ],
+    routing: { domainStrategy: "IPIfNonMatch", rules: [] },
+  };
 }

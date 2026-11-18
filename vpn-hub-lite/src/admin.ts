@@ -6,6 +6,8 @@ import { createInvite, inviteLink, listInvites, revokeInvite } from "./invites";
 import { flagOf } from "./labels";
 import { invalidateSubscription } from "./sub";
 import { recordPayment } from "./payments";
+import { findOrder, revenue } from "./orders";
+import { refundOrder } from "./pay";
 import { logEvent, many, one, run } from "./db";
 import { syncOneSource } from "./sync";
 import { maskLink, maskToken } from "./labels";
@@ -39,8 +41,17 @@ import {
 import { normalizePromo, randomPromoCode } from "./promotions";
 import { describeRejects, latestRuns, runsSummary } from "./intake";
 import { listVersions, recentVersions, rollbackVersion } from "./sub_versions";
-import { mergeStatus, mergedNodes, setMergeDisabled, syncMerge } from "./merge";
+import {
+  mergeStatus,
+  mergedNodes,
+  setMergeDisabled,
+  setMergeNodeExcluded,
+  syncMerge,
+} from "./merge";
+import { GROUP_ORDER, GROUP_TITLES, planGroups, summarizeGroups } from "./groups";
 import { FRESH_SECONDS, humanAge, liveRows } from "./presence";
+import { parseQuiet } from "./quiet";
+import { qrSvg } from "./qr";
 
 const COOKIE = "vh_admin";
 const GB = 1024 ** 3;
@@ -253,11 +264,13 @@ const NAV: Array<[string, string, string, string]> = [
   ["Дашборд", "/admin/users", "Пользователи", "users"],
   ["Дашборд", "/admin/online", "Кто онлайн", "online"],
   ["Данные", "/admin/servers", "Серверы", "servers"],
+  ["Данные", "/admin/health", "Здоровье узлов", "health"],
   ["Данные", "/admin/sources", "Источники", "sources"],
   ["Данные", "/admin/imports", "Импорт", "imports"],
   ["Доступ", "/admin/subs", "Подписки", "subs"],
   ["Доступ", "/admin/versions", "Версии подписок", "versions"],
   ["Доступ", "/admin/grant", "Выдать подписку", "grant"],
+  ["Деньги", "/admin/money", "Выручка и заказы", "money"],
   ["Маркетинг", "/admin/bonuses", "Настройки бонусов", "bonuses"],
   ["Маркетинг", "/admin/promos", "Промокоды", "promos"],
   ["Маркетинг", "/admin/accruals", "Начисления", "accruals"],
@@ -313,6 +326,43 @@ function filterRows(value) {
 }
 fetch("/healthz").then((r) => { if (r.ok) document.getElementById("net").textContent = "сеть: ok"; })
   .catch(() => { document.getElementById("net").textContent = "сеть: нет"; });
+
+// Копирование ссылок: одно место на всю панель, без inline-обработчиков.
+document.addEventListener("click", async (event) => {
+  const btn = event.target.closest("[data-copy]");
+  if (!btn) return;
+  event.preventDefault();
+  const text = btn.dataset.copy;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // Буфер обмена доступен только в защищённом контексте — оставляем выделение.
+    const field = document.querySelector("[data-copy-source]");
+    if (field) { field.select(); document.execCommand("copy"); }
+  }
+  const was = btn.textContent;
+  btn.textContent = "Скопировано";
+  setTimeout(() => { btn.textContent = was; }, 1400);
+});
+
+// «Выбрать всё» в таблице с массовыми действиями.
+// Атрибут form стоит на самом чекбоксе, а не на родителе, поэтому селектор
+// начинается с input — иначе выборка пустая и счётчик не растёт.
+const BULK_BOXES = 'input[form="bulkform"][name="ids"]';
+document.addEventListener("change", (event) => {
+  const all = event.target.closest("[data-check-all]");
+  if (!all) return;
+  document.querySelectorAll(BULK_BOXES).forEach((box) => {
+    box.checked = all.checked;
+  });
+  const counter = document.getElementById("bulk-count");
+  if (counter) counter.textContent = String(document.querySelectorAll(BULK_BOXES + ":checked").length);
+});
+document.addEventListener("change", (event) => {
+  if (!event.target.matches(BULK_BOXES)) return;
+  const counter = document.getElementById("bulk-count");
+  if (counter) counter.textContent = String(document.querySelectorAll(BULK_BOXES + ":checked").length);
+});
 </script>
 </body></html>`;
 
@@ -394,7 +444,10 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   if (path === "/admin/live") {
     return Response.json(await liveSnapshot(env), { headers: { "cache-control": "no-store" } });
   }
-  if (path === "/admin/users") return await usersPage(env, url);
+    if (path === "/admin/money") return await moneyPage(env, url);
+    if (path === "/admin/users") return await usersPage(env, url);
+  if (path === "/admin/user") return await connectPage(env, url);
+  if (path === "/admin/health") return await healthPage(env, url);
   if (path === "/admin/servers") return await serversPage(env, url);
   if (path === "/admin/server") return await serverEditPage(env, url);
   if (path === "/admin/sources") return await sourcesPage(env, url);
@@ -827,7 +880,8 @@ async function usersPage(env: Env, url: URL): Promise<Response> {
       const pCls = user.presence_state === null ? "" : pFresh ? (pOn ? "ok" : "bad") : "warn";
 
       return `<tr data-row="${esc(user.tg_id)} ${esc(user.tg_username || "")}">
-        <td>${name}<div class="muted mono">${esc(user.tg_id)}</div></td>
+        <td style="width:30px"><input type="checkbox" form="bulkform" name="ids" value="${user.id}" aria-label="Выбрать ${esc(user.tg_id)}"></td>
+        <td><a href="/admin/user?id=${user.id}" style="text-decoration:none">${name}</a><div class="muted mono">${esc(user.tg_id)}</div></td>
         <td><span class="pill ${cls}">${esc(user.status)}</span></td>
         <td><span class="pill ${pCls}">${esc(pLabel)}</span>${
           pFlag ? `<div class="muted">${pFlag} ${esc(user.presence_country ?? "")}</div>` : ""
@@ -854,9 +908,11 @@ async function usersPage(env: Env, url: URL): Promise<Response> {
                 </select>
                 <input type="date" name="date" aria-label="Точная дата">
               </div>
-              <label class="muted">Трафик, ГБ (0 — без лимита)</label>
-              <input name="traffic" value="${user.traffic_gb ?? 0}" inputmode="numeric">
-              <label class="muted">Устройств</label>
+               <label class="muted">Трафик, ГБ (0 — без лимита)</label>
+               <input name="traffic" value="${user.traffic_gb ?? 0}" inputmode="numeric">
+               <label class="muted">Израсходовано, ГБ (ручная правка счётчика)</label>
+               <input name="traffic_used" value="${Math.round(((user.traffic_used_mb ?? 0) / 1024) * 10) / 10}" inputmode="decimal">
+               <label class="muted">Устройств</label>
               <input name="devices_limit" value="${user.device_limit}" inputmode="numeric">
               <label class="muted">Группа серверов</label>
               <select name="pool">
@@ -915,9 +971,38 @@ ${err ? `<div class="err">${esc(err)}</div>` : ""}
     <span class="muted">покажет, сколько серверов реально уходит в Happ</span>
   </form>
   <table>
-    <thead><tr><th>Кто</th><th>Статус</th><th>VPN</th><th>До</th><th>Устройства</th><th>Трафик</th><th>Подписка</th><th>Действия</th></tr></thead>
-    <tbody>${rows || `<tr><td colspan="8" class="muted">Пока никого</td></tr>`}</tbody>
+    <thead><tr><th style="width:30px"><input type="checkbox" data-check-all aria-label="Выбрать всех"></th><th>Кто</th><th>Статус</th><th>VPN</th><th>До</th><th>Устройства</th><th>Трафик</th><th>Подписка</th><th>Действия</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="9" class="muted">Пока никого</td></tr>`}</tbody>
   </table>
+</div>
+
+<div class="card">
+  <div class="head"><h2>Массовые действия</h2><div class="spacer"></div><span class="muted">выбрано: <b id="bulk-count">0</b></span></div>
+  <form id="bulkform" method="post" action="/admin/action" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <input type="hidden" name="csrf" value="${csrf}">
+    <input type="hidden" name="action" value="bulk_users">
+    <div><label class="muted">Что сделать</label><br>
+      <select name="op" required>
+        <option value="extend">Продлить срок</option>
+        <option value="ban">Забанить</option>
+        <option value="unban">Разбанить</option>
+        <option value="devices">Задать лимит устройств</option>
+        <option value="traffic">Задать лимит трафика, ГБ</option>
+        <option value="reset_traffic">Обнулить счётчик трафика</option>
+        <option value="pool">Перевести в группу</option>
+      </select>
+    </div>
+    <div><label class="muted">Дней</label><br><input name="days" value="30" inputmode="numeric" style="width:90px"></div>
+    <div><label class="muted">Устройств</label><br><input name="devices_limit" value="2" inputmode="numeric" style="width:100px"></div>
+    <div><label class="muted">ГБ</label><br><input name="traffic" value="0" inputmode="numeric" style="width:90px"></div>
+    <div><label class="muted">Группа</label><br>
+      <select name="pool"><option value="0">все</option>
+        ${pools.map((pool) => `<option value="${pool.id}">${esc(pool.name)}</option>`).join("")}
+      </select>
+    </div>
+    <button class="btn primary">Применить к выбранным</button>
+  </form>
+  <p class="muted" style="margin-bottom:0">Продление считает срок от текущей даты окончания у каждого человека отдельно; уже истёкшим — от сегодняшнего дня.</p>
 </div>
 
 <div class="card">
@@ -946,6 +1031,357 @@ ${err ? `<div class="err">${esc(err)}</div>` : ""}
 </div>`;
 
   return page("Пользователи", body, "users", env);
+}
+
+/* ── Подключение человека ──────────────────────────────────────────────── */
+
+interface DeviceRow {
+  id: number;
+  device_key: string;
+  label: string;
+  custom_name: string | null;
+  user_agent: string | null;
+  first_seen: string;
+  last_seen: string;
+  blocked: number;
+  blocked_reason: string | null;
+}
+
+/**
+ * Личная страница подключения: QR подписки, QR мини-аппа и список устройств.
+ * Нужна, когда человек просит «дай ссылку ещё раз» — раньше приходилось лезть
+ * в базу за токеном.
+ */
+async function connectPage(env: Env, url: URL): Promise<Response> {
+  const id = Number(url.searchParams.get("id") ?? 0);
+  const csrf = await csrfToken(env);
+  const user = await one<UserRow & { servers: number }>(
+    env,
+    `SELECT u.*, (SELECT COUNT(*) FROM assignments a WHERE a.user_id = u.id) AS servers
+     FROM users u WHERE u.id = ?`,
+    id,
+  );
+
+  if (!user) {
+    return page(
+      "Подключение",
+      `<h1>Подключение</h1><div class="card"><div class="muted">Пользователь не найден. <a href="/admin/users">К списку</a></div></div>`,
+      "users",
+      env,
+    );
+  }
+
+  const base = env.PUBLIC_BASE_URL.replace(/\/+$/, "");
+  const subUrl = `${base}/sub/${user.sub_token}`;
+  const appUrl = `${base}/app?token=${user.sub_token}`;
+  const devices = await many<DeviceRow>(
+    env,
+    "SELECT * FROM user_devices WHERE user_id = ? ORDER BY blocked, last_seen DESC LIMIT 30",
+    id,
+  );
+
+  const name = user.tg_username ? `@${esc(user.tg_username)}` : `id ${esc(user.tg_id)}`;
+  const activeDevices = devices.filter((d) => d.blocked === 0).length;
+  const trafficUsed = user.traffic_used_mb ? `${(user.traffic_used_mb / 1024).toFixed(1)} ГБ` : "0 ГБ";
+  const statusLabel = user.status === "active" ? "активен" : user.status;
+
+  const deviceRows = devices
+    .map((device) => {
+      const title = esc(device.custom_name || device.label || "Устройство");
+      const state = device.blocked
+        ? `<span class="pill bad">отвязано${device.blocked_reason ? `: ${esc(device.blocked_reason)}` : ""}</span>`
+        : `<span class="pill ok">активно</span>`;
+      return `<tr data-row="${title} ${esc(device.device_key)}">
+        <td>${title}<div class="muted mono">${esc(device.device_key.slice(0, 18))}</div></td>
+        <td>${state}</td>
+        <td class="muted">${esc(device.last_seen.slice(0, 16).replace("T", " "))}</td>
+        <td>
+          <form method="post" action="/admin/action" class="inline">
+            <input type="hidden" name="csrf" value="${csrf}">
+            <input type="hidden" name="action" value="device_toggle">
+            <input type="hidden" name="id" value="${user.id}">
+            <input type="hidden" name="device" value="${device.id}">
+            <button class="btn">${device.blocked ? "Вернуть" : "Отвязать"}</button>
+          </form>
+        </td>
+      </tr>`;
+    })
+    .join("");
+
+  const body = `
+<a class="btn" href="/admin/users" style="text-decoration:none;display:inline-block;margin-bottom:12px">← Пользователи</a>
+<h1>${name}</h1>
+<div class="sub">Подключение и устройства · ${esc(statusLabel)} · до ${esc(user.expires_at?.slice(0, 10) ?? "—")}</div>
+
+<div class="grid">
+  <div class="card">
+    <div class="head"><h2>Подписка</h2><div class="spacer"></div><span class="muted">один QR для любого клиента</span></div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">
+      <div style="background:#fff;padding:10px;border-radius:14px;line-height:0">${qrSvg(subUrl, { size: 220 })}</div>
+      <div style="flex:1;min-width:240px">
+        <div class="muted">Ссылка подписки</div>
+        <input class="mono" data-copy-source readonly value="${esc(subUrl)}" style="width:100%;margin:6px 0 10px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn primary" data-copy="${esc(subUrl)}">Скопировать</button>
+          <a class="btn" href="${esc(subUrl)}" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">Открыть</a>
+        </div>
+        <div class="muted" style="margin-top:14px">Мини-приложение</div>
+        <input class="mono" readonly value="${esc(appUrl)}" style="width:100%;margin:6px 0 10px">
+        <button class="btn" data-copy="${esc(appUrl)}">Скопировать ссылку на мини-апп</button>
+      </div>
+    </div>
+    <div class="foot">
+      <div><b>${activeDevices}</b><span>устройств из ${user.device_limit}</span></div>
+      <div><b>${trafficUsed}</b><span>трафика</span></div>
+      <div><b>${user.servers}</b><span>серверов в подписке</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="head"><h2>Мини-апп</h2><div class="spacer"></div><span class="muted">телефон</span></div>
+    <div style="background:#fff;padding:10px;border-radius:14px;line-height:0;display:inline-block">${qrSvg(appUrl, { size: 200 })}</div>
+    <p class="muted" style="margin-bottom:0">Сканировать камерой телефона — откроется профиль с устройствами и продлением.</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="head"><h2>Устройства</h2><div class="spacer"></div><span class="muted">${activeDevices} активно из ${user.device_limit}</span></div>
+  <table>
+    <thead><tr><th>Устройство</th><th>Статус</th><th>Последний раз</th><th></th></tr></thead>
+    <tbody>${deviceRows || `<tr><td colspan="4" class="muted">Устройства появятся, когда человек откроет подписку в клиенте</td></tr>`}</tbody>
+  </table>
+</div>`;
+
+  return page(`Подключение · ${name}`, body, "users", env);
+}
+
+/* ── Здоровье узлов ────────────────────────────────────────────────────── */
+
+interface HealthAggRow {
+  server_id: number;
+  checks: number;
+  ok: number;
+  checks24: number | null;
+  ok24: number | null;
+  avg_latency: number | null;
+  last_check: string | null;
+  host: string;
+  port: number;
+  country_code: string | null;
+  country_name: string | null;
+  status: string;
+  enabled: number;
+}
+
+/** Полоска из последних проверок: зелёный — жив, красный — упал. */
+function healthStrip(checks: Array<{ result: string }>): string {
+  if (!checks.length) return `<span class="muted">нет данных</span>`;
+  const bars = checks
+    .map((check) => {
+      const alive = check.result === "ok" || check.result === "alive";
+      return `<i style="display:inline-block;width:4px;height:14px;border-radius:2px;margin-right:2px;background:${
+        alive ? "#4FE3C1" : "#FF6B6B"
+      }"></i>`;
+    })
+    .join("");
+  return `<span title="${checks.length} последних проверок">${bars}</span>`;
+}
+
+/**
+ * История падений: в `server_checks` уже пишут и cron (kind='tcp'), и агент
+ * узла (kind='tunnel'). Считаем долю успешных проверок за 24 часа и неделю —
+ * так видно узел, который «вроде живой», но моргает каждые полчаса.
+ */
+async function healthPage(env: Env, url: URL): Promise<Response> {
+  const ok = url.searchParams.get("ok");
+  const err = url.searchParams.get("err");
+  const sort = url.searchParams.get("sort") ?? "uptime";
+
+  const totals = await one<{ total: number; alive: number }>(
+    env,
+    `SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'alive' THEN 1 ELSE 0 END) AS alive
+     FROM servers WHERE enabled = 1`,
+  );
+  const totalEnabled = Number(totals?.total ?? 0);
+  const aliveNow = Number(totals?.alive ?? 0);
+
+  // Пула на тысячи узлов: в таблицу берём только те, у кого есть история за
+  // неделю, и ограничиваем 150 строками — иначе страница весит больше подписки.
+  const rows = await many<HealthAggRow>(
+    env,
+    `SELECT s.id AS server_id, s.host, s.port, s.status, s.enabled,
+       s.country_code, s.country_name,
+       COUNT(c.id) AS checks,
+       SUM(CASE WHEN c.result = 'ok' THEN 1 ELSE 0 END) AS ok,
+       SUM(CASE WHEN c.checked_at >= datetime('now','-24 hours') THEN 1 ELSE 0 END) AS checks24,
+       SUM(CASE WHEN c.checked_at >= datetime('now','-24 hours') AND c.result = 'ok' THEN 1 ELSE 0 END) AS ok24,
+       AVG(CASE WHEN c.result = 'ok' THEN c.latency_ms END) AS avg_latency,
+       MAX(c.checked_at) AS last_check
+     FROM servers s
+     JOIN server_checks c ON c.server_id = s.id AND c.checked_at >= datetime('now','-7 days')
+     WHERE s.enabled = 1
+     GROUP BY s.id
+     ORDER BY (SUM(CASE WHEN c.result = 'ok' THEN 1 ELSE 0 END) * 1.0 / COUNT(c.id)) DESC
+     LIMIT 150`,
+  );
+
+  const lastAny = await one<{ last: string | null }>(
+    env,
+    "SELECT MAX(checked_at) AS last FROM server_checks",
+  );
+  const lastCheck = lastAny?.last ?? null;
+
+  // Последние проверки для полосок — один запрос на все показанные узлы.
+  const recent = await many<{ server_id: number; result: string }>(
+    env,
+    `SELECT server_id, result FROM server_checks
+     WHERE checked_at >= datetime('now', '-3 days')
+     ORDER BY server_id, id DESC LIMIT 3000`,
+  );
+  const recentById = new Map<number, Array<{ result: string }>>();
+  for (const row of recent) {
+    const list = recentById.get(row.server_id) ?? [];
+    if (list.length < 24) list.push({ result: row.result });
+    recentById.set(row.server_id, list);
+  }
+
+  const pctOf = (checks: number, alive: number) => (checks ? Math.round((100 * alive) / checks) : 0);
+  const withStats = rows.map((row) => ({
+    ...row,
+    uptime24: pctOf(Number(row.checks24 ?? 0), Number(row.ok24 ?? 0)),
+    uptime7: pctOf(Number(row.checks ?? 0), Number(row.ok ?? 0)),
+  }));
+
+  // Итоги по всей сети, а не по показанным 150 строкам: иначе KPI врёт.
+  const volume = await one<{ c7: number | null; c24: number | null }>(
+    env,
+    `SELECT SUM(CASE WHEN checked_at >= datetime('now','-7 days') THEN 1 ELSE 0 END) AS c7,
+            SUM(CASE WHEN checked_at >= datetime('now','-24 hours') THEN 1 ELSE 0 END) AS c24
+     FROM server_checks`,
+  );
+  const checks24 = Number(volume?.c24 ?? 0);
+  const checks7 = Number(volume?.c7 ?? 0);
+  const flapping = withStats.filter((row) => Number(row.checks ?? 0) >= 3 && row.uptime7 < 90).length;
+  const avgLatency = (() => {
+    const values = withStats
+      .map((row) => row.avg_latency)
+      .filter((value): value is number => typeof value === "number" && value > 0);
+    return values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : null;
+  })();
+
+  const sorted = [...withStats].sort((a, b) => {
+    if (sort === "latency") return (a.avg_latency ?? 1e9) - (b.avg_latency ?? 1e9);
+    if (sort === "host") return a.host.localeCompare(b.host);
+    return b.uptime7 - a.uptime7 || (a.avg_latency ?? 1e9) - (b.avg_latency ?? 1e9);
+  });
+
+  const tableRows = sorted
+    .map((row) => {
+      const flag = row.country_code ? flagOf(row.country_code) : "";
+      const label = `${flag} ${esc(row.country_name || row.host)}`.trim();
+      const basis = row.uptime24 || row.uptime7;
+      const cls = basis >= 95 ? "ok" : basis >= 80 ? "warn" : "bad";
+      const lat = row.avg_latency ? `${Math.round(row.avg_latency)} мс` : "—";
+      const last = row.last_check ? esc(row.last_check.slice(5, 16).replace("T", " ")) : "—";
+      return `<tr data-row="${esc(row.host)} ${esc(row.country_name || "")}">
+        <td>${label}<div class="muted mono">${esc(row.host)}:${row.port}</div></td>
+        <td><span class="pill ${cls}">${row.uptime24 ? `${row.uptime24}%` : "—"}</span></td>
+        <td class="muted">${row.uptime7}%</td>
+        <td>${lat}</td>
+        <td class="muted">${row.checks}</td>
+        <td>${healthStrip(recentById.get(row.server_id) ?? [])}</td>
+        <td class="muted">${last}</td>
+        <td><a class="btn" href="/admin/server?id=${row.server_id}" style="text-decoration:none">Открыть</a></td>
+      </tr>`;
+    })
+    .join("");
+
+  // Общая картина по часам: доля успешных проверок всей сети.
+  const hourly = await many<{ hour: string; checks: number; ok: number }>(
+    env,
+    `SELECT substr(checked_at, 1, 13) AS hour, COUNT(*) AS checks,
+       SUM(CASE WHEN result = 'ok' THEN 1 ELSE 0 END) AS ok
+     FROM server_checks WHERE checked_at >= datetime('now', '-24 hours')
+     GROUP BY hour ORDER BY hour`,
+  );
+  const shares = hourly.map((row) => (row.checks ? Math.round((100 * row.ok) / row.checks) : 0));
+  const chart = shares.length >= 2 ? areaPath(shares) : null;
+
+  const body = `
+<h1>Здоровье узлов</h1>
+<div class="sub">История проверок: cron каждые 20 минут плюс агент на своих узлах</div>
+${ok ? `<div class="notice">${esc(ok)}</div>` : ""}
+${err ? `<div class="err">${esc(err)}</div>` : ""}
+${(() => {
+  if (!lastCheck) return `<div class="err">Проверок ещё не было ни разу.</div>`;
+  const ageHours = Math.round((Date.now() - Date.parse(lastCheck.replace(" ", "T") + "Z")) / 3_600_000);
+  // Ночью проверки штатно молчат: порог тревоги — тишина плюс запас на проход.
+  const quiet = parseQuiet(env.QUIET_HOURS, env.QUIET_UTC_OFFSET);
+  const quietHours = quiet ? (quiet.endHour - quiet.startHour + 24) % 24 : 0;
+  const limitHours = quietHours + 2;
+  if (ageHours <= limitHours) return "";
+  // Часы проверок должны идти каждые 20 минут: если запись старше двух часов,
+  // сломан cron, а не серверы. Панель обязана сказать это прямо.
+  return `<div class="err">Проверки не пишутся ${ageHours} ч (последняя — ${esc(
+    lastCheck.replace("T", " "),
+  )} UTC). Тихие часы это не объясняют (${quietHours} ч тишины) — значит не срабатывает cron: посмотрите триггеры Worker в Cloudflare или запустите проверку кнопкой.</div>`;
+})()}
+
+<div class="kpis">
+  <div class="kpi"><div class="row"><span class="n">${aliveNow}</span><span class="ico">🛰</span></div>
+    <div class="bar"><i style="width:${totalEnabled ? Math.round((100 * aliveNow) / totalEnabled) : 0}%"></i></div>
+    <div class="f"><b>Живых сейчас</b><span>из ${totalEnabled} вкл.</span></div></div>
+  <div class="kpi"><div class="row"><span class="n">${flapping}</span><span class="ico">📉</span></div>
+    <div class="bar"><i class="warn" style="width:${withStats.length ? Math.round((100 * flapping) / withStats.length) : 0}%"></i></div>
+    <div class="f"><b>Моргают</b><span>uptime &lt; 90% за 7д</span></div></div>
+  <div class="kpi"><div class="row"><span class="n">${checks7}</span><span class="ico">🔁</span></div>
+    <div class="bar"><i style="width:100%"></i></div>
+    <div class="f"><b>Проверок за 7 дней</b><span>${checks24} за сутки</span></div></div>
+  <div class="kpi"><div class="row"><span class="n">${avgLatency ?? "—"}<small class="muted">${avgLatency ? " мс" : ""}</small></span><span class="ico">⚡</span></div>
+    <div class="bar"><i style="width:100%"></i></div>
+    <div class="f"><b>Средняя задержка</b><span>по живым</span></div></div>
+</div>
+
+${
+  chart
+    ? `<div class="card">
+  <div class="head"><h2>Успешные проверки по часам</h2><div class="spacer"></div><span class="muted">%, 24 часа</span></div>
+  <svg viewBox="0 0 620 190" class="chart" preserveAspectRatio="none" role="img" aria-label="Успешные проверки по часам">
+    <defs><linearGradient id="hf" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4FE3C1" stop-opacity=".5"/>
+      <stop offset="100%" stop-color="#4FE3C1" stop-opacity="0"/>
+    </linearGradient></defs>
+    <path d="${chart.area}" fill="url(#hf)"/>
+    <polyline points="${chart.line}" fill="none" stroke="#9BFFE8" stroke-width="2.5" stroke-linejoin="round"/>
+  </svg>
+  <div class="foot">
+    <div><b>${shares.length ? shares[shares.length - 1] : 0}%</b><span>последний час</span></div>
+    <div><b>${shares.length ? Math.min(...shares) : 0}%</b><span>худший час</span></div>
+    <div><b>${shares.length ? Math.round(shares.reduce((a, b) => a + b, 0) / shares.length) : 0}%</b><span>в среднем</span></div>
+  </div>
+</div>`
+    : ""
+}
+
+<div class="card">
+  <div class="head"><h2>Узлы с историей</h2><div class="spacer"></div>
+    <form method="post" action="/admin/action" class="inline" style="margin-right:8px">
+      <input type="hidden" name="csrf" value="${await csrfToken(env)}">
+      <input type="hidden" name="action" value="health">
+      <button class="btn primary">Проверить сейчас</button>
+    </form>
+    <a class="btn" href="/admin/health?sort=uptime" style="text-decoration:none">по uptime</a>
+    <a class="btn" href="/admin/health?sort=latency" style="text-decoration:none">по задержке</a>
+    <a class="btn" href="/admin/health?sort=host" style="text-decoration:none">по имени</a>
+  </div>
+  <p class="muted" style="margin-top:0">Показаны ${withStats.length} узлов с проверками за неделю из ${totalEnabled} включённых. Полоска — последние проверки, зелёная живая.</p>
+  <table>
+    <thead><tr><th>Узел</th><th>24ч</th><th>7д</th><th>Задержка</th><th>Проверок</th><th>История</th><th>Последняя</th><th></th></tr></thead>
+    <tbody>${tableRows || `<tr><td colspan="8" class="muted">Проверок ещё не было — нажмите «Проверить серверы»</td></tr>`}</tbody>
+  </table>
+</div>`;
+
+  return page("Здоровье узлов", body, "health", env);
 }
 
 /* ── Серверы ───────────────────────────────────────────────────────────── */
@@ -1509,6 +1945,18 @@ function countKeys(text: string): number {
     .filter((line) => /^(vless|vmess|trojan|ss|hysteria2|hy2):\/\//i.test(line.trim())).length;
 }
 
+/**
+ * Снимает отметку «человеку уже сказали про лимит трафика».
+ * Без этого после обнуления счётчика он не получит новое уведомление.
+ */
+async function resetTrafficGuard(env: Env, userId: number): Promise<void> {
+  try {
+    await env.CACHE.delete(`trafflimit:${userId}`);
+  } catch {
+    // KV необязателен: без него просто не будет дедупликации уведомлений.
+  }
+}
+
 function addDays(base: Date, days: number): string {
   const next = new Date(Math.max(base.getTime(), Date.now()) + days * 86400_000);
   return next.toISOString().slice(0, 19).replace("T", " ");
@@ -1559,6 +2007,18 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
     return back("/admin/merge", disabled ? `Источник ${key} выключен` : `Источник ${key} включён`);
   }
 
+  if (action === "merge_exclude") {
+    const nodeId = String(form.get("node") ?? "").trim();
+    const excluded = String(form.get("excluded") ?? "") === "1";
+    if (!nodeId) return back("/admin/merge", "", "не выбран сервер");
+    await setMergeNodeExcluded(env, nodeId, excluded);
+    await logEvent(env, "merge", null, excluded ? `сервер ${nodeId} исключён` : `сервер ${nodeId} возвращён`);
+    return back(
+      "/admin/merge",
+      excluded ? "Сервер исключён из подписки и групп" : "Сервер возвращён в подписку",
+    );
+  }
+
   if (action === "save_settings") {
     for (const key of SETTING_KEYS) {
       const raw = form.get(key);
@@ -1601,6 +2061,16 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
     const code = String(form.get("code") ?? "");
     await run(env, "UPDATE promos SET active = 1 - active WHERE code = ?", code);
     return back("/admin/promos", `Код ${code}: статус изменён`);
+  }
+
+  if (action === "refund_order") {
+    const publicId = String(form.get("public_id") ?? "").trim();
+    const order = await findOrder(env, publicId);
+    if (!order) return back("/admin/money", "", "Заказ не найден");
+    const outcome = await refundOrder(env, order, {});
+    return outcome.ok
+      ? back("/admin/money", outcome.message)
+      : back("/admin/money", "", outcome.message);
   }
 
   if (action === "cancel_accrual") {
@@ -1713,6 +2183,12 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
     const devicesLimit = Math.max(1, Number(form.get("devices_limit") ?? user.device_limit));
     const pool = Number(form.get("pool") ?? 0);
 
+    // Ручная правка счётчика: нужна, чтобы проверить срез по квоте и чтобы
+    // поправить цифру, если агент узла когда-нибудь ошибётся.
+    const usedRaw = form.get("traffic_used");
+    const usedGb = usedRaw === null ? null : Math.max(0, Number(String(usedRaw).replace(",", ".")) || 0);
+    const usedMb = usedGb === null ? null : Math.round(usedGb * 1024);
+
     await run(
       env,
       // Статус сбрасываем вместе со сроком: иначе после продления он остаётся
@@ -1724,6 +2200,22 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
       devicesLimit,
       id,
     );
+
+    if (usedMb !== null) {
+      await run(
+        env,
+        "UPDATE users SET traffic_used_mb = ?, traffic_reported_at = datetime('now') WHERE id = ?",
+        usedMb,
+        id,
+      );
+      // Снимаем «только что отправили уведомление», иначе после ручной правки
+      // человек не получит сообщение о срезе.
+      try {
+        await env.CACHE.delete(`trafflimit:${id}`);
+      } catch {
+        // без KV ничего не чистим
+      }
+    }
 
     if (pool > 0) {
       await run(env, "DELETE FROM user_pools WHERE user_id = ?", id);
@@ -1779,6 +2271,134 @@ async function handleAction(request: Request, env: Env): Promise<Response> {
       id,
     );
     return back("/admin/users", action === "ban" ? "Забанен" : "Разбанен");
+  }
+
+  /* Массовые действия: одна форма на таблицу, id приходят повторяющимся полем. */
+  if (action === "bulk_users") {
+    const ids = form
+      .getAll("ids")
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    const op = String(form.get("op") ?? "");
+    if (!ids.length) return back("/admin/users", "", "Никого не выбрали");
+
+    const marks = ids.map(() => "?").join(",");
+    let done = 0;
+
+    if (op === "extend") {
+      const step = Math.max(1, Math.min(3650, Number(form.get("days") ?? 30) || 30));
+      const rows = await many<{ id: number; expires_at: string | null }>(
+        env,
+        `SELECT id, expires_at FROM users WHERE id IN (${marks})`,
+        ...ids,
+      );
+      for (const row of rows) {
+        const baseMs = row.expires_at
+          ? Date.parse(row.expires_at.replace(" ", "T") + "Z")
+          : Date.now();
+        // Просроченному продлеваем от сегодня, иначе человек «купит» месяц в прошлом.
+        const from = Number.isFinite(baseMs) && baseMs > Date.now() ? new Date(baseMs) : new Date();
+        await run(
+          env,
+          "UPDATE users SET expires_at = ?, status = CASE WHEN status IN ('banned','pending') THEN status ELSE 'active' END WHERE id = ?",
+          addDays(from, step),
+          row.id,
+        );
+        await recordPayment(env, row.id, step, "панель: массовое продление");
+        await logEvent(env, "admin_bulk", row.id, `продление +${step} дн.`);
+        done += 1;
+      }
+      return back("/admin/users", `Продлено на ${step} дн.: ${done}`);
+    }
+
+    if (op === "ban" || op === "unban") {
+      const status = op === "ban" ? "banned" : "active";
+      await run(env, `UPDATE users SET status = ? WHERE id IN (${marks})`, status, ...ids);
+      done = ids.length;
+      await logEvent(env, "admin_bulk", null, `${status === "banned" ? "бан" : "разбан"}: ${done}`);
+      return back("/admin/users", `${status === "banned" ? "Забанено" : "Разбанено"}: ${done}`);
+    }
+
+    if (op === "devices") {
+      const limit = Math.max(1, Math.min(100, Number(form.get("devices_limit") ?? 2) || 2));
+      await run(env, `UPDATE users SET device_limit = ? WHERE id IN (${marks})`, limit, ...ids);
+      done = ids.length;
+      await logEvent(env, "admin_bulk", null, `лимит устройств ${limit}: ${done}`);
+      return back("/admin/users", `Лимит устройств ${limit}: ${done}`);
+    }
+
+    if (op === "traffic") {
+      const limit = Math.max(0, Number(form.get("traffic") ?? 0) || 0);
+      await run(env, `UPDATE users SET traffic_gb = ? WHERE id IN (${marks})`, limit, ...ids);
+      done = ids.length;
+      for (const userId of ids) {
+        await resetTrafficGuard(env, userId);
+      }
+      await logEvent(env, "admin_bulk", null, `лимит трафика ${limit} ГБ: ${done}`);
+      return back("/admin/users", `Лимит трафика ${limit} ГБ: ${done}`);
+    }
+
+    if (op === "reset_traffic") {
+      await run(
+        env,
+        `UPDATE users SET traffic_used_mb = 0, traffic_reset_at = datetime('now') WHERE id IN (${marks})`,
+        ...ids,
+      );
+      done = ids.length;
+      for (const userId of ids) {
+        await resetTrafficGuard(env, userId);
+      }
+      await logEvent(env, "admin_bulk", null, `счётчик трафика обнулён: ${done}`);
+      return back("/admin/users", `Счётчик трафика обнулён: ${done}`);
+    }
+
+    if (op === "pool") {
+      const pool = Number(form.get("pool") ?? 0);
+      const targets = await many<{ id: number; sub_token: string }>(
+        env,
+        `SELECT id, sub_token FROM users WHERE id IN (${marks})`,
+        ...ids,
+      );
+      for (const target of targets) {
+        await run(env, "DELETE FROM user_pools WHERE user_id = ?", target.id);
+        if (pool > 0) {
+          await run(env, "INSERT OR IGNORE INTO user_pools (user_id, pool_id) VALUES (?, ?)", target.id, pool);
+        }
+        // Прежние назначения несовместимы с новой группой — снимаем.
+        await run(env, "DELETE FROM assignments WHERE user_id = ?", target.id);
+        // Кэш подписки помнит старый список серверов — иначе человек увидит его ещё сутки.
+        await invalidateSubscription(env, target.sub_token);
+      }
+      done = targets.length;
+      await logEvent(env, "admin_bulk", null, `группа ${pool || "все"}: ${done}`);
+      return back("/admin/users", `Группа обновлена: ${done}`);
+    }
+
+    return back("/admin/users", "", "Неизвестное действие");
+  }
+
+  /* Отвязка устройства прямо из карточки подключения. */
+  if (action === "device_toggle") {
+    const deviceId = Number(form.get("device") ?? 0);
+    const device = await one<{ id: number; blocked: number; user_id: number }>(
+      env,
+      "SELECT id, blocked, user_id FROM user_devices WHERE id = ?",
+      deviceId,
+    );
+    if (!device || device.user_id !== id) return back(`/admin/user?id=${id}`, "", "Устройство не найдено");
+    const next = device.blocked ? 0 : 1;
+    await run(
+      env,
+      "UPDATE user_devices SET blocked = ?, blocked_reason = ?, blocked_at = CASE WHEN ? = 1 THEN datetime('now') ELSE NULL END WHERE id = ?",
+      next,
+      next ? "отвязано вручную из панели" : "",
+      next,
+      deviceId,
+    );
+    const owner = await one<{ sub_token: string }>(env, "SELECT sub_token FROM users WHERE id = ?", id);
+    if (owner) await invalidateSubscription(env, owner.sub_token);
+    await logEvent(env, next ? "device_unbind" : "device_restore", id, String(deviceId));
+    return back(`/admin/user?id=${id}`, next ? "Устройство отвязано" : "Устройство возвращено");
   }
 
   if (action === "set_source_limit") {
@@ -2326,6 +2946,124 @@ ${err ? `<div class="err">${esc(err)}</div>` : ""}
 </form>`;
 
   return page("Настройки бонусов", body, "bonuses", env);
+}
+
+/**
+ * Деньги: выручка, заказы, возвраты.
+ *
+ * Страница отвечает на вопросы, которые нельзя решить по журналу событий:
+ * сколько пришло за день, какие оплаты зависли, по какому заказу вернуть
+ * деньги. Все цифры считаются по таблице orders, а не по памяти бота.
+ */
+async function moneyPage(env: Env, url: URL): Promise<Response> {
+  const csrf = await csrfToken(env);
+  const ok = url.searchParams.get("ok");
+  const err = url.searchParams.get("err");
+
+  let report = {
+    today: { count: 0, sum: 0 },
+    week: { count: 0, sum: 0 },
+    month: { count: 0, sum: 0 },
+    total: { count: 0, sum: 0 },
+    refunded: { count: 0, sum: 0 },
+    activeSubs: 0,
+    pending: 0,
+  };
+  let orders: Array<{
+    public_id: string;
+    plan_title: string;
+    amount_rub: number;
+    days: number;
+    provider: string;
+    status: string;
+    created_at: string;
+    paid_at: string | null;
+    tg_id: string | null;
+  }> = [];
+
+  try {
+    report = await revenue(env);
+  } catch {
+    // миграция ещё не применена
+  }
+  try {
+    orders = await many(
+      env,
+      `SELECT o.public_id, o.plan_title, o.amount_rub, o.days, o.provider, o.status,
+              o.created_at, o.paid_at, u.tg_id
+         FROM orders o LEFT JOIN users u ON u.id = o.user_id
+        ORDER BY o.id DESC LIMIT 100`,
+    );
+  } catch {
+    orders = [];
+  }
+
+  const money = (value: number) => `${Math.round(value).toLocaleString("ru-RU")} ₽`;
+  const statusPill = (status: string) => {
+    const cls = status === "paid" ? "ok" : status === "pending" ? "warn" : "bad";
+    return `<span class="pill ${cls}">${esc(status)}</span>`;
+  };
+
+  const rows = orders.length
+    ? orders
+        .map(
+          (order) => `<tr>
+        <td class="mono">${esc(order.public_id)}</td>
+        <td>${esc(order.tg_id ?? "—")}</td>
+        <td>${esc(order.plan_title)} · ${order.days} дн.</td>
+        <td>${money(order.amount_rub)}</td>
+        <td>${esc(order.provider)}</td>
+        <td>${statusPill(order.status)}</td>
+        <td>${esc((order.paid_at ?? order.created_at).slice(0, 16))}</td>
+        <td>${
+          order.status === "paid"
+            ? `<form method="post" action="/admin/action" class="inline">
+                 <input type="hidden" name="csrf" value="${csrf}">
+                 <input type="hidden" name="action" value="refund_order">
+                 <input type="hidden" name="public_id" value="${esc(order.public_id)}">
+                 <button class="btn">Вернуть</button>
+               </form>`
+            : ""
+        }</td>
+      </tr>`,
+        )
+        .join("")
+    : `<tr><td colspan="8" class="muted">Заказов пока нет. Они появятся здесь после первой оплаты.</td></tr>`;
+
+  const body = `
+<h1>Деньги</h1>
+<div class="sub">Выручка по оплаченным заказам. Возврат снимает дни и отмечает заказ.</div>
+${ok ? `<div class="notice">${esc(ok)}</div>` : ""}
+${err ? `<div class="err">${esc(err)}</div>` : ""}
+
+<div class="card">
+  <div class="head"><h2>Выручка</h2></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
+    <div><div class="muted">Сегодня</div><div style="font-size:22px;font-weight:700">${money(report.today.sum)}</div><div class="muted">${report.today.count} оплат</div></div>
+    <div><div class="muted">7 дней</div><div style="font-size:22px;font-weight:700">${money(report.week.sum)}</div><div class="muted">${report.week.count} оплат</div></div>
+    <div><div class="muted">30 дней</div><div style="font-size:22px;font-weight:700">${money(report.month.sum)}</div><div class="muted">${report.month.count} оплат</div></div>
+    <div><div class="muted">Всего</div><div style="font-size:22px;font-weight:700">${money(report.total.sum)}</div><div class="muted">${report.total.count} оплат</div></div>
+    <div><div class="muted">Возвраты</div><div style="font-size:22px;font-weight:700">${money(report.refunded.sum)}</div><div class="muted">${report.refunded.count} шт.</div></div>
+    <div><div class="muted">Подписок</div><div style="font-size:22px;font-weight:700">${report.activeSubs}</div><div class="muted">ждут оплаты: ${report.pending}</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="head"><h2>Последние заказы</h2></div>
+  <table>
+    <thead><tr><th>Заказ</th><th>Telegram</th><th>Тариф</th><th>Сумма</th><th>Способ</th><th>Статус</th><th>Дата</th><th></th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+</div>
+
+<div class="card">
+  <div class="head"><h2>Ручная продажа</h2></div>
+  <div class="muted">Оплата пришла переводом или наличными — запишите её в боте командой
+  <code>/pay &lt;tg_id&gt; &lt;сумма&gt; &lt;дней&gt;</code>. Заказ для бухгалтерии не создаётся,
+  но деньги и дни попадут в журнал.</div>
+</div>`;
+
+  return page("Деньги", body, "money", env);
 }
 
 async function promosPage(env: Env, url: URL): Promise<Response> {
@@ -3009,16 +3747,58 @@ async function mergePage(env: Env, url: URL): Promise<Response> {
     })
     .join("");
 
+  const summary = summarizeGroups(nodes);
+  const plan = planGroups(nodes, {
+    autoTop: Number(env.GROUP_AUTO_TOP ?? "12") || 12,
+    limit: Number(env.GROUP_LIMIT ?? "40") || 40,
+  });
+  const membership = new Map<string, string[]>();
+  for (const key of GROUP_ORDER) {
+    for (const item of plan[key]) {
+      const list = membership.get(item.id) ?? [];
+      const label = key.toUpperCase();
+      if (!list.includes(label)) list.push(label);
+      membership.set(item.id, list);
+    }
+  }
+  const groupCells = GROUP_ORDER.map(
+    (key) =>
+      `<div><div class="muted">${esc(GROUP_TITLES[key])}</div><b>${plan[key].length}</b></div>`,
+  ).join("");
+
   const nodeRows = nodes
     .map((node) => {
       const cls = node.status === "alive" ? "ok" : node.status === "dead" ? "bad" : "warn";
-      const state = node.status === "alive" ? "работает" : node.status === "dead" ? "мёртв" : "не проверен";
+      const state =
+        node.status === "alive"
+          ? "работает"
+          : node.status === "dead"
+            ? "мёртв"
+            : "не проверен";
+      const flags = [
+        node.missing ? '<span class="pill warn">нет в источнике</span>' : "",
+        node.excluded ? '<span class="pill bad">исключён</span>' : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
       return `<tr data-row="${esc(`${node.label} ${node.host}`)}">
         <td>${esc(flagOf(node.countryCode) || "—")} ${esc(node.countryName || node.host)}
-          <div class="muted">${esc(node.host)}:${node.port} · источник ${esc(node.source)}</div></td>
-        <td><span class="pill ${cls}">${esc(state)}</span></td>
+          <div class="muted">${esc(node.host)}:${node.port} · источник ${esc(node.source)}${
+            node.lastSeenAt ? ` · виден ${esc(shortTime(node.lastSeenAt))}` : ""
+          }</div></td>
+        <td><span class="pill ${cls}">${esc(state)}</span> ${flags}</td>
         <td>${node.latencyMs ? `${node.latencyMs} мс` : "—"}</td>
+        <td class="muted">${esc((membership.get(node.id) ?? []).join(" · ") || "—")}</td>
         <td>${esc(shortTime(node.checkedAt))}</td>
+        <td>
+          <form method="post" action="/admin/action" class="inline">
+            <input type="hidden" name="csrf" value="${csrf}">
+            <input type="hidden" name="action" value="merge_exclude">
+            <input type="hidden" name="node" value="${esc(node.id)}">
+            <input type="hidden" name="excluded" value="${node.excluded ? "0" : "1"}">
+            <button class="btn">${node.excluded ? "Вернуть" : "Исключить"}</button>
+          </form>
+        </td>
       </tr>`;
     })
     .join("");
@@ -3043,6 +3823,9 @@ ${err ? `<div class="err">${esc(err)}</div>` : ""}
     <div><div class="muted">Всего узлов</div><b>${status?.total ?? nodes.length}</b></div>
     <div><div class="muted">Работают / мертвы / не проверены</div>
       <b>${status?.alive ?? 0} / ${status?.dead ?? 0} / ${status?.unknown ?? 0}</b></div>
+    <div><div class="muted">Нет в источнике, но держим</div>
+      <b>${summary.missing} · ${status?.graceHours ?? 24} ч</b></div>
+    <div><div class="muted">Исключено вручную</div><b>${summary.excluded}</b></div>
   </div>
   <p class="muted" style="margin:10px 0 0">Автосинхронизация — раз в 30 минут внутри cron воркера.
   Ручной запуск доступен всегда. Если источник не ответил, его узлы остаются из прошлой рабочей версии.</p>
@@ -3057,10 +3840,18 @@ ${err ? `<div class="err">${esc(err)}</div>` : ""}
 </div>
 
 <div class="card">
+  <div class="head"><h2>Группы серверов</h2></div>
+  <div class="grid">${groupCells}</div>
+  <p class="muted" style="margin:10px 0 0">Одна ссылка на группы — <code>/sub/&lt;токен&gt;/groups</code> (JSON, каждая группа
+  со своим балансировщиком leastPing). Отдельные списки — <code>/europe</code>, <code>/russia</code>,
+  <code>/backup</code>, <code>/all</code>. Пустая группа не отдаётся.</p>
+</div>
+
+<div class="card">
   <div class="head"><h2>Узлы</h2></div>
   <table>
-    <thead><tr><th>Узел</th><th>Статус</th><th>Задержка</th><th>Проверен</th></tr></thead>
-    <tbody>${nodeRows || `<tr><td colspan="4" class="muted">Пока пусто — нажмите «Синхронизировать сейчас»</td></tr>`}</tbody>
+    <thead><tr><th>Узел</th><th>Статус</th><th>Задержка</th><th>Группы</th><th>Проверен</th><th>Действие</th></tr></thead>
+    <tbody>${nodeRows || `<tr><td colspan="6" class="muted">Пока пусто — нажмите «Синхронизировать сейчас»</td></tr>`}</tbody>
   </table>
 </div>
 

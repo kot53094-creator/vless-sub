@@ -12,7 +12,7 @@ name: merge-check
 
 on:
   schedule:
-    - cron: "23 */2 * * *"
+    - cron: "23 1-14/2 * * *"
   workflow_dispatch:
     inputs:
       limit:

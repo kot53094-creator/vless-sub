@@ -40,6 +40,17 @@ export interface MergeNode {
   latencyMs: number | null;
   checkedAt: string | null;
   addedAt: string;
+  /**
+   * Когда узел последний раз был в ответе источника. По этому времени
+   * работает безопасный период: исчезнувший узел не выбрасывается сразу,
+   * а ждёт `MERGE_GRACE_HOURS` (по умолчанию 24 ч). Источник мог отдать
+   * неполный список из-за лимита или сбоя панели.
+   */
+  lastSeenAt?: string | null;
+  /** Источник ответил, но узла в нём больше нет — узел на испытательном сроке. */
+  missing?: boolean;
+  /** Исключён администратором вручную. */
+  excluded?: boolean;
 }
 
 export interface MergeSourceStatus {
@@ -63,13 +74,20 @@ export interface MergeStatus {
   alive: number;
   dead: number;
   unknown: number;
+  /** Узлы, которых уже нет в источнике, но они ещё держатся до конца срока. */
+  stale?: number;
+  /** Сколько часов даётся узлу после исчезновения из источника. */
+  graceHours?: number;
   sources: MergeSourceStatus[];
 }
 
 const POOL_KEY = "merge:pool:v1";
 const STATUS_KEY = "merge:status:v1";
 const OFF_KEY = "merge:off:v1";
+const EXCLUDED_KEY = "merge:excluded:v1";
 const GEO_TTL = 30 * 24 * 3600;
+/** Безопасный период по умолчанию: сутки с момента исчезновения из источника. */
+const DEFAULT_GRACE_HOURS = 24;
 /** Синхронизация не чаще раза в 30 минут: так просил владелец. */
 const SYNC_INTERVAL_MS = 30 * 60 * 1000;
 /** Сколько новых гео-запросов за прогон: бережём подзапросы воркера. */
@@ -570,6 +588,18 @@ function stubReason(payload: string): string {
       // битая метка
     }
   }
+  // Панели объясняют отказ в подписи заглушки. Без расшифровки админ видит
+  // «источник не отдал ни одного узла» и не знает, что делать.
+  const joined = labels.join(" ").toLowerCase();
+  if (joined.includes("app not supported") || joined.includes("приложение не поддерживается")) {
+    return "заглушка «App not supported»: панель не признала клиента (нужен HWID/UA устройства)";
+  }
+  if (joined.includes("device limit") || joined.includes("превышен лимит устройств")) {
+    return "превышен лимит устройств у владельца источника";
+  }
+  if (joined.includes("expired") || joined.includes("истёк") || joined.includes("истек")) {
+    return "срок действия подписки у источника истёк";
+  }
   return labels.slice(0, 2).join(" / ");
 }
 
@@ -687,6 +717,36 @@ export async function setMergeDisabled(env: Env, key: string, disabled: boolean)
   await env.CACHE.put(OFF_KEY, JSON.stringify([...current]));
 }
 
+async function readExcluded(env: Env): Promise<string[]> {
+  try {
+    const raw = await env.CACHE.get<string[]>(EXCLUDED_KEY, "json");
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Ручное исключение узла: администратор видит сервер, который формально
+ * жив, но ему не доверяет. Узел остаётся в статусе, но в подписку и в
+ * группы не попадает — до повторного включения.
+ */
+export async function setMergeNodeExcluded(
+  env: Env,
+  id: string,
+  excluded: boolean,
+): Promise<void> {
+  const current = new Set(await readExcluded(env));
+  if (excluded) current.add(id);
+  else current.delete(id);
+  await env.CACHE.put(EXCLUDED_KEY, JSON.stringify([...current]));
+  await env.CACHE.put("pool:stamp", String(Date.now()));
+}
+
+export async function mergeNodeExcluded(env: Env, id: string): Promise<boolean> {
+  return (await readExcluded(env)).includes(id);
+}
+
 /* ── Гео ───────────────────────────────────────────────────────────────── */
 
 async function geoOf(env: Env, host: string): Promise<{ cc: string; country: string; city: string } | null> {
@@ -770,6 +830,7 @@ async function fetchSource(
       const reason = stubReason(text) || "источник не отдал ни одного узла";
       return { nodes: [], bytes: text.length, error: reason.slice(0, 160) };
     }
+    const now = new Date().toISOString();
     const nodes: MergeNode[] = [];
     const seen = new Set<string>();
     for (const link of uris) {
@@ -795,7 +856,9 @@ async function fetchSource(
         status: old?.status ?? "unknown",
         latencyMs: old?.latencyMs ?? null,
         checkedAt: old?.checkedAt ?? null,
-        addedAt: old?.addedAt ?? new Date().toISOString(),
+        addedAt: old?.addedAt ?? now,
+        lastSeenAt: now,
+        missing: false,
       });
     }
     if (nodes.length === 0) {
@@ -879,16 +942,32 @@ export async function syncMerge(env: Env, force = false): Promise<MergeStatus> {
       continue;
     }
     collected.push(...result.nodes);
+
+    // Безопасный период. Узел, которого больше нет в ответе источника, не
+    // удаляется сразу: панель могла отдать неполный список (лимит устройств,
+    // сбой базы, частичный ответ). Он помечается missing и держится
+    // MERGE_GRACE_HOURS, после чего действительно уходит.
+    const present = new Set(result.nodes.map((node) => node.id));
+    const graceMs = graceHours(env) * 3600_000;
+    const retained = retainMissing(bySource.get(slot.key) ?? [], present, Date.now(), graceMs);
+    for (const old of retained.kept) collected.push({ ...old, missing: true });
+    const stale = retained.kept.length;
+    const removed = retained.removed;
+
     sources.push({
       key: slot.key,
       label: slot.label,
       ok: true,
       nodes: result.nodes.length,
       bytes: result.bytes,
-      error: null,
+      error: removed > 0 ? `удалено по сроку: ${removed}` : null,
       fetchedAt: new Date().toISOString(),
       disabled: false,
     });
+    if (stale > 0) {
+      // Не ошибка, но админу полезно знать: источник «похудел».
+      sources[sources.length - 1].error = `нет в источнике, держим ещё ${graceHours(env)} ч: ${stale}`;
+    }
   }
 
   // Дедупликация между источниками: один узел мог прийти из двух подписок.
@@ -899,6 +978,12 @@ export async function syncMerge(env: Env, force = false): Promise<MergeStatus> {
     if (seen.has(fingerprint)) continue;
     seen.add(fingerprint);
     unique.push(node);
+  }
+
+  // Ручные исключения: узел остаётся в админке, но не в подписке.
+  const excludedIds = new Set(await readExcluded(env));
+  if (excludedIds.size > 0) {
+    for (const node of unique) node.excluded = excludedIds.has(node.id);
   }
 
   // Гео: определяем страну по адресу, а не по тегу источника.
@@ -920,7 +1005,9 @@ export async function syncMerge(env: Env, force = false): Promise<MergeStatus> {
   // Порядок: проверенные и быстрые — выше. Непроверенные не выбрасываем:
   // проверку делает агент, а до его ответа узел ещё может быть рабочим.
   unique.sort((a, b) => {
-    const rank = (node: MergeNode) => (node.status === "alive" ? 0 : node.status === "dead" ? 2 : 1);
+    const rank = (node: MergeNode) =>
+      (node.status === "alive" ? 0 : node.status === "unknown" ? 1 : 2) * 2 +
+      (node.missing ? 1 : 0);
     return (
       rank(a) - rank(b) ||
       (a.latencyMs ?? 1e9) - (b.latencyMs ?? 1e9) ||
@@ -938,6 +1025,8 @@ export async function syncMerge(env: Env, force = false): Promise<MergeStatus> {
     alive: nodes.filter((node) => node.status === "alive").length,
     dead: nodes.filter((node) => node.status === "dead").length,
     unknown: nodes.filter((node) => node.status === "unknown").length,
+    stale: nodes.filter((node) => node.missing).length,
+    graceHours: graceHours(env),
     sources,
   };
 
@@ -951,6 +1040,42 @@ export async function syncMerge(env: Env, force = false): Promise<MergeStatus> {
     // KV недоступен — подписка продолжит работать на прошлой версии
   }
   return status;
+}
+
+/** Минимум полей для правила безопасного периода. */
+export interface RetainableNode {
+  id: string;
+  lastSeenAt?: string | null;
+  addedAt?: string;
+}
+
+/**
+ * Кого из прошлой версии источника оставить, если узла нет в новом ответе.
+ *
+ * Чистая функция: её проверяет тест, а не живой cron. Ошибка здесь стоит
+ * дорого — либо мгновенно выбрасывает живые узлы, либо держит мёртвые вечно.
+ */
+export function retainMissing<T extends RetainableNode>(
+  previous: T[],
+  present: Set<string>,
+  nowMs: number,
+  graceMs: number,
+): { kept: T[]; removed: number } {
+  const kept: T[] = [];
+  let removed = 0;
+  for (const node of previous) {
+    if (present.has(node.id)) continue;
+    const lastSeen = Date.parse(node.lastSeenAt ?? node.addedAt ?? "");
+    if (Number.isFinite(lastSeen) && nowMs - lastSeen <= graceMs) kept.push(node);
+    else removed += 1;
+  }
+  return { kept, removed };
+}
+
+/** Сколько часов узел живёт после исчезновения из источника. */
+export function graceHours(env: Env): number {
+  const raw = Number(envStr(env.MERGE_GRACE_HOURS) || String(DEFAULT_GRACE_HOURS));
+  return Number.isFinite(raw) && raw >= 0 ? raw : DEFAULT_GRACE_HOURS;
 }
 
 /** Синк по расписанию: не чаще раза в 30 минут, без ручного флага. */
@@ -1039,7 +1164,7 @@ export async function appendMergedLinks(env: Env, uris: string[]): Promise<numbe
   let added = 0;
   for (const node of nodes) {
     if (added >= 60) break;
-    if (node.status === "dead") continue;
+    if (node.status === "dead" || node.excluded) continue;
     const key = endpointKey(node.link);
     if (!key || used.has(key) || anchorHosts.has(key)) continue;
     used.add(key);

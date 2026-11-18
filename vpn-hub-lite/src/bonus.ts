@@ -25,7 +25,15 @@ import {
   streakHours,
 } from "./promotions";
 
-export type AccrualKind = "daily" | "channel" | "referral" | "promo" | "clicker" | "manual";
+export type AccrualKind =
+  | "daily"
+  | "channel"
+  | "referral"
+  | "promo"
+  | "clicker"
+  | "manual"
+  /** Покупка: дни за оплаченный заказ. ref = order:<public_id>. */
+  | "payment";
 
 export interface AccrualInput {
   userId: number;

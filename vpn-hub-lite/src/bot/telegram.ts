@@ -10,6 +10,7 @@ export interface InlineButton {
   text: string;
   callback_data?: string;
   url?: string;
+  web_app?: { url: string };
 }
 
 export interface ReplyMarkup {
@@ -127,16 +128,26 @@ export async function sendToAdmin(env: Env, text: string): Promise<void> {
 
 export async function notifyUser(
   env: Env,
-  userId: number,
+  tgId: string | number,
   text: string,
-): Promise<void> {
-  const user = await one<{ tg_id: string; status: string }>(
-    env,
-    "SELECT tg_id, status FROM users WHERE id = ?",
-    userId,
-  );
-  if (!user || user.status === "banned") return;
-  await sendMessage(env, user.tg_id, text);
+  keyboard?: ReplyMarkup,
+): Promise<boolean> {
+  return await sendMessage(env, tgId, text, keyboard);
+}
+
+export async function setBotMenuButton(env: Env): Promise<boolean> {
+  const base = envStr(env.PUBLIC_BASE_URL).replace(/\/$/, "");
+  if (!base) return false;
+  const result = await tgRaw(env, "setChatMenuButton", {
+    menu_button: {
+      type: "web_app",
+      text: "🍊 Кабинет",
+      web_app: {
+        url: `${base}/app`,
+      },
+    },
+  });
+  return result.ok;
 }
 
 export async function answerCallback(

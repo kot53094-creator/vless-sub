@@ -4,20 +4,41 @@ import { logEvent, many, one, run } from "../db";
 import { memRateLimit } from "../security";
 import type { Env, UserRow } from "../types";
 import * as admin from "./admin";
-import { answerCallback, adminId, sendMessage } from "./telegram";
+import { answerCallback, adminId, sendMessage, sendToAdmin } from "./telegram";
 import * as user from "./user";
 import { rotateToken, setDeviceBlocked } from "../sub";
 import { runSync } from "../sync";
 import { parsePromoCommand } from "../promotions";
 import { cmdMarkAlive, cmdMarkDead } from "./manual";
 import { handleAiCommand } from "../ai";
-import { paymentsText, plansText, recordMoneyPayment } from "../plans";
+import { paymentsText, recordMoneyPayment } from "../plans";
+import {
+  checkPayment,
+  handleSuccessfulPayment,
+  paySupportText,
+  preCheckoutPayloadError,
+  sendBuyMenu,
+  sendMyOrders,
+  sendPlanScreen,
+  startPayment,
+  type PreCheckoutQuery,
+  type SuccessfulPayment,
+} from "./buy";
+import { answerPreCheckout } from "../pay/stars";
+import { notifyPaid, refundOrder } from "../pay";
+import { closeOrder, markOrderPaid } from "../orders";
+import { createGift, listGifts, redeemGift } from "../gifts";
+import { listTrafficPacks } from "../traffic_packs";
+import { findOrder, revenue } from "../orders";
+import { formatRub } from "../pay/money";
 
 interface TgMessage {
   message_id: number;
   chat: { id: number; type: string };
   from?: { id: number; username?: string; first_name?: string };
   text?: string;
+  /** Приходит только после реального списания звёзд. */
+  successful_payment?: SuccessfulPayment;
 }
 
 export interface TgUpdate {
@@ -28,6 +49,8 @@ export interface TgUpdate {
     from: { id: number };
     message?: { chat: { id: number }; message_id: number };
   };
+  /** Проверка перед списанием: подтвердить нужно за 10 секунд. */
+  pre_checkout_query?: PreCheckoutQuery;
 }
 
 function chatOf(env: Env): string {
@@ -37,6 +60,15 @@ function chatOf(env: Env): string {
 const PROMO_STATE = (tgId: string) => `state:promo:${tgId}`;
 
 export async function handleUpdate(env: Env, update: TgUpdate): Promise<void> {
+  // Проверка перед списанием звёзд. Отвечаем всегда — и «да», и «нет»:
+  // молчание здесь означает отменённый платёж и злого человека.
+  if (update.pre_checkout_query) {
+    const query = update.pre_checkout_query;
+    const error = await preCheckoutPayloadError(env, query);
+    await answerPreCheckout(env, query.id, !error, error ?? undefined);
+    return;
+  }
+
   if (update.callback_query) {
     await handleCallback(env, update.callback_query);
     return;
@@ -46,6 +78,12 @@ export async function handleUpdate(env: Env, update: TgUpdate): Promise<void> {
   if (!message || message.chat.type !== "private" || !message.from) return;
 
   const tgId = String(message.from.id);
+
+  // Оплата подтверждена Telegram — только теперь можно выдавать дни.
+  if (message.successful_payment) {
+    await handleSuccessfulPayment(env, tgId, message.successful_payment);
+    return;
+  }
   // анти-спам: 20 действий в минуту с одного аккаунта
   if (!memRateLimit(`tg:${tgId}`, 20, 60)) return;
 
@@ -82,6 +120,11 @@ export async function handleUpdate(env: Env, update: TgUpdate): Promise<void> {
   // --- команды пользователя ---
   switch (command) {
     case "/start":
+      // Ссылка «Продлить» из Mini App: t.me/<bot>?start=pay_<тариф>.
+      if (existing && (args[0] ?? "").startsWith("pay_") && args[0] !== "pay_ok") {
+        await sendPlanScreen(env, message.chat.id, (args[0] ?? "").slice(4));
+        return;
+      }
       await user.handleStart(
         env,
         {
@@ -148,8 +191,166 @@ export async function handleUpdate(env: Env, update: TgUpdate): Promise<void> {
       return;
     case "/plans":
     case "/тарифы":
-      await sendMessage(env, message.chat.id, await plansText(env));
+      await sendBuyMenu(env, message.chat.id);
       return;
+    case "/buy":
+    case "/купить":
+    case "/подписка":
+      await sendBuyMenu(env, message.chat.id);
+      return;
+    case "/orders":
+    case "/покупки": {
+      if (!existing) {
+        await sendMessage(env, message.chat.id, "Сначала зарегистрируйтесь: /start");
+        return;
+      }
+      await sendMyOrders(env, message.chat.id, existing);
+      return;
+    }
+    case "/paysupport":
+    case "/оплата":
+      await sendMessage(env, message.chat.id, paySupportText(env));
+      return;
+    case "/topup":
+    case "/трафик": {
+      // Безлимитный тариф: докупать нечего, и продавать пакет «в никуда»
+      // нельзя — поэтому честно говорим, что ограничения по объёму нет.
+      const quota = existing?.traffic_gb ?? 0;
+      if (!quota) {
+        await sendMessage(
+          env,
+          message.chat.id,
+          "📊 <b>Трафик без ограничений</b>\n\nНа вашем тарифе нет квоты по объёму — докупать нечего.\nДоступ закрывается только когда заканчивается срок подписки: /buy",
+        );
+        return;
+      }
+      const packs = await listTrafficPacks(env);
+      const bot = String(env.BOT_USERNAME ?? "").replace(/^@/, "");
+      if (!packs.length) {
+        await sendMessage(env, message.chat.id, "Докупка трафика пока не настроена.");
+        return;
+      }
+      const lines = [
+        "<b>Докупить трафик</b>",
+        "",
+        ...packs.map((pack) => `• ${pack.title} — ${formatRub(pack.price_rub)}`),
+        "",
+        "Оплата — в кабинете: выберите пакет и способ оплаты.",
+      ];
+      await sendMessage(
+        env,
+        message.chat.id,
+        lines.join("\n"),
+        bot
+          ? { inline_keyboard: [[{ text: "📊 Открыть кабинет", url: `https://t.me/${bot}?startapp` }]] }
+          : undefined,
+      );
+      return;
+    }
+    case "/gift":
+    case "/подарок": {
+      // Подарочный код: дни без оплаты. Выдача — атомарная, повторная
+      // активация того же кода отклоняется.
+      if (!existing) {
+        await sendMessage(env, message.chat.id, "Сначала /start");
+        return;
+      }
+      const code = (args[0] ?? "").trim();
+      if (!code) {
+        await sendMessage(
+          env,
+          message.chat.id,
+          "Формат: <code>/gift КОД</code>\nКод выглядит так: <code>AB12-CD34</code>",
+        );
+        return;
+      }
+      const redeemed = await redeemGift(env, code, {
+        id: existing.id,
+        tg_id: String(existing.tg_id),
+      });
+      if (!redeemed.ok) {
+        await sendMessage(env, message.chat.id, `Не получилось: ${redeemed.error ?? "ошибка"}`);
+        return;
+      }
+      const until = redeemed.expiresAt?.slice(0, 10) ?? "";
+      await sendMessage(
+        env,
+        message.chat.id,
+        `🎁 Код активирован: <b>+${redeemed.days} дн.</b>${until ? `\nДоступ до <b>${until}</b>.` : ""}`,
+      );
+      return;
+    }
+    case "/paid":
+    case "/оплатил": {
+      // Подтверждение перевода: человек нажал «оплатил» на странице оплаты
+      // или просто написал команду. Админ получает заказ с двумя кнопками.
+      if (!existing) {
+        await sendMessage(env, message.chat.id, "Сначала /start");
+        return;
+      }
+      const publicId = (args[0] ?? "").trim();
+      if (!publicId) {
+        await sendMessage(env, message.chat.id, "Формат: /paid ord_xxxx (номер есть на странице оплаты)");
+        return;
+      }
+      const order = await findOrder(env, publicId);
+      if (!order || order.user_id !== existing.id) {
+        await sendMessage(env, message.chat.id, "Заказ не найден.");
+        return;
+      }
+      if (order.status === "paid") {
+        await sendMessage(env, message.chat.id, "Этот заказ уже оплачен.");
+        return;
+      }
+      if (order.status !== "pending") {
+        await sendMessage(env, message.chat.id, "Счёт больше не действует. Создайте новый: /buy");
+        return;
+      }
+      await sendMessage(
+        env,
+        message.chat.id,
+        `Заявка отправлена. Заказ <code>${order.public_id}</code> · ${formatRub(order.amount_rub)}\nПроверим перевод и включим доступ — обычно до 30 минут.`,
+      );
+      const adminChat = adminId(env);
+      if (adminChat) {
+        await sendMessage(
+          env,
+          adminChat,
+          [
+            `<b>Перевод на проверку</b>`,
+            `${order.plan_title} · ${formatRub(order.amount_rub)} · ${order.days} дн.`,
+            `Заказ <code>${order.public_id}</code>`,
+            `Пользователь: ${existing.tg_username ? "@" + existing.tg_username : existing.tg_id}`,
+          ].join("\n"),
+          {
+            inline_keyboard: [
+              [
+                { text: "✅ Подтвердить", callback_data: `ordok:${order.public_id}`.slice(0, 60) },
+                { text: "✖️ Отклонить", callback_data: `ordno:${order.public_id}`.slice(0, 60) },
+              ],
+            ],
+          },
+        );
+      }
+      return;
+    }
+    case "/terms":
+    case "/оферта": {
+      const base = String(env.PUBLIC_BASE_URL ?? "").replace(/\/$/, "");
+      await sendMessage(
+        env,
+        message.chat.id,
+        [
+          "<b>Документы</b>",
+          base ? `Оферта: ${base}/legal/oferta` : "",
+          base ? `Оплата и возврат: ${base}/legal/refund` : "",
+          base ? `Конфиденциальность: ${base}/legal/privacy` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+      return;
+    }
     default:
       break;
   }
@@ -274,6 +475,76 @@ async function runAdminCommand(
     }
     case "/payments":
       return await paymentsText(env, Number(args[0] ?? "10") || 10);
+    case "/revenue":
+    case "/выручка": {
+      const report = await revenue(env);
+      const line = (label: string, item: { count: number; sum: number }) =>
+        `${label}: ${formatRub(item.sum)} · ${item.count} оплат`;
+      return [
+        "<b>Выручка</b>",
+        line("Сегодня", report.today),
+        line("7 дней", report.week),
+        line("30 дней", report.month),
+        line("Всего", report.total),
+        `Возвраты: ${formatRub(report.refunded.sum)} · ${report.refunded.count}`,
+        "",
+        `Активных подписок: ${report.activeSubs}`,
+        `Неоплаченных счетов: ${report.pending}`,
+      ].join("\n");
+    }
+    case "/order": {
+      if (!args[0]) return "Формат: /order <ord_…|id>";
+      const order = await findOrder(env, args[0]);
+      if (!order) return "Заказ не найден.";
+      return [
+        `<b>${order.public_id}</b>`,
+        `${order.plan_title} · ${formatRub(order.amount_rub)} · ${order.days} дн.`,
+        `Способ: ${order.provider} · статус: ${order.status}`,
+        `Создан: ${order.created_at}`,
+        `Оплачен: ${order.paid_at ?? "—"}`,
+        order.external_id ? `Платёж: <code>${order.external_id}</code>` : "",
+        order.telegram_charge_id ? `Charge: <code>${order.telegram_charge_id}</code>` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    }
+    case "/refund": {
+      if (!args[0]) return "Формат: /refund <ord_…|id> [manual]";
+      const order = await findOrder(env, args[0]);
+      if (!order) return "Заказ не найден.";
+      const outcome = await refundOrder(env, order, { manual: args[1] === "manual" });
+      return outcome.message;
+    }
+    case "/giftnew": {
+      // /giftnew 30 5 — пять кодов по 30 дней, срок жизни кода 30 дней.
+      const days = Number(args[0] ?? "0");
+      if (!Number.isFinite(days) || days <= 0) {
+        return "Формат: /giftnew <дней> [сколько кодов] [срок жизни кода в днях]";
+      }
+      const count = Number(args[1] ?? "1") || 1;
+      const validDays = Number(args[2] ?? "30") || 30;
+      const created = await createGift(env, days, { count, validDays });
+      if (!created.length) return "Не удалось создать коды: проверьте, применена ли миграция 0024.";
+      return [
+        `<b>Создано кодов: ${created.length}</b> · ${days} дн.`,
+        "",
+        ...created.map((gift) => `<code>${gift.code}</code>`),
+        "",
+        "Активация у пользователя: /gift КОД",
+      ].join("\n");
+    }
+    case "/gifts": {
+      const list = await listGifts(env, 15);
+      if (!list.length) return "Кодов пока нет. Создать: /giftnew 30 5";
+      return [
+        "<b>Последние коды</b>",
+        "",
+        ...list.map((gift) => {
+          const state = gift.redeemed_by ? `активирован ${gift.redeemed_at?.slice(0, 10)}` : "свободен";
+          return `<code>${gift.code}</code> · ${gift.days} дн. · ${state}`;
+        }),
+      ].join("\n");
+    }
     case "/pools":
       return await admin.cmdPools(env);
     case "/grant":
@@ -284,7 +555,11 @@ async function runAdminCommand(
       return args[0] && args[1]
         ? await admin.cmdGrant(env, args[0], args[1], true)
         : "Формат: /revoke &lt;tg_id&gt; &lt;пул&gt;";
-    case "/servers":
+    // Раньше это был второй `case "/servers"` — недостижимая ветка: команда
+    // всегда попадала в сводку выше, а список серверов нельзя было получить
+    // вообще. Разводим по разным командам, чтобы работали обе.
+    case "/servers_list":
+    case "/узлы":
       return await admin.cmdServers(env);
     case "/rebalance":
       return await admin.cmdRebalance(env);
@@ -329,7 +604,8 @@ async function handleCallback(
     data.startsWith("prm:") ||
     data.startsWith("sq:") ||
     data.startsWith("srv:") ||
-    data.startsWith("chk:")
+    data.startsWith("chk:") ||
+    data.startsWith("pay:")
   ) {
     const existing = await one<UserRow>(env, "SELECT * FROM users WHERE tg_id = ?", tgId);
 
@@ -416,7 +692,102 @@ async function handleCallback(
       return;
     }
     if (data === "act:plans") {
-      await answerCallback(env, query.id, "Тарифы — у администратора.", true);
+      await answerCallback(env, query.id, "");
+      await sendBuyMenu(env, chatId);
+      return;
+    }
+
+    // ── касса ──────────────────────────────────────────────────────────
+    // Подтверждение перевода — только владелец бота.
+    if (data.startsWith("ordok:") || data.startsWith("ordno:")) {
+      if (String(tgId) !== String(adminId(env))) {
+        await answerCallback(env, query.id, "Нет доступа", true);
+        return;
+      }
+      const publicId = data.slice("ordok:".length);
+      const approve = data.startsWith("ordok:");
+      const order = await findOrder(env, publicId);
+      if (!order) {
+        await answerCallback(env, query.id, "Заказ не найден", true);
+        return;
+      }
+      if (!approve) {
+        await closeOrder(env, publicId, "canceled", "перевод не подтверждён");
+        await answerCallback(env, query.id, "Отклонено");
+        const { one } = await import("../db");
+        const row = await one<{ tg_id: string }>(
+          env,
+          "SELECT tg_id FROM users WHERE id = ?",
+          order.user_id,
+        );
+        if (row?.tg_id) {
+          await sendMessage(
+            env,
+            row.tg_id,
+            [
+              "<b>Перевод не найден</b>",
+              `Заказ <code>${order.public_id}</code> отменён.`,
+              "Если деньги списались — напишите /paysupport, разберёмся вручную.",
+            ].join("\n"),
+          );
+        }
+        return;
+      }
+      const result = await markOrderPaid(env, publicId, {
+        externalId: `transfer:${publicId}`,
+        currency: "RUB",
+        amountMinor: order.amount_rub * 100,
+        providerChargeId: `transfer:${publicId}`,
+        orderPublicId: publicId,
+      });
+      await answerCallback(env, query.id, result.ok ? "Оплата зачислена" : "Не удалось");
+      if (result.ok) {
+        const { one } = await import("../db");
+        const row = await one<{ tg_id: string }>(
+          env,
+          "SELECT tg_id FROM users WHERE id = ?",
+          order.user_id,
+        );
+        if (row?.tg_id) await notifyPaid(env, result, row.tg_id);
+      }
+      return;
+    }
+
+    if (data === "pay:menu") {
+      await answerCallback(env, query.id, "");
+      await sendBuyMenu(env, chatId);
+      return;
+    }
+    if (data.startsWith("pay:plan:")) {
+      await answerCallback(env, query.id, "");
+      await sendPlanScreen(env, chatId, data.slice("pay:plan:".length));
+      return;
+    }
+    if (data.startsWith("pay:check:")) {
+      if (!existing) {
+        await answerCallback(env, query.id, "Сначала нажмите /start.", true);
+        return;
+      }
+      await answerCallback(env, query.id, "Проверяю оплату…");
+      await checkPayment(env, chatId, existing, data.slice("pay:check:".length));
+      return;
+    }
+    if (
+      data.startsWith("pay:stars:") ||
+      data.startsWith("pay:crypto:") ||
+      data.startsWith("pay:card:")
+    ) {
+      if (!existing) {
+        await answerCallback(env, query.id, "Сначала нажмите /start.", true);
+        return;
+      }
+      if (!memRateLimit(`pay:${tgId}`, 8, 60)) {
+        await answerCallback(env, query.id, "Не так быстро — счёт уже создан.", true);
+        return;
+      }
+      const [, prefix, ...rest] = data.split(":");
+      await answerCallback(env, query.id, "Готовлю счёт…");
+      await startPayment(env, chatId, existing, prefix ?? "", rest.join(":"));
       return;
     }
 

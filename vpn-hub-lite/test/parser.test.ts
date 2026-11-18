@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSubscription,
   decodePayload,
+  isPlaceholderNode,
   isSingleKey,
   parseSubscription,
   parseUri,
@@ -90,5 +91,27 @@ describe("userinfo и подпись ссылок", () => {
   it("buildSubscription собирает base64, который читается обратно", () => {
     const encoded = buildSubscription([VLESS, TROJAN]);
     expect(parseSubscription(encoded)).toHaveLength(2);
+  });
+});
+
+describe("заглушка панели вместо узла", () => {
+  // Так выглядит ответ Remnawave, когда токен подписки не принят:
+  // истёк, привязан к другому устройству или к чужому IP.
+  const STUB =
+    "vless://00000000-0000-0000-0000-000000000000@0.0.0.0:1?encryption=none&type=tcp&security=none#App%20not%20supported";
+
+  it("не принимает служебный адрес", () => {
+    expect(parseUri(STUB)).toBeNull();
+  });
+
+  it("не принимает порт 1 или нулевой UUID", () => {
+    expect(isPlaceholderNode("0.0.0.0", 443, "11111111-1111-1111-1111-111111111111")).toBe(true);
+    expect(isPlaceholderNode("example.com", 1, "11111111-1111-1111-1111-111111111111")).toBe(true);
+    expect(isPlaceholderNode("example.com", 443, "00000000-0000-0000-0000-000000000000")).toBe(true);
+    expect(isPlaceholderNode("example.com", 443, "11111111-1111-1111-1111-111111111111")).toBe(false);
+  });
+
+  it("настоящий узел по-прежнему разбирается", () => {
+    expect(parseUri(VLESS)?.host).toBe("203.0.113.10");
   });
 });

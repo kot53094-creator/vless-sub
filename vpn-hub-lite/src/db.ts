@@ -8,7 +8,7 @@
  */
 
 import type { Env } from "./types";
-import { tBatch, tMany, tOne, tRun, tursoEnabled } from "./turso";
+import { tBatch, tMany, tOne, tRun, tRunCount, tursoEnabled } from "./turso";
 
 /** Переносимое выражение: одинаково исполняется и в D1, и в Turso. */
 export interface SqlStatement {
@@ -45,9 +45,10 @@ export async function run(
   ...params: unknown[]
 ): Promise<D1Result> {
   if (tursoEnabled(env)) {
-    await tRun(env, sql, ...params);
-    // Вызывающие проверяют только успешность; meta у Turso не нужна.
-    return { success: true, meta: {} } as unknown as D1Result;
+    // meta.changes важен не меньше самой записи: по нему отличают «оплата
+    // прошла» от «этот вебхук уже обработан», а «+0 дней» от продления.
+    const changes = await tRunCount(env, sql, ...params);
+    return { success: true, meta: { changes } } as unknown as D1Result;
   }
   return await env.DB.prepare(sql)
     .bind(...params)

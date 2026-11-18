@@ -8,16 +8,25 @@ import { probePage, probeState } from "./probe_page";
 import { clientIp } from "./security";
 import { handleApiV1 } from "./api_v1";
 import { handleChecks, handleQueue } from "./checks_api";
+import { handleTraffic } from "./traffic_api";
+import { handleNodeClients } from "./node_clients";
 import { handleImport, handleStats } from "./import_api";
 import { handleUpdate, type TgUpdate } from "./bot";
 import { fillGeo } from "./geo";
-import { premiumLanding } from "./landing";
+import { landingPage } from "./site";
+import { legalIndex, ofertaPage, privacyPage, refundPage } from "./legal";
+import { handleCryptoWebhook, handleYooWebhook } from "./pay";
+import { orderPage, orderState, redirectToProvider } from "./pay/page";
+import { expireOrders, findOrder } from "./orders";
+import type { ProviderId } from "./pay/types";
 import { aiDiagnose, handleAiCommand } from "./ai";
 import { runBackup } from "./backup";
+import { exportDatabase, exportResponse } from "./export_api";
 import { runDiscovery } from "./discover";
 import { runHealth } from "./health";
 import { GEOSITE_DAT_BASE64 } from "./geosite_data";
-import { expireSubscriptions } from "./maintenance";
+import { expireSubscriptions, pruneDevices } from "./maintenance";
+import { resetTrafficCounters } from "./traffic_api";
 import { runNotifications } from "./notify";
 import { runPoll, setWebhook, watchWebhook } from "./polling";
 import { checkTokenOk, envStr, timingSafeEqual } from "./security";
@@ -28,10 +37,24 @@ import { countWhitelist, tagWhitelist } from "./whitelist";
 import { loadWhitelistPool } from "./sub";
 import { loadPool } from "./sub";
 import { runSync } from "./sync";
+import { isQuiet, parseQuiet, quietLabel } from "./quiet";
+import { handleAppApi } from "./app_api";
+import { renderMiniApp } from "./miniapp";
 import { sendToAdmin, tgRaw } from "./bot/telegram";
 import { applyMergeChecks, mergeStatus, mergedNodes, syncMerge, syncMergeIfDue } from "./merge";
 import type { Env } from "./types";
 import { BRAND } from "./brand";
+
+/**
+ * Включена ли массовая проверка узлов.
+ *
+ * `CHECKS_ENABLED=0` выключает и утреннюю пересборку (00:10 UTC = 08:10
+ * Иркутск), и выдачу заданий агенту. Сама выдача подписки не зависит от
+ * проверок: она берёт то, что уже лежит в пуле, и отдаёт из KV.
+ */
+function checksEnabled(env: Env): boolean {
+  return String(env.CHECKS_ENABLED ?? "1").trim() !== "0";
+}
 
 const SYNC_CRON = "0 */6 * * *";
 const HEALTH_CRON = "*/20 * * * *";
@@ -69,6 +92,64 @@ export default {
 
     if (path === "/healthz") return new Response("ok");
 
+    // ── платный контур ───────────────────────────────────────────────────
+    // Вебхуки провайдеров. Тело читается как текст: подпись Crypto Pay
+    // считается по исходным байтам, а не по результату JSON.parse.
+    if (path === "/pay/webhook/cryptopay" && request.method === "POST") {
+      return await handleCryptoWebhook(
+        env,
+        await request.text(),
+        request.headers.get("crypto-pay-api-signature"),
+      );
+    }
+    if (path === "/pay/webhook/yookassa" && request.method === "POST") {
+      return await handleYooWebhook(env, await request.text());
+    }
+
+    // Страница оплаты и переход к провайдеру.
+    if (path.startsWith("/pay/") && !path.startsWith("/pay/webhook")) {
+      const rest = decodeURIComponent(path.slice("/pay/".length)).replace(/\/$/, "");
+      if (!rest) return Response.redirect(`${url.origin}/`, 302);
+
+      if (rest.endsWith("/state")) {
+        return await orderState(env, rest.slice(0, -"/state".length));
+      }
+      // Недоступная база (например, исчерпана суточная квота D1) не должна
+      // превращаться в 500 на публичной странице: человек видит «попробуйте
+      // позже», а не пустой экран с ошибкой воркера.
+      try {
+        if (rest.endsWith("/start")) {
+          const publicId = rest.slice(0, -"/start".length);
+          const order = await findOrder(env, publicId);
+          if (!order) return new Response("Заказ не найден", { status: 404 });
+          const provider = (url.searchParams.get("provider") ?? "") as ProviderId;
+          return await redirectToProvider(env, order, provider);
+        }
+        const order = await findOrder(env, rest);
+        if (!order) return new Response("Заказ не найден", { status: 404 });
+        return orderPage(env, order);
+      } catch {
+        return new Response(
+          "Страница оплаты временно недоступна. Откройте бота и повторите через несколько минут.",
+          { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } },
+        );
+      }
+    }
+
+    // Документы: оферта, возврат, конфиденциальность.
+    if (path === "/legal" || path === "/legal/") return legalIndex(env);
+    if (path === "/legal/oferta" || path === "/oferta") return ofertaPage(env);
+    if (path === "/legal/refund" || path === "/refund") return refundPage(env);
+    if (path === "/legal/privacy" || path === "/privacy") return privacyPage(env);
+
+    // Telegram Mini App: современный личный кабинет в стиле Song69
+    if (path === "/app" || path === "/app/" || path === "/miniapp" || path === "/miniapp/") {
+      return renderMiniApp(env);
+    }
+    if (path.startsWith("/api/app/")) {
+      return await handleAppApi(request, env);
+    }
+
     // Публичный read-only API и страница состояния.
     if (path === "/api/v1" || path.startsWith("/api/v1/")) {
       return await handleApiV1(request, env);
@@ -95,11 +176,29 @@ export default {
     }
 
     // Результаты настоящих проверок от агента на GitHub Actions.
+    // Массовую проверку можно выключить одной переменной: она читает весь пул
+    // и на free-плане D1 съедает суточную квоту за один проход. Выключенная
+    // проверка отвечает пустым списком, чтобы агент не долбил эндпоинт.
     if (path === "/api/checks" && request.method === "POST") {
+      if (!checksEnabled(env)) return new Response(null, { status: 204 });
       return await handleChecks(env, request);
     }
     if (path === "/api/checks/queue") {
+      if (!checksEnabled(env)) {
+        return Response.json({ ok: true, disabled: true, items: [], servers: [] });
+      }
       return await handleQueue(env, request);
+    }
+
+    // Расход трафика от агента узлов (Xray stats API → сюда).
+    if (path === "/api/traffic" && request.method === "POST") {
+      return await handleTraffic(env, request);
+    }
+
+    // Список ключей для своего узла: узел синхронизирует клиентов Xray сам,
+    // поэтому заблокированный аккаунт теряет доступ и на сервере.
+    if (path === "/api/node/clients") {
+      return await handleNodeClients(env, request);
     }
 
     // Ручной прогон геолокации: иначе ждать ближайшего */20 и не видеть,
@@ -507,6 +606,26 @@ export default {
       return Response.json(await runDiscovery(env));
     }
 
+    // Экспорт базы для переноса на другого провайдера (Turso, Neon).
+    // Параметры: ?tables=critical|all, ?format=json|sql, ?dialect=sqlite|postgres.
+    if (path === "/api/export" && request.method === "GET") {
+      if (!(await checkTokenOk(env, request))) {
+        return new Response("forbidden", { status: 403 });
+      }
+      const scope = url.searchParams.get("tables") === "all" ? "all" : "critical";
+      const format = url.searchParams.get("format") === "sql" ? "sql" : "json";
+      const dialect = url.searchParams.get("dialect") === "postgres" ? "postgres" : "sqlite";
+      try {
+        const result = await exportDatabase(env, scope);
+        return exportResponse(result, format, dialect);
+      } catch (error) {
+        return Response.json(
+          { error: "export_failed", message: String(error).slice(0, 200) },
+          { status: 503 },
+        );
+      }
+    }
+
     // Ручной бэкап базы: и проверка, что документ доходит до Telegram.
     if (path === "/api/backup" && request.method === "POST") {
           if (!(await checkTokenOk(env, request))) {
@@ -596,6 +715,22 @@ export default {
       return await keysPage(env, decodeURIComponent(path.slice("/keys/".length)));
     }
 
+    // Статическая подписка из KV: отдаёт заранее проверенный набор узлов и
+    // не трогает базу вообще. Нужна, когда D1 недоступен, а клиенту нужен
+    // рабочий список прямо сейчас.
+    if (path.startsWith("/w/")) {
+      const key = decodeURIComponent(path.slice(3)).replace(/[^A-Za-z0-9_-]/g, "");
+      const body = key ? await env.CACHE.get(`static:${key}`) : null;
+      if (!body) return new Response("Не найдено", { status: 404 });
+      return new Response(body, {
+        headers: {
+          "content-type": "text/plain; charset=utf-8",
+          "cache-control": "no-store",
+          "profile-update-interval": "12",
+        },
+      });
+    }
+
     if (path.startsWith("/sub/")) {
       const rest = decodeURIComponent(path.slice("/sub/".length)).replace(/\/$/, "");
       // Поддерживаем /sub/<токен> и /sub/<токен>/<режим>.
@@ -617,12 +752,27 @@ export default {
         auto: "auto",
         json: "auto",
         "auto-json": "auto",
+        // Только Hysteria2: QUIC-узлы нельзя положить в Xray-массив, поэтому
+        // их добавляют отдельной подпиской рядом с основной.
+        hy2: "hy2",
+        hysteria: "hy2",
+        hysteria2: "hy2",
         // Резервный список ссылок: для клиентов, которые не понимают JSON.
         sb: "sb",
         singbox: "sb",
         list: "plain",
         txt: "plain",
         base64: "plain",
+        // Группы серверов: один JSON со всеми профилями или отдельный список.
+        groups: "groups",
+        grp: "groups",
+        group: "groups",
+        europe: "europe",
+        eu: "europe",
+        russia: "russia",
+        ru: "russia",
+        backup: "backup",
+        all: "all",
       };
       return await handleSubscription(env, token, request, MODES[rawMode] ?? "default");
     }
@@ -692,13 +842,35 @@ export default {
       return await handleAdmin(request, env);
     }
 
-    if (path === "/") return premiumLanding(env);
+    if (path === "/" || path === "/index.html") return await landingPage(env);
 
     return new Response("Не найдено", { status: 404 });
   },
 
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    // Тихие часы: ночью не тратим квоты на проверки и синхронизацию.
+    const quiet = parseQuiet(env.QUIET_HOURS, env.QUIET_UTC_OFFSET);
+    const muted = isQuiet(Date.now(), quiet);
+    const skip = (): boolean => {
+      if (!muted) return false;
+      console.log(`тихие часы ${quietLabel(quiet)}: ${event.cron} пропущен`);
+      return true;
+    };
+
+    // Фоновые задания читают таблицу серверов: проверка раз в 20 минут — это
+    // 72 прохода в сутки, и на free-плане D1 они выедают квоту раньше, чем
+    // проснётся первый пользователь. CHECKS_ENABLED=0 выключает всё, кроме
+    // бэкапа: бот и кабинет должны получать квоту первыми.
+    // Поллинг бота (`* * * * *`) — не «фоновая проверка», а единственный
+    // транспорт обновлений, когда вебхук недоступен. Его выключать нельзя:
+    // без него бот замолкает полностью.
+    const isBotPoll = event.cron === "* * * * *";
+    if (!checksEnabled(env) && event.cron !== BACKUP_CRON && !isBotPoll) {
+      console.log(`cron ${event.cron} пропущен: CHECKS_ENABLED=0`);
+      return;
+    }
     if (event.cron === SYNC_CRON) {
+      if (skip()) return;
       ctx.waitUntil(
         (async () => {
           try {
@@ -724,6 +896,11 @@ export default {
       return;
     }
     if (event.cron === DISCOVER_CRON) {
+      if (skip()) return;
+      if (!checksEnabled(env)) {
+        console.log("массовая проверка выключена: CHECKS_ENABLED=0");
+        return;
+      }
       // Утренний сбор пула: 00:10 UTC = 08:10 по Иркутску.
       // Квота D1 обнуляется в 00:00 UTC, десять минут — запас на границу
       // суток. Порядок: новые источники → импорт → пересборка пула.
@@ -749,9 +926,17 @@ export default {
           console.error("backup failed", error instanceof Error ? error.message : error);
         }),
       );
+      // Неоплаченные счета не должны жить вечно: иначе человек вернётся к
+      // странице оплаты через месяц и увидит старую цену.
+      ctx.waitUntil(
+        expireOrders(env).catch((error) => {
+          console.error("orders expire failed", error instanceof Error ? error.message : error);
+        }),
+      );
       return;
     }
     if (event.cron === HEALTH_CRON) {
+      if (skip()) return;
       // Внешние подписки: свой интервал (30 минут) внутри функции, поэтому
       // отдельный cron-триггер не нужен — на free-плане их всего пять.
       ctx.waitUntil(syncMergeIfDue(env));
@@ -796,6 +981,18 @@ export default {
           console.error("notify failed", error instanceof Error ? error.message : error);
         }),
       );
+      // Старые устройства не должны занимать слоты в лимите, а счётчик
+      // трафика — копиться с прошлого месяца.
+      ctx.waitUntil(
+        pruneDevices(env).catch((error) => {
+          console.error("prune devices failed", error instanceof Error ? error.message : error);
+        }),
+      );
+      ctx.waitUntil(
+        resetTrafficCounters(env).catch((error) => {
+          console.error("traffic reset failed", error instanceof Error ? error.message : error);
+        }),
+      );
       return;
     }
     // Раз в минуту: либо забираем обновления сами (резервный транспорт),
@@ -815,3 +1012,4 @@ export default {
     }
   },
 };
+

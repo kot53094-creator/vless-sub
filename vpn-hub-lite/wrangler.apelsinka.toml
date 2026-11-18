@@ -19,7 +19,7 @@
 
 name = "apelsinka"
 main = "src/index.ts"
-compatibility_date = "2026-10-01"
+compatibility_date = "2025-07-18"
 
 # --- D1: та же база, что у основного воркера --------------------------------
 [[d1_databases]]

@@ -163,6 +163,22 @@ function splitHostPort(netloc: string): [string, number] {
   return [netloc.slice(0, idx), Number(netloc.slice(idx + 1)) || 443];
 }
 
+/** Хосты, которые не могут быть настоящим узлом подписки. */
+const PLACEHOLDER_HOSTS = new Set(["0.0.0.0", "127.0.0.1", "::", "::1", "localhost"]);
+
+/**
+ * Это заглушка панели, а не узел?
+ *
+ * Три признака сразу: служебный хост, порт 1 и нулевой UUID. Достаточно
+ * любого — настоящий узел не бывает ни на 0.0.0.0, ни на порту 1.
+ */
+export function isPlaceholderNode(host: string, port: number, uuid = ""): boolean {
+  if (PLACEHOLDER_HOSTS.has(host.toLowerCase())) return true;
+  if (port === 1) return true;
+  if (/^0{8}-0{4}-0{4}-0{4}-0{12}$/i.test(uuid.replace(/[{}]/g, ""))) return true;
+  return false;
+}
+
 export function parseUri(uri: string): ParsedKey | null {
   const trimmed = uri.trim();
   if (!isSingleKey(trimmed)) return null;
@@ -177,6 +193,12 @@ export function parseUri(uri: string): ParsedKey | null {
     const host = url.hostname.replace(/^\[|\]$/g, "");
     if (!host) return null;
     const port = Number(url.port) || defaultPort(proto);
+    // Заглушка панели вместо реального узла. Remnawave (и похожие) отдают
+    // `vless://00000000-…@0.0.0.0:1` с подписью «Приложение не
+    // поддерживается», когда токен подписки не принят: истёк, привязан к
+    // другому устройству или к чужому IP. Такой «узел» нельзя пускать в пул:
+    // он синтаксически валиден и молча занимает место среди рабочих.
+    if (isPlaceholderNode(host, port, url.username)) return null;
     let security = (url.searchParams.get("security") ?? "").toLowerCase();
     if (!security && (proto === "trojan" || proto === "hysteria2")) security = "tls";
     return {

@@ -9,8 +9,9 @@ import {
   listDevices,
   rotateToken,
   setDeviceBlocked,
+  deviceLimitOf,
 } from "../sub";
-import { randomToken } from "../security";
+import { envStr, randomToken } from "../security";
 import type { Env, UserRow } from "../types";
 import { adminId, escapeHtml, sendMessage, sendToAdmin, type ReplyMarkup } from "./telegram";
 import {
@@ -48,8 +49,27 @@ import {
 import { redeemInvite } from "../invites";
 import { humanDuration, mskDate, plural, round2 } from "../promotions";
 
-/** Сколько дней пробного доступа выдаётся сразу при /start. */
-const TRIAL_DAYS = 3;
+/**
+ * Сколько дней пробного доступа выдаётся сразу при /start.
+ *
+ * Владелец платного сервиса должен уметь выключить пробник (TRIAL_ENABLED=0)
+ * или сократить его: три дня на всех устройствах — это бесплатный трафик,
+ * который кто-то оплачивает. Верхняя граница 30 дней защищает от опечатки
+ * вроде «365» в переменной окружения.
+ */
+function trialDays(env: Env): number {
+  if (String(env.TRIAL_ENABLED ?? "1").trim() === "0") return 0;
+  const raw = Number(env.TRIAL_DAYS ?? "3");
+  if (!Number.isFinite(raw) || raw <= 0) return 3;
+  return Math.min(Math.round(raw), 30);
+}
+
+/** Лимит устройств на пробном периоде. */
+function trialDevices(env: Env): number {
+  const raw = Number(env.TRIAL_DEVICES ?? "2");
+  if (!Number.isFinite(raw) || raw <= 0) return 2;
+  return Math.min(Math.max(Math.round(raw), 1), 10);
+}
 
 export interface TgFrom {
   id: number;
@@ -136,7 +156,11 @@ export async function handleStart(
       await sendChannelGate(env, tgId, true);
       return;
     }
-    await sendMessage(env, tgId, "Срок истёк. Заберите бонус дня или напишите администратору.");
+    await sendMessage(
+      env,
+      tgId,
+      "Срок истёк. Продлить можно в /buy — ссылка подписки останется прежней. Если что-то не работает, напишите /paysupport.",
+    );
     return;
   }
 
@@ -178,10 +202,21 @@ export async function handleStart(
     return;
   }
 
-  // Пробный период: три дня сразу, без ожидания одобрения админом.
-  // Раньше человек висел в pending и не мог ничего получить, пока админ
-  // не нажмёт кнопку — для теста это слишком медленно.
-  await approveUser(env, userId, TRIAL_DAYS);
+  // Пробный период: сразу, без ожидания одобрения админом. Если владелец
+  // выключил пробник, человек остаётся в pending — тогда решение принимает
+  // админ, а в боте сразу доступна витрина тарифов.
+  const trial = trialDays(env);
+  if (trial > 0) {
+    await approveUser(env, userId, trial, { devices: trialDevices(env) });
+  } else {
+    await sendMessage(
+      env,
+      tgId,
+      "Аккаунт создан. Пробного периода нет — откройте /buy, чтобы выбрать тариф.",
+    );
+    await sendToAdmin(env, `Новая заявка без пробника: ${from.username ? `@${from.username}` : tgId}`);
+    return;
+  }
 
   await sendChannelGate(env, tgId, false);
 
@@ -191,11 +226,11 @@ export async function handleStart(
   await sendMessage(
     env,
     String(env.ADMIN_TG_ID ?? "5680608085"),
-    `<b>Новый пользователь</b>\n${name}\nВыдан триал ${TRIAL_DAYS} дн. автоматически\nВсего пользователей: ${(total?.n ?? 0) + 1}`,
+    `<b>Новый пользователь</b>\n${name}\nВыдан триал ${trial} дн. автоматически\nВсего пользователей: ${(total?.n ?? 0) + 1}`,
     {
       inline_keyboard: [
         [
-          { text: `Продлить +${TRIAL_DAYS}`, callback_data: `ap:${TRIAL_DAYS}:${userId}` },
+          { text: `Продлить +${trial}`, callback_data: `ap:${trial}:${userId}` },
           { text: "Продлить 30", callback_data: `ap:30:${userId}` },
         ],
         [{ text: "Забанить", callback_data: `rj:${userId}` }],
@@ -317,10 +352,12 @@ export async function sendMenu(
   messageId?: number,
 ): Promise<void> {
   const settings = await loadSettings(env);
+  const baseUrl = (envStr(env.PUBLIC_BASE_URL) || "").replace(/\/$/, "");
   const options = {
     daily: flag(settings, "daily_enabled", true),
     referral: flag(settings, "referral_enabled", true),
     promo: flag(settings, "promo_enabled", true),
+    appUrl: baseUrl ? `${baseUrl}/app` : undefined,
   };
   await screen(env, chatId, messageId, "start", WELCOME, mainKeyboard(options));
 }
@@ -479,6 +516,7 @@ export async function sendCabinet(
   }
   const settings = await loadSettings(env);
   const body = await cabinetBody(env, user);
+  const baseUrl = (envStr(env.PUBLIC_BASE_URL) || "").replace(/\/$/, "");
   await screen(
     env,
     chatId,
@@ -491,6 +529,7 @@ export async function sendCabinet(
       promo: flag(settings, "promo_enabled", true),
       bypass: flag(settings, "squads_enabled", false) && user.status === "active",
       active: user.status === "active",
+      appUrl: baseUrl ? `${baseUrl}/app` : undefined,
     }),
   );
 }
@@ -684,13 +723,16 @@ export async function sendTraffic(
   messageId?: number,
 ): Promise<void> {
   const limit = user.traffic_gb ? `${user.traffic_gb} ГБ` : "без лимита";
+  const until = user.expires_at
+    ? user.expires_at.slice(0, 10).split("-").reverse().join(".")
+    : "";
   const lines = [
     `<b>Трафик</b>`,
     `Лимит: ${limit}`,
     "",
     user.traffic_gb
       ? "Израсходованное считает сервер: Happ показывает остаток в карточке подписки и обновляет его каждые 6 часов."
-      : "Трафик не ограничен — качайте сколько нужно.",
+      : `Трафик не ограничен — качайте сколько нужно.${until ? `\nДоступ закрывается только по сроку: до ${until}, потом продлить /buy.` : ""}`,
   ];
   await screen(env, chatId, messageId, "account", lines.join("\n"), cabinetKeyboard({ referral: true }));
 }
@@ -718,9 +760,10 @@ export async function sendDevicesInfo(
   const active = devices.filter((item) => !item.blocked);
   const blocked = devices.filter((item) => item.blocked);
 
+  const limit = deviceLimitOf(user, env);
   const lines = [
     `<b>Устройства</b>`,
-    `Лимит: ${user.device_limit} · подключено: ${active.length}`,
+    `Лимит: ${limit} · подключено: ${active.length} из ${limit}`,
     "",
   ];
 
@@ -734,7 +777,13 @@ export async function sendDevicesInfo(
 
   if (blocked.length) {
     lines.push("", "<b>Отключены</b>");
-    blocked.forEach((item) => lines.push(`• ${escapeHtml(item.label)}`));
+    blocked.forEach((item) =>
+      lines.push(
+        `• ${escapeHtml(item.label)} — ${
+          item.blocked_reason === "limit" ? "не влезло в лимит" : "отвязано вручную"
+        }`,
+      ),
+    );
   }
 
   lines.push(

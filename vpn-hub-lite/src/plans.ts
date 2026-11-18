@@ -25,6 +25,12 @@ export interface PlanRow {
   active: number;
   sort: number;
   note: string;
+  /** Цена в звёздах, если владелец зафиксировал её вручную (0022). */
+  price_stars?: number | null;
+  /** Метка на витрине: «Хит», «−35%». */
+  badge?: string;
+  /** 1 — тариф показывается первым и выделяется. */
+  featured?: number;
 }
 
 export interface PayInput {
@@ -72,16 +78,32 @@ export function formatPlans(plans: PlanRow[]): string {
   return lines.join("\n");
 }
 
-/** Тарифы из базы; пустой список, если миграция ещё не применена. */
+/**
+ * Тарифы из базы; пустой список, если таблицы ещё нет.
+ *
+ * Два запроса, а не один: код деплоится отдельно от миграции, и между этими
+ * двумя событиями витрина не должна исчезать. Если колонок из 0022 ещё нет —
+ * читаем старый набор и подставляем пустые метки, вместо того чтобы отдавать
+ * «тарифов нет» на живом сервисе.
+ */
 export async function loadPlans(env: Env): Promise<PlanRow[]> {
   try {
     return await many<PlanRow>(
       env,
-      `SELECT id, code, title, days, price_rub, device_limit, traffic_gb, active, sort, note
-         FROM plans WHERE active = 1 ORDER BY sort, id`,
+      `SELECT id, code, title, days, price_rub, device_limit, traffic_gb, active, sort, note,
+              price_stars, badge, featured
+         FROM plans WHERE active = 1 ORDER BY featured DESC, sort, id`,
     );
   } catch {
-    return [];
+    try {
+      return await many<PlanRow>(
+        env,
+        `SELECT id, code, title, days, price_rub, device_limit, traffic_gb, active, sort, note
+           FROM plans WHERE active = 1 ORDER BY sort, id`,
+      );
+    } catch {
+      return [];
+    }
   }
 }
 

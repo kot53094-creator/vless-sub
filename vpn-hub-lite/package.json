@@ -13,14 +13,24 @@
     "db:migrate": "wrangler d1 migrations apply vpn-hub-lite --remote",
     "db:export": "wrangler d1 export vpn-hub-lite --remote --output backups/vpn-hub-export.sql",
     "db:export:schema": "wrangler d1 export vpn-hub-lite --remote --no-data --output backups/schema.sql",
+    "db:export:portable": "node tools/portable-export.mjs",
+    "runtime:build": "tsc -p runtime/node/tsconfig.json",
+    "runtime:migrate": "node runtime/node/main.mjs --migrate",
+    "runtime:serve": "node runtime/node/main.mjs",
+    "runtime:demo": "node runtime/node/main.mjs --seed-demo",
     "db:restore": "node tools/restore-backup.mjs",
     "db:to-turso": "node tools/export-to-turso.mjs",
     "tail": "wrangler tail"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241022.0",
+    "jsqr": "^1.4.0",
+    "pngjs": "^7.0.0",
     "typescript": "^5.6.3",
     "vitest": "^2.1.4",
     "wrangler": "^3.90.0"
+  },
+  "dependencies": {
+    "qrcode-generator": "^2.0.4"
   }
 }
