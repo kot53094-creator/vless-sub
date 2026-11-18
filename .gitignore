@@ -68,3 +68,19 @@ vpn-hub-lite/tools/agent/nodes.json
 # ����� ����: �������� ������ �������� � ������ ����������
 backups/
 vpn-hub-lite/backups/
+
+
+# --- Запрет публикации конфигураций -----------------------------------------
+# Репозиторий публичный, GitHub Pages раздаёт docs/. Здесь не должно быть
+# ни ссылок, ни источников, ни сгенерированных подписок: они остаются только
+# локально и уходят людям через бота по персональной ссылке.
+docs/sub*.txt
+docs/auto.json
+docs/status*.json
+docs/dashboard.html
+sources.txt
+configs/*.txt
+vpn-hub-lite/make-full-pool.mjs
+vpn-hub-lite/full-pool.json
+vpn-hub-lite/capability-check.json
+vpn-hub-lite/qr-*.png

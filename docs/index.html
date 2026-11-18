@@ -1,7 +1,8 @@
 <!doctype html>
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Апельсинка VPN — подписка</title>
+<title>Апельсинка VPN</title>
+<meta name="robots" content="noindex">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&display=swap" rel="stylesheet">
@@ -17,50 +18,41 @@ p.lead{color:#57534e;margin:0 0 28px;font-size:17px}
 .card{background:#fff;border:1px solid #fed7aa;border-radius:18px;padding:22px 24px;
 box-shadow:0 10px 30px rgba(249,115,22,.08);margin-bottom:18px}
 a{color:var(--orange);font-weight:600}
-code{background:var(--cream);padding:3px 8px;border-radius:7px;word-break:break-all;
-font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px}
-table{border-collapse:collapse;width:100%;margin-top:6px;font-size:14px}
-th{text-align:left;font-weight:600;color:#78716c;text-transform:uppercase;font-size:11px;
-letter-spacing:.08em;padding:6px 8px;border-bottom:2px solid #fed7aa}
-td{border-bottom:1px solid #f5f5f4;padding:7px 8px}
+ul{margin:0;padding-left:20px;line-height:1.9}
 .muted{color:#78716c;font-size:13px;line-height:1.6}
-.warn{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px 16px;
-border-radius:12px;font-size:14px}
-.btns{margin:0 0 16px}
 .btn{display:inline-block;background:var(--orange);color:#fff;text-decoration:none;
 padding:12px 22px;border-radius:12px;font-weight:700;margin:0 10px 10px 0}
-.btn.ghost{background:#fff;color:var(--orange);border:1px solid #fdba74}
 .pill{display:inline-block;background:var(--cream);border:1px solid #fed7aa;border-radius:999px;
 padding:5px 14px;font-size:13px;font-weight:600;color:var(--deep);margin:0 8px 8px 0}
 </style></head><body><div class="wrap">
 <h1>Апельсинка <span>VPN</span></h1>
-<p class="lead">Одна подписка для v2rayNG: твои ключи сверху, публичные узлы — в конце.</p>
+<p class="lead">Персональная подписка. Ссылка выдаётся в Telegram-боте и привязана к вашему аккаунту.</p>
 
 <div class="card">
-<p style="margin:0 0 10px"><b>Ссылка для клиента</b></p>
- <p class="btns"><a class="btn" href="v2rayng://install-sub?url=https%3A%2F%2Fkot53094-creator.github.io%2Fvless-sub%2Fsub-ru.txt#%D0%90%D0%BF%D0%B5%D0%BB%D1%8C%D1%81%D0%B8%D0%BD%D0%BA%D0%B0%20%D0%B2%D0%BF%D0%BD">Добавить в v2rayNG</a><a class="btn ghost" href="v2rayng://install-sub?url=https%3A%2F%2Fkot53094-creator.github.io%2Fvless-sub%2Fsub.txt#%D0%90%D0%BF%D0%B5%D0%BB%D1%8C%D1%81%D0%B8%D0%BD%D0%BA%D0%B0%20%D0%B2%D0%BF%D0%BD%20%28%D0%BE%D0%B1%D0%BB%D0%B0%D0%BA%D0%BE%29">Облачный список</a><a class="btn ghost" href="dashboard.html">Состояние ключей</a><a class="btn" href="auto.json">АВТО — лучший сервер</a></p>
- <p style="margin:0 0 14px"><code><a href="sub.txt">sub.txt</a></code></p>
- <ul style="margin:0;padding-left:20px;line-height:1.9">
- <li><b>sub.txt</b> — всё, что прошло проверку синтаксиса, 48</li>
- <li><b>sub-plain.txt</b> — тот же список построчно</li>
- <li><b>sub-ru.txt</b> — <a href="sub-ru.txt">список, проверенный из сети автора</a> (обновляется локальной сборкой, точнее для российских операторов)</li>
- <li><b><a href="auto.json">auto.json</a></b> — профиль «АВТО»: 16 узлов и балансировщик leastPing, клиент сам выбирает живой и самый быстрый (Happ, v2RayTun)</li>
-<li><b><a href="dashboard.html">dashboard.html</a></b> — трафик и срок действия каждого ключа</li>
-<li><b>status.json</b> — три уровня диагностики и состояние источников</li>
+<p style="margin:0 0 14px"><b>Получить подписку</b></p>
+<p><a class="btn" href="https://t.me/ApelsinkaVpn1_bot">Открыть бота в Telegram</a></p>
+<p class="muted" style="margin:0">Бот выдаст одну постоянную ссылку на подписку. Она не меняется,
+даже когда серверы обновляются.</p>
+</div>
+
+<div class="card">
+<p style="margin:0 0 10px"><b>Что внутри</b></p>
+<span class="pill">ваши ключи сверху</span>
+<span class="pill">публичные узлы ниже</span>
+<span class="pill">проверка туннеля</span>
+<ul>
+<li>Happ, v2rayNG, v2RayTun и другие клиенты VLESS/REALITY</li>
+<li>обновление списка без смены ссылки</li>
+<li>старые рабочие узлы остаются, пока не заменятся новыми</li>
 </ul>
 </div>
+
 <div class="card">
-<p style="margin:0 0 10px"><b>Как проверялись узлы</b></p>
-<span class="pill">конфигурация корректна: 48</span>
-<span class="pill">порт доступен: 0</span>
-<span class="pill">VPN-соединение проверено: 0</span>
-<p class="muted" style="margin:12px 0 0">Прогон трафика недоступен (disabled) — порядок основан только на TCP/TLS-ответе. Узлы без пометки проверки стоят ниже:
-их никто не назвал мёртвыми, просто соединение не подтверждено.</p>
+<p style="margin:0 0 6px"><b>Приватность</b></p>
+<p class="muted" style="margin:0">На этой странице нет публичных конфигураций и токенов.
+Доступ к серверам выдаётся только через бота, поэтому чужие люди не расходуют ваш трафик.</p>
 </div>
-<div class="card">
-<p style="margin:0 0 6px"><b>Источники</b></p>
-<table><tr><th>источник</th><th>в подписке</th><th>получено</th></tr><tr><td>ok</td><td><k1></td><td>50</td><td>50</td></tr></table>
-</div>
-<p class="muted">Сборка: 2026-11-10T16:37:11+00:00. Конфиги публичных источников принадлежат третьим лицам,
+
+<p class="muted">Конфиги публичных источников принадлежат третьим лицам,
 их работа из вашей сети не гарантируется.</p>
 </div></body></html>

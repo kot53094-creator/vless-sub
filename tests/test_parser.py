@@ -1,4 +1,8 @@
-"""Тесты разбора подписок и порядка выдачи."""
+"""Тесты разбора подписок и порядка выдачи.
+
+Фикстуры синтетические: в публичном репозитории не должно быть настоящих
+UUID, адресов и паролей — только домены example.com/net/org (RFC 2606).
+"""
 
 from __future__ import annotations
 
@@ -9,9 +13,9 @@ import pytest
 from hub.services import parser, subscription
 
 VLESS_REALITY = (
-    "vless://739f3bf7-4a8a-4a1b-bdc6-fb3a00123ce3@130.49.189.158:45433"
-    "?type=tcp&security=reality&pbk=dfJb8gJq6IRsE1KMsfZp5tNLiwBNQMbSl5NF1z5dq3c"
-    "&sid=5f203fdf&fp=chrome&sni=addons.mozilla.org&flow=xtls-rprx-vision#vless-45433"
+    "vless://11111111-1111-1111-1111-111111111111@de.example.com:45433"
+    "?type=tcp&security=reality&pbk=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "&sid=5f203fdf&fp=chrome&sni=example.org&flow=xtls-rprx-vision#vless-45433"
 )
 
 VLESS_WS = (
@@ -22,8 +26,8 @@ VLESS_WS = (
 HY2 = "hysteria2://secret@hy.example.com:8443?sni=hy.example.com#hy-node"
 
 SS = (
-    "ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpNWWtNL2I1d3c2S2h5SGpCS0I2T1ppZnF6Y1hFbkRUMmpESUJXeXdZQXdzPQ=="
-    "@130.49.189.158:43558#outline-ss"
+    "ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTp0ZXN0LXBhc3N3b3Jk"
+    "@ss.example.net:43558#outline-ss"
 )
 
 
@@ -31,10 +35,10 @@ def test_parse_vless_reality_keeps_core_fields():
     rec = parser.parse_uri(VLESS_REALITY)
     assert rec is not None
     assert rec["proto"] == "vless"
-    assert rec["host"] == "130.49.189.158"
+    assert rec["host"] == "de.example.com"
     assert rec["port"] == 45433
-    assert rec["sni"] == "addons.mozilla.org"
-    assert rec["pbk"].startswith("dfJb8gJq")
+    assert rec["sni"] == "example.org"
+    assert rec["pbk"].startswith("AAAA")
     assert rec["remark"] == "vless-45433"
 
 
@@ -86,7 +90,7 @@ def test_label_marks_public_sources():
 
     class Rec:
         remark = "node-1"
-        host = "1.2.3.4"
+        host = "node.example.org"
         port = 443
 
     label = subscription._label(Rec(), Src())
