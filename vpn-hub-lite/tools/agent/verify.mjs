@@ -407,23 +407,65 @@ const NODES_FILE = process.env.NODES_FILE ?? "";
 // MERGE=1 — проверяем не пул из D1, а объединённые внешние подписки из KV.
 // Формат ответа другой (/api/merge/pool), поэтому ветка отдельная.
 const MERGE = process.env.MERGE === "1";
+
+/**
+ * Разбор ответа очереди.
+ *
+ * `/api/checks/queue` отдаёт `{queue: [...]}`, но при выключенных проверках
+ * (экономия суточной квоты D1) воркер отвечает `{ok, disabled, items: [],
+ * servers: []}` — без поля `queue`. Раньше агент падал на `queue.length`,
+ * и CI краснел каждые 20 минут, хотя проверять было нечего: мониторинг
+ * туннелей стоял, а «0 успешных · 0 неудачных» выглядело как поломка.
+ *
+ * Принимаем оба формата, отбрасываем мусор и никогда не возвращаем undefined.
+ */
+function parseQueue(text) {
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  if (body && body.disabled) {
+    console.log("проверки выключены в воркере (CHECK_ENABLED=0) — проверять нечего");
+    return [];
+  }
+  const list = Array.isArray(body) ? body : (body?.queue ?? body?.items ?? []);
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((item) => item && typeof item.link === "string" && Number.isFinite(Number(item.id)))
+    .map((item) => ({ id: Number(item.id), link: item.link }));
+}
+
 let queue = [];
 if (MERGE) {
   const poolUrl = `${BASE}/api/merge/pool`;
+  const readNodes = (text) => {
+    try {
+      const list = JSON.parse(text)?.nodes ?? [];
+      return Array.isArray(list)
+        ? list
+            .filter((node) => node && typeof node.link === "string")
+            .map((node) => ({ id: node.id, link: node.link }))
+        : [];
+    } catch {
+      return [];
+    }
+  };
   const viaCurl = httpJson(poolUrl);
   if (viaCurl && viaCurl.status === 200) {
-    queue = (JSON.parse(viaCurl.text).nodes ?? []).map((node) => ({ id: node.id, link: node.link }));
+    queue = readNodes(viaCurl.text);
   } else {
     const response = await fetch(poolUrl, { headers: { "x-check-token": TOKEN } });
     if (!response.ok) {
       console.error("список узлов не получен:", response.status);
       process.exit(1);
     }
-    queue = ((await response.json()).nodes ?? []).map((node) => ({ id: node.id, link: node.link }));
+    queue = readNodes(await response.text());
   }
   console.log(`в объединённом списке: ${queue.length}`);
 } else if (NODES_FILE) {
-  queue = JSON.parse(readFileSync(NODES_FILE, "utf8"));
+  queue = parseQueue(readFileSync(NODES_FILE, "utf8"));
   console.log(`в очереди (файл): ${queue.length}`);
 } else {
   const viaCurl = httpJson(queueUrl);
@@ -432,7 +474,7 @@ if (MERGE) {
       console.error("очередь не получена:", viaCurl.status, viaCurl.text.slice(0, 160));
       process.exit(1);
     }
-    queue = JSON.parse(viaCurl.text).queue;
+    queue = parseQueue(viaCurl.text);
   } else {
     const queueResponse = await fetch(queueUrl, {
       headers: { "x-check-token": TOKEN },
@@ -441,7 +483,7 @@ if (MERGE) {
       console.error("очередь не получена:", queueResponse.status);
       process.exit(1);
     }
-    queue = (await queueResponse.json()).queue;
+    queue = parseQueue(await queueResponse.text());
   }
   console.log(`в очереди: ${queue.length}`);
 }

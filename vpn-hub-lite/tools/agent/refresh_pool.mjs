@@ -45,7 +45,26 @@ const TOKEN = process.env.CHECK_TOKEN ?? "";
 const XRAY = process.env.XRAY_BIN ?? "xray";
 const LIMIT = Number(process.env.POOL_LIMIT ?? 240);
 
-if (!BASE || !TOKEN) {
+// Два режима, потому что проверка туннелей идёт отдельным шагом Actions:
+//   node refresh_pool.mjs prep   — собрать кандидатов, записать nodes.json;
+//   node refresh_pool.mjs finish — взять results.json и залить пул в KV.
+// Без аргумента скрипт делает всё сразу (локальный запуск).
+//
+// Раньше режимов не было, а workflow их уже вызывал: `prep` требовал
+// BASE_URL/CHECK_TOKEN, которых в том шаге нет, и падал за секунду. Из-за
+// этого пул не обновлялся вовсе, а CI краснел каждые несколько часов.
+const MODE = (process.argv[2] ?? "").toLowerCase();
+const PREP_ONLY = MODE === "prep";
+const FINISH_ONLY = MODE === "finish";
+
+// Файлы обмена между шагами. prep кладёт кандидатов и nodes.json для агента,
+// finish читает результаты проверки и тот же список кандидатов.
+const CANDIDATES_FILE = process.env.CANDIDATES_FILE ?? "pool-candidates.json";
+const NODES_OUT = process.env.NODES_FILE ?? "nodes.json";
+const RESULTS_IN = process.env.RESULTS_FILE ?? "results.json";
+
+// Сбор кандидатов не ходит в Worker, поэтому токен нужен только на заливке.
+if (!PREP_ONLY && (!BASE || !TOKEN)) {
   console.error("нужны BASE_URL и CHECK_TOKEN");
   process.exit(1);
 }
@@ -301,77 +320,143 @@ async function post(key, value, ttl = 172800) {
   console.log(`${key} → ${res.status} ${(await res.text()).slice(0, 80)}`);
 }
 
-const { nodes, hy2 } = await collect();
-console.log(`кандидатов VLESS: ${nodes.length}, hysteria2 в списках: ${hy2.length}`);
-
-// Кандидаты набираются по кругу из всех источников.
-//
-// Раньше брались первые N после сортировки «белые сверху»: это оказывался
-// почти целиком один список, и прогон проверял 80 узлов одного провайдера —
-// ноль рабочих. Теперь каждый источник представлен равной долей.
-const bySource = new Map();
-for (const node of nodes) {
-  if (!bySource.has(node.source)) bySource.set(node.source, []);
-  bySource.get(node.source).push(node);
-}
-for (const list of bySource.values()) {
-  list.sort((a, b) => Number(b.white) - Number(a.white));
-}
-
-const pooled = [];
-const lists = [...bySource.values()];
-for (let round = 0; ; round++) {
-  let added = 0;
-  for (const list of lists) {
-    const node = list[round];
-    if (node) {
-      pooled.push(node);
-      added++;
-    }
+/**
+ * Кандидаты набираются по кругу из всех источников.
+ *
+ * Раньше брались первые N после сортировки «белые сверху»: это оказывался
+ * почти целиком один список, и прогон проверял 80 узлов одного провайдера —
+ * ноль рабочих. Теперь каждый источник представлен равной долей.
+ */
+function interleave(nodes) {
+  const bySource = new Map();
+  for (const node of nodes) {
+    if (!bySource.has(node.source)) bySource.set(node.source, []);
+    bySource.get(node.source).push(node);
   }
-  if (added === 0) break;
+  for (const list of bySource.values()) {
+    list.sort((a, b) => Number(b.white) - Number(a.white));
+  }
+  const pooled = [];
+  const lists = [...bySource.values()];
+  for (let round = 0; ; round++) {
+    let added = 0;
+    for (const list of lists) {
+      const node = list[round];
+      if (node) {
+        pooled.push(node);
+        added++;
+      }
+    }
+    if (added === 0) break;
+  }
+  return pooled;
 }
 
-console.log(`всего кандидатов до отсева: ${pooled.length}`);
-const reachable = await filterReachable(pooled.slice(0, LIMIT * 3));
-console.log(`порт отвечает у ${reachable.length}`);
-const candidates = reachable.slice(0, LIMIT);
-console.log(`в туннельную проверку: ${candidates.length}`);
+/** Шаг 1: собрать кандидатов, отсеять по TCP и записать nodes.json для агента. */
+async function prep() {
+  const { nodes, hy2 } = await collect();
+  console.log(`кандидатов VLESS: ${nodes.length}, hysteria2 в списках: ${hy2.length}`);
 
-const results = await runVerify(candidates);
-const okResults = results.filter((r) => r.ok);
-console.log(`туннель прошли: ${okResults.length} из ${candidates.length}`);
+  const pooled = interleave(nodes);
+  console.log(`всего кандидатов до отсева: ${pooled.length}`);
+  const reachable = await filterReachable(pooled.slice(0, LIMIT * 3));
+  console.log(`порт отвечает у ${reachable.length}`);
+  const candidates = reachable.slice(0, LIMIT);
+  console.log(`в туннельную проверку: ${candidates.length}`);
 
-const alive = okResults
-  .map((r) => ({ node: candidates[r.id - 1], result: r }))
-  .filter((item) => item.node)
-  .sort((a, b) => (a.result.latency ?? 1e9) - (b.result.latency ?? 1e9));
-
-const geo = await geocode(alive.map((item) => item.node.host));
-const rows = alive
-  .map((item) => {
-    const info =
-      geo.get(item.node.host) ??
-      (item.node.country ? { cc: item.node.country, country: null, city: null } : null);
-    return info ? { item, info } : null;
-  })
-  .filter((entry) => entry !== null)
-  .map((entry, idx) => toRow(entry.item.node, entry.item.result, entry.info, idx))
-  .filter((row) => row.country_code && !BLOCK.has(row.country_code));
-
-const white = rows.filter((row) => [443, 8443].includes(row.port));
-
-console.log(`в пул: ${rows.length}, из них 443/8443: ${white.length}`);
-if (rows.length < 5) {
-  console.error("меньше пяти рабочих узлов — пул не трогаем");
-  process.exit(2);
+  // id результата = индекс + 1 — так его связывает verify.mjs, а finish
+  // возвращает по этому id исходный узел.
+  writeFileSync(CANDIDATES_FILE, JSON.stringify({ nodes: candidates, hy2 }, null, 1));
+  writeFileSync(
+    NODES_OUT,
+    JSON.stringify(candidates.map((node, index) => ({ id: index + 1, link: node.link }))),
+  );
+  console.log(`кандидаты записаны: ${CANDIDATES_FILE}, ${NODES_OUT} (${candidates.length})`);
+  return candidates.length;
 }
 
-await post("pool:verified:v19", rows);
-await post("pool:whitelist:v1", white);
-await post("pool:rescue:v1", rows);
-await post("direct:links", hy2.join("\n"));
-await post("pool:stamp", String(Math.floor(Date.now() / 1000)));
+/** JSON из файла без BOM: PowerShell и Блокнот пишут его в начало. */
+function readJson(path) {
+  return JSON.parse(readFileSync(path, "utf8").replace(/^\uFEFF/, ""));
+}
 
-writeFileSync("pool-last.json", JSON.stringify({ rows, hy2: hy2.length }, null, 1));
-console.log("готово");
+/** Шаг 2: взять результаты туннельной проверки и залить рабочий пул в KV. */
+async function finish() {
+  let results = [];
+  try {
+    results = readJson(RESULTS_IN).results ?? [];
+  } catch (error) {
+    console.error(`не прочитал ${RESULTS_IN}: ${error.message}`);
+    process.exit(1);
+  }
+
+  let saved = { nodes: [], hy2: [] };
+  try {
+    saved = readJson(CANDIDATES_FILE);
+  } catch {
+    // Ниже сообщим понятной ошибкой, а не «undefined».
+  }
+  const candidates = Array.isArray(saved.nodes) ? saved.nodes : [];
+  const hy2 = Array.isArray(saved.hy2) ? saved.hy2 : [];
+  if (!candidates.length) {
+    console.error(`нет кандидатов (${CANDIDATES_FILE}) — сначала запусти prep`);
+    process.exit(1);
+  }
+
+  const okResults = results.filter((r) => r.ok);
+  console.log(`туннель прошли: ${okResults.length} из ${candidates.length}`);
+
+  const alive = okResults
+    .map((r) => ({ node: candidates[r.id - 1], result: r }))
+    .filter((item) => item.node)
+    .sort((a, b) => (a.result.latency ?? 1e9) - (b.result.latency ?? 1e9));
+
+  const geo = await geocode(alive.map((item) => item.node.host));
+  const rows = alive
+    .map((item) => {
+      const info =
+        geo.get(item.node.host) ??
+        (item.node.country ? { cc: item.node.country, country: null, city: null } : null);
+      return info ? { item, info } : null;
+    })
+    .filter((entry) => entry !== null)
+    .map((entry, idx) => toRow(entry.item.node, entry.item.result, entry.info, idx))
+    .filter((row) => row.country_code && !BLOCK.has(row.country_code));
+
+  const white = rows.filter((row) => [443, 8443].includes(row.port));
+
+  // Порог из workflow (MIN_OK): пул не перезаписываем неполным списком.
+  // Это осознанный «безопасный режим»: лучше старый рабочий пул, чем новый
+  // из двух узлов. Код 2 — не поломка скрипта, а честный сигнал в CI.
+  const minOk = Math.max(1, Number(process.env.MIN_OK ?? 5) || 5);
+  console.log(`в пул: ${rows.length}, из них 443/8443: ${white.length} (нужно ≥ ${minOk})`);
+  if (rows.length < minOk) {
+    console.error(`меньше ${minOk} рабочих узлов — пул не трогаем`);
+    process.exit(2);
+  }
+
+  await post("pool:verified:v19", rows);
+  await post("pool:whitelist:v1", white);
+  await post("pool:rescue:v1", rows);
+  await post("direct:links", hy2.join("\n"));
+  await post("pool:stamp", String(Math.floor(Date.now() / 1000)));
+
+  writeFileSync("pool-last.json", JSON.stringify({ rows, hy2: hy2.length }, null, 1));
+  console.log("готово");
+}
+
+if (PREP_ONLY) {
+  await prep();
+} else if (FINISH_ONLY) {
+  await finish();
+} else {
+  await prep();
+  // Локальный запуск без отдельного шага Actions: проверяем туннели сами.
+  // В CI результаты уже лежат в results.json, и агент второй раз не нужен.
+  if (!existsSync(RESULTS_IN)) {
+    const { nodes } = readJson(CANDIDATES_FILE);
+    const results = await runVerify(nodes);
+    writeFileSync(RESULTS_IN, JSON.stringify({ results }, null, 1));
+  }
+  await finish();
+}
