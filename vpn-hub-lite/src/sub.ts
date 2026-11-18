@@ -1347,6 +1347,14 @@ async function serveSubscription(
 
         const links = only.map((row) => row.link);
 
+        // Якоря обязаны быть первыми в ЛЮБОЙ выдаче, включая аварийный путь
+        // из KV. Раньше они добавлялись только в обычной сборке из D1, а
+        // основная подписка как раз отдаётся из `pool:rescue:v1` — и человек
+        // получал список без закреплённых узлов. После смены пула это
+        // выглядело как «пропали мои серверы».
+        applyPinnedLinks(links);
+        const anchorLinks = links.slice(0, PINNED_LINKS.length);
+
         // Отдельная подписка только из Hysteria2: в общий Xray-массив они не
         // влезают, а человеку нужен способ забрать их в тот же клиент.
         if (mode === "hy2") {
@@ -1369,7 +1377,10 @@ async function serveSubscription(
           // ChatGPT/Gemini и обычные сайты. Берём только прошедшие проверку
           // по назначению; если их мало — добавляем остальные как резерв.
           const fullLinks = only.filter((row) => row.blocked_ok === 1).map((row) => row.link);
-          const autoLinks = fullLinks.length >= 2 ? fullLinks.slice(0, 25) : links.slice(0, 25);
+          const restLinks = fullLinks.length >= 2 ? fullLinks : links.slice(anchorLinks.length);
+          // Якоря остаются в балансировщике: это единственные узлы, которые
+          // не зависят ни от базы, ни от проверок.
+          const autoLinks = [...anchorLinks, ...restLinks].slice(0, 25);
           const aiLinks = only.filter((row) => row.ai_ok === 1).map((row) => row.link);
           const json = buildAutoConfig(autoLinks, 25, aiLinks);
           return new Response(json, {
@@ -1395,7 +1406,8 @@ async function serveSubscription(
           // В «Авто» внутри мульти-подписки — только узлы без фильтрации
           // доменов, иначе балансировщик снова выберет быстрый, но урезанный.
           const fullLinks = only.filter((row) => row.blocked_ok === 1).map((row) => row.link);
-          const autoLinks = fullLinks.length >= 2 ? fullLinks : links;
+          const restLinks = fullLinks.length >= 2 ? fullLinks : links.slice(anchorLinks.length);
+          const autoLinks = [...anchorLinks, ...restLinks];
           // Нейросети уводим на узлы с рабочим Gemini: у российского выхода
           // Gemini недоступен, хотя остальное через него открывается.
           const aiLinks = only.filter((row) => row.ai_ok === 1).map((row) => row.link);
