@@ -18,27 +18,6 @@
  */
 export const AUTO_LABEL = "⚡️ Авто-выбор";
 
-/**
- * Домены нейросетей. Идут отдельным маршрутом, потому что Gemini недоступен
- * с российских адресов, а ChatGPT отдаёт ошибку на «грязных» выходных IP —
- * общий балансировщик об этом не знает и выбирает узел по задержке.
- */
-const AI_DOMAINS = [
-  "domain:gemini.google.com",
-  "domain:gemini.google",
-  "domain:aistudio.google.com",
-  "domain:generativelanguage.googleapis.com",
-  "domain:makersuite.google.com",
-  "domain:bard.google.com",
-  "domain:chatgpt.com",
-  "domain:chat.openai.com",
-  "domain:openai.com",
-  "domain:claude.ai",
-  "domain:anthropic.com",
-  "domain:perplexity.ai",
-  "domain:copilot.microsoft.com",
-];
-
 interface VlessOutbound {
   tag: string;
   protocol: "vless";
@@ -159,19 +138,26 @@ export function toOutbound(uri: string, index: number): VlessOutbound | null {
 }
 
 /**
+ * Адрес пробы для наблюдателя.
+ *
+ * Только по IP: у балансировщика не должно быть зависимости от DNS, иначе
+ * проверка узлов ждёт резолва через тот же самый балансировщик. Cloudflare
+ * отдаёт этот путь по HTTPS на 1.1.1.1, сертификат валиден для IP.
+ */
+const AUTO_PROBE_URL = "https://1.1.1.1/cdn-cgi/trace";
+
+/**
  * Полный конфиг «Автоматический выбор».
  *
  * Балансировщик leastPing поверх observatory: клиент сам замеряет задержку
  * до каждого outbound и отправляет новый поток на самый быстрый живой.
  * `strategySettings` не задаём — для leastPing он не нужен.
  */
-export function buildAutoConfig(uris: string[], limit = 25, aiUris: string[] = []): string {
-  const built = uris
+export function buildAutoConfig(uris: string[], limit = 25): string {
+  const outbounds = uris
     .slice(0, limit)
-    .map((uri, index) => ({ uri, outbound: toOutbound(uri, index) }))
-    .filter((item): item is { uri: string; outbound: VlessOutbound } => item.outbound !== null);
-  const outbounds = built.map((item) => item.outbound);
-  const aiSet = new Set(aiUris);
+    .map((uri, index) => toOutbound(uri, index))
+    .filter((item): item is VlessOutbound => item !== null);
 
   // Имена профилей в клиенте — это теги outbound'ов. Берём их из подписи
   // ссылки, а селектор балансировщика перечисляет теги явно: префикс
@@ -185,14 +171,6 @@ export function buildAutoConfig(uris: string[], limit = 25, aiUris: string[] = [
     seen.add(tag);
   }
   const tags = outbounds.map((item) => item.tag);
-
-  // Узлы, где нейросети реально открываются. Если таких нет — правило
-  // не добавляем: пустой селектор в Xray ломает весь конфиг.
-  const aiTags = built
-    .filter((item) => aiSet.has(item.uri))
-    .map((item) => item.outbound.tag)
-    .filter((tag) => tags.includes(tag));
-  const useAiBalancer = aiTags.length > 0;
 
   const config = {
     log: { loglevel: "warning" },
@@ -234,12 +212,6 @@ export function buildAutoConfig(uris: string[], limit = 25, aiUris: string[] = [
         // они только медленнее, а иногда и вовсе не открываются.
         { type: "field", domain: ["domain:ru", "domain:su", "domain:xn--p1ai"], outboundTag: "direct" },
         { type: "field", ip: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8"], outboundTag: "direct" },
-        // Нейросети — на отдельный балансировщик. Российский выход тянет
-        // YouTube и ChatGPT, но Gemini там недоступен, и общий leastPing
-        // выбирал именно такой узел как самый быстрый.
-        ...(useAiBalancer
-          ? [{ type: "field" as const, domain: AI_DOMAINS, balancerTag: "auto-ai" }]
-          : []),
         // DNS-запросы тоже идут через узел. Если резолвить локально, провайдер
         // подменяет ответы, и сайты «не открываются», хотя ютуб и телеграм
         // работают: у них адреса уже прописаны в приложении.
@@ -247,15 +219,24 @@ export function buildAutoConfig(uris: string[], limit = 25, aiUris: string[] = [
         { type: "field", network: "tcp,udp", balancerTag: "auto" },
       ],
       balancers: [
-        { tag: "auto", selector: tags, strategy: { type: "leastPing" } },
-        ...(useAiBalancer
-          ? [{ tag: "auto-ai", selector: aiTags, strategy: { type: "leastPing" } }]
-          : []),
+        {
+          tag: "auto",
+          selector: tags,
+          strategy: { type: "leastPing" },
+          // Страховка: если наблюдатель не успел замерить ни один узел или
+          // клиент переименовал теги, трафик всё равно уйдёт на первый узел,
+          // а не в никуда. Без этого «Авто» включался, но не выпускал трафик.
+          fallbackTag: tags[0],
+        },
       ],
     },
     observatory: {
       subjectSelector: tags,
-      probeUrl: "https://www.gstatic.com/generate_204",
+      // Проба по IP, без DNS. Раньше здесь был www.gstatic.com: его адрес
+      // резолвился через тот же балансировщик, у которого ещё нет замеров,
+      // и «Авто» зависал на ровном месте — особенно на мобильной сети.
+      // 1.1.1.1 отвечает по HTTPS сам, адрес резолвить не нужно.
+      probeUrl: AUTO_PROBE_URL,
       // 60 секунд вместо 10 минут: при переключении сети (Wi-Fi ↔ LTE)
       // задержки старых путей устаревают мгновенно, и «Авто» до перезамера
       // держал мёртвый узел. Минимум Xray — 10 с, минута не жжёт батарею.
@@ -270,7 +251,7 @@ export function buildAutoConfig(uris: string[], limit = 25, aiUris: string[] = [
     burstObservatory: {
       subjectSelector: tags,
       pingConfig: {
-        destination: "https://www.gstatic.com/generate_204",
+        destination: AUTO_PROBE_URL,
         interval: "60s",
         timeout: "5s",
         sampling: 2,

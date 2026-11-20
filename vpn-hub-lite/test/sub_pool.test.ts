@@ -19,15 +19,15 @@ vi.mock("../src/premium", async () => {
 
 import { handleSubscription } from "../src/sub";
 import type { Env } from "../src/types";
+import type { SubMode } from "../src/sub";
 
 /**
- * Якоря в аварийном пути.
+ * Выдача из аварийного пула KV (`pool:rescue:v1`) — основной путь подписки.
  *
- * Основная подписка отдаётся из KV (`pool:rescue:v1`), не из D1: так экономится
- * суточная квота базы. Раньше закреплённые узлы добавлялись только в обычной
- * сборке, и человек получал список без них — после обновления пула это
- * выглядело как «пропали мои серверы». Якоря обязаны быть первыми в любой
- * выдаче, включая KV-резерв и JSON-режимы.
+ * Проверяем три вещи, которые ломались в бою:
+ *   1) плоский список — только VLESS, без дублей по host:port и не длиннее 30;
+ *   2) «Авто» берёт только проверенные и быстрые узлы, проба идёт по IP;
+ *   3) HY2 забирается из всего пула, а не из первых тридцати строк.
  */
 
 const TOKEN = "Ej0mbpxIY6-iN8yIvg6g813QXp6N2NqOZzlnSYI_ifE";
@@ -47,14 +47,21 @@ const baseUser = {
   note: "",
 };
 
-function makeEnv(): Env {
-  const pool = [
-    {
-      link: "vless://11111111-2222-3333-4444-555555555555@1.2.3.4:443?security=reality&pbk=k&sni=a.com&type=tcp#DE-1",
-      blocked_ok: 1,
-      host: "1.2.3.4",
-    },
-  ];
+interface Row {
+  link: string;
+  blocked_ok?: number;
+  speed_mbps?: number;
+  host?: string;
+}
+
+function vless(host: string, uuid = "11111111-2222-3333-4444-555555555555"): Row {
+  return {
+    link: `vless://${uuid}@${host}:443?security=reality&pbk=k&sni=a.com&type=tcp#${host}`,
+    host,
+  };
+}
+
+function makeEnv(pool: Row[]): Env {
   return {
     PUBLIC_BASE_URL: "https://vpn.example",
     SALT: "salt",
@@ -87,43 +94,70 @@ async function bodyText(response: Response): Promise<string> {
   }
 }
 
-function withUser(user: Record<string, unknown>): void {
+async function fetchBody(pool: Row[], mode: SubMode = "default", ua = "v2rayNG/1.9.16") {
   h.one.mockImplementation(async (...args: unknown[]) => {
     const sql = String(args[1] ?? "");
-    return sql.includes("FROM users") ? user : null;
+    return sql.includes("FROM users") ? baseUser : null;
   });
+  return bodyText(await handleSubscription(makeEnv(pool), TOKEN, request(ua), mode));
 }
 
-describe("якоря в KV-резерве", () => {
+describe("выдача из пула KV", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("список ссылок начинается с закреплённых узлов", async () => {
-    withUser(baseUser);
+  it("плоский список: только VLESS, без дублей и не длиннее 30", async () => {
+    const pool: Row[] = [
+      vless("dup.example.com"),
+      vless("dup.example.com", "99999999-2222-3333-4444-555555555555"),
+      ...Array.from({ length: 31 }, (_, i) => vless(`n${i}.example.com`)),
+      { link: "hysteria2://secret@hy.example.com:8443?sni=hy.example.com#hy" },
+    ];
+    const body = await fetchBody(pool);
+    const lines = body.split("\n").map((l) => l.trim()).filter(Boolean);
 
-    const body = await bodyText(await handleSubscription(makeEnv(), TOKEN, request("v2rayNG/1.9.16")));
-    const lines = body.split("\n").filter((line) => line.trim() !== "");
-    expect(lines[0]).toContain("golu-gulu");
-    expect(lines.slice(0, 10).every((line) => line.includes("golu-gulu"))).toBe(true);
-    // Узлы пула при этом остаются ниже — якоря не вытесняют рабочий список.
-    expect(body).toContain("1.2.3.4");
-  });
-
-  it("мульти-профиль Happ тоже содержит якоря", async () => {
-    withUser(baseUser);
-
-    const body = await bodyText(await handleSubscription(makeEnv(), TOKEN, request("Happ/2.9.1")));
-    expect(body).toContain("golu-gulu");
-    expect(body).toContain("1.2.3.4");
-  });
-
-  it("отдельная подписка Hysteria2 остаётся только из QUIC-узлов", async () => {
-    withUser(baseUser);
-
-    const body = await bodyText(
-      await handleSubscription(makeEnv(), TOKEN, request("v2rayNG/1.9.16"), "hy2"),
-    );
+    expect(lines).toHaveLength(30);
+    expect(lines.every((l) => l.startsWith("vless://"))).toBe(true);
+    expect(body).not.toContain("hysteria2://");
     expect(body).not.toContain("golu-gulu");
+    const hosts = lines.map((l) => l.split("@")[1]?.split("?")[0]);
+    expect(new Set(hosts).size).toBe(hosts.length);
+  });
+
+  it("«Авто» берёт только быстрые проверенные узлы и пробует сеть по IP", async () => {
+    const pool: Row[] = [
+      { ...vless("slow.example.com"), blocked_ok: 1, speed_mbps: 0.5 },
+      { ...vless("fast.example.com"), blocked_ok: 1, speed_mbps: 12 },
+      { ...vless("unfiltered.example.com"), blocked_ok: 0, speed_mbps: 90 },
+      { ...vless("dup.example.com"), blocked_ok: 1, speed_mbps: 20 },
+      { ...vless("dup.example.com"), blocked_ok: 1, speed_mbps: 20 },
+    ];
+    const body = await fetchBody(pool, "auto", "Happ/2.9.1");
+    const config = JSON.parse(body) as {
+      routing: { balancers: { tag: string; selector: string[]; fallbackTag: string }[] };
+      observatory: { probeUrl: string };
+      burstObservatory: { pingConfig: { destination: string } };
+    };
+    const balancer = config.routing.balancers[0];
+
+    expect(balancer.selector.join(" ")).toContain("fast.example.com");
+    expect(balancer.selector.join(" ")).not.toContain("slow.example.com");
+    expect(balancer.selector.join(" ")).not.toContain("unfiltered.example.com");
+    expect(balancer.fallbackTag).toBe(balancer.selector[0]);
+    expect(config.observatory.probeUrl).toBe("https://1.1.1.1/cdn-cgi/trace");
+    expect(config.burstObservatory.pingConfig.destination).toBe("https://1.1.1.1/cdn-cgi/trace");
+  });
+
+  it("HY2 берётся из всего пула, а не из видимых тридцати строк", async () => {
+    const pool: Row[] = [
+      ...Array.from({ length: 40 }, (_, i) => vless(`n${i}.example.com`)),
+      { link: "hysteria2://secret@hy.example.com:8443?sni=hy.example.com#hy" },
+    ];
+    const body = await fetchBody(pool, "hy2");
+    const lines = body.split("\n").map((l) => l.trim()).filter(Boolean);
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("hysteria2://secret@hy.example.com:8443");
   });
 });

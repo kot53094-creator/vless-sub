@@ -393,46 +393,11 @@ const SNAPSHOT_TTL = 7 * 24 * 3600;
  * host:port, но другой подписью.
  */
 const PINNED_LINKS: { link: string; label: string }[] = [
-  {
-    link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@pl-users.golu-gulu.online:443?type=grpc&security=reality&sni=pl-users.golu-gulu.online&fp=firefox&pbk=vndjTES0bDFmT7rh4vpP8BVs8-J3TDsA5wVgct8cr20&sid=c4f2e8a16b903d75&serviceName=UserVideo",
-    label: AUTO_LABEL,
-  },
-  {
-    link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@pl-users.golu-gulu.online:443?type=grpc&security=reality&sni=pl-users.golu-gulu.online&fp=firefox&pbk=vndjTES0bDFmT7rh4vpP8BVs8-J3TDsA5wVgct8cr20&sid=c4f2e8a16b903d75&serviceName=UserVideo",
-    label: "🇵🇱 Польша",
-  },
-  {
-    link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@nl.golu-gulu.online:443?type=grpc&security=reality&sni=nl.golu-gulu.online&fp=qq&pbk=Nslv-ty-rHpyBL9jFin2qCYINXxdZNCC1P4wb2YJoiM&sid=a2380263612e79db&serviceName=grpc-vk",
-    label: "🇳🇱 Нидерланды",
-  },
-  {
-    link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@fr.golu-gulu.online:443?type=grpc&security=reality&sni=fr.golu-gulu.online&fp=qq&pbk=Nslv-ty-rHpyBL9jFin2qCYINXxdZNCC1P4wb2YJoiM&sid=a2380263612e79db&serviceName=grpc-vk",
-    label: "🇫🇷 Франция",
-  },
-  {
-    link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@ru2.golu-gulu.online:9999?type=tcp&security=reality&flow=xtls-rprx-vision&sni=ru2.golu-gulu.online&fp=firefox&pbk=KGU-UIM6HlNYuaBD5WMTLkG8mqR__mVSxF2smO_lTjw&sid=a2380263612e79db",
-    label: "🇷🇺 Ru-сервисы | Если вы зарубежом",
-  },
-  {
-    link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@ee-users.golu-gulu.online:443?type=grpc&security=reality&sni=ee-users.golu-gulu.online&fp=firefox&pbk=_46X6-C3E-Ks9pzAG4XBBH74uDAAAl0AoshlCbeKU0U&sid=c4f2e8a16b903d75&serviceName=ee-users",
-    label: "🇪🇪 Эстония",
-  },
-  {
-    link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@gr.golu-gulu.online:443?type=tcp&security=reality&flow=xtls-rprx-vision&sni=gr.golu-gulu.online&fp=qq&pbk=KGU-UIM6HlNYuaBD5WMTLkG8mqR__mVSxF2smO_lTjw&sid=a2380263612e79db",
-    label: "🇬🇷 Греция",
-  },
-  {
-    link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@alyt.golu-gulu.online:443?type=tcp&security=reality&flow=xtls-rprx-vision&sni=alyt.golu-gulu.online&fp=firefox&pbk=xkl9goRCVqCwoatSn_svrHkzlcmu7APwhr7XfdC6jTU&sid=a2380263612e79db",
-    label: "🇦🇱 Албания",
-  },
-  {
-    link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@fi.users.golu-gulu.online:443?type=tcp&security=reality&flow=xtls-rprx-vision&sni=fi.users.golu-gulu.online&fp=firefox&pbk=ZPjkqL8oFJ27Oa8ETFfSC_S2EHnGl8TyN5ujzYwMknw&sid=7d19a6e4c2f8305b",
-    label: "🇫🇮 Финляндия",
-  },
-  {
-    link: "vless://d3b30ef2-0972-43b8-9300-093c67227de8@jp-ch.users.golu-gulu.online:443?type=grpc&security=reality&sni=jp-ch.users.golu-gulu.online&fp=qq&pbk=ja7ib9JvaB3uUFPYz4X5IEAfl2IcLS694Vmq66waD38&sid=a34f8c1d6e2b9075&serviceName=jp-ch-users",
-    label: "🇯🇵 Япония",
-  },
+  // Пусто намеренно. Здесь висели девять узлов golu-gulu.online, и проверка
+  // 18 ноября показала 0 Мбит у всех: порт открыт, трафик не идёт. Они
+  // подмешивались в каждую подписку и выглядели как рабочие серверы.
+  // Кроме того, первая запись дублировала вторую (тот же host:port), но с
+  // подписью «Авто-выбор» — из-за этого в клиенте появлялось два авто-профиля.
 ];
 
 /** host:port из ссылки — сравнение узлов без учёта подписи. */
@@ -457,6 +422,34 @@ function applyPinnedLinks(uris: string[]): void {
     if (anchored.has(endpointOfLink(uris[i]))) uris.splice(i, 1);
   }
   uris.unshift(...PINNED_LINKS.map((pin) => withLabel(cleanLink(pin.link), pin.label)));
+}
+
+/** Убирает повторы по host:port: один и тот же узел не должен попадать дважды. */
+function dedupe(uris: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const uri of uris) {
+    const key = endpointOfLink(uri);
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    out.push(uri);
+  }
+  return out;
+}
+
+/**
+ * Узлы пула, которые прошли проверку по назначению (`blocked_ok === 1`),
+ * в порядке пула: он уже отсортирован «сначала быстрые и полностью рабочие».
+ * «Авто» обязан ходить только по ним — иначе балансировщик выбирает узел,
+ * который открывает YouTube, но режет ChatGPT/Gemini и обычные сайты.
+ */
+function verifiedUnique(rows: Pick<DeliverableServer, "link" | "blocked_ok" | "speed_mbps">[]): string[] {
+  // Порог 4 Мбит/с — не прихоть: узел с 0.1 Мбит/с открывает мелочь, но
+  // YouTube на нём висит, а балансировщик выбирает его первым, потому что
+  // пинг низкий. Так «Авто» и превращался в «ничего не грузится».
+  const fast = rows.filter((row) => row.blocked_ok === 1 && (row.speed_mbps ?? 0) >= 4);
+  const pool = fast.length ? fast : rows.filter((row) => row.blocked_ok === 1);
+  return dedupe(pool.map((row) => row.link));
 }
 
 /**
@@ -1345,20 +1338,28 @@ async function serveSubscription(
           // не смогли учесть устройство — не блокируем доступ
         }
 
-        const links = only.map((row) => row.link);
+        // В списке показываем не больше тридцати строк: при пуле на 85 узлов
+        // клиент превращается в свалку, а работают всё равно единицы.
+        // «Авто» при этом строится из всего пула отдельно.
+        // Hysteria2 в плоский список не попадает: это QUIC, его забирают
+        // отдельной подпиской /hy2, а строки с неизвестной схемой ломают
+        // импорт у v2rayNG.
+        const links = dedupe(
+          only.filter((row) => /^vless:\/\//i.test(row.link)).map((row) => row.link),
+        ).slice(0, 30);
 
-        // Якоря обязаны быть первыми в ЛЮБОЙ выдаче, включая аварийный путь
-        // из KV. Раньше они добавлялись только в обычной сборке из D1, а
-        // основная подписка как раз отдаётся из `pool:rescue:v1` — и человек
-        // получал список без закреплённых узлов. После смены пула это
-        // выглядело как «пропали мои серверы».
+        // Механизм якорей оставляем: после ротации ссылки можно вернуть без
+        // переделки кода. Сейчас PINNED_LINKS пуст намеренно — старые узлы
+        // golu-gulu отдавали 0 Мбит и маскировались под рабочие.
         applyPinnedLinks(links);
         const anchorLinks = links.slice(0, PINNED_LINKS.length);
 
         // Отдельная подписка только из Hysteria2: в общий Xray-массив они не
         // влезают, а человеку нужен способ забрать их в тот же клиент.
         if (mode === "hy2") {
-          const quic = links.filter((link) => /^hysteria2:\/\//i.test(link));
+          // Берём из полного пула, а не из видимого списка: QUIC-узлы стоят
+          // в конце и в первые тридцать строк не попадают.
+          const quic = only.filter((row) => /^hysteria2:\/\//i.test(row.link)).map((row) => row.link);
           return plain(
             env,
             quic.length ? buildSubscription(quic) : stubBody("Hysteria2-узлов пока нет"),
@@ -1376,13 +1377,12 @@ async function serveSubscription(
           // выбирает по задержке, а такой узел быстрый и при этом режет
           // ChatGPT/Gemini и обычные сайты. Берём только прошедшие проверку
           // по назначению; если их мало — добавляем остальные как резерв.
-          const fullLinks = only.filter((row) => row.blocked_ok === 1).map((row) => row.link);
-          const restLinks = fullLinks.length >= 2 ? fullLinks : links.slice(anchorLinks.length);
+          const fullLinks = verifiedUnique(only);
+          const restLinks = fullLinks.length ? fullLinks : links.slice(anchorLinks.length);
           // Якоря остаются в балансировщике: это единственные узлы, которые
           // не зависят ни от базы, ни от проверок.
-          const autoLinks = [...anchorLinks, ...restLinks].slice(0, 25);
-          const aiLinks = only.filter((row) => row.ai_ok === 1).map((row) => row.link);
-          const json = buildAutoConfig(autoLinks, 25, aiLinks);
+          const autoLinks = dedupe([...anchorLinks, ...restLinks]).slice(0, 25);
+          const json = buildAutoConfig(autoLinks, 25);
           return new Response(json, {
             headers: {
               "content-type": "application/json; charset=utf-8",
@@ -1405,13 +1405,12 @@ async function serveSubscription(
           if (!supportsMulti) throw new Error("multi not supported");
           // В «Авто» внутри мульти-подписки — только узлы без фильтрации
           // доменов, иначе балансировщик снова выберет быстрый, но урезанный.
-          const fullLinks = only.filter((row) => row.blocked_ok === 1).map((row) => row.link);
-          const restLinks = fullLinks.length >= 2 ? fullLinks : links.slice(anchorLinks.length);
-          const autoLinks = [...anchorLinks, ...restLinks];
+          const fullLinks = verifiedUnique(only);
+          const restLinks = fullLinks.length ? fullLinks : links.slice(anchorLinks.length);
+          const autoLinks = dedupe([...anchorLinks, ...restLinks]).slice(0, 25);
           // Нейросети уводим на узлы с рабочим Gemini: у российского выхода
           // Gemini недоступен, хотя остальное через него открывается.
-          const aiLinks = only.filter((row) => row.ai_ok === 1).map((row) => row.link);
-          const auto = JSON.parse(buildAutoConfig(autoLinks, 25, aiLinks)) as Record<string, unknown>;
+          const auto = JSON.parse(buildAutoConfig(autoLinks, 25)) as Record<string, unknown>;
           auto.remarks = AUTO_LABEL;
           // В массив профилей Xray кладём только VLESS: Hysteria2 — это QUIC,
           // Xray его не исполняет, и одна такая ссылка ломала сборку всего
